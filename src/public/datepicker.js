@@ -1,3 +1,10 @@
+/*!
+ * datepicker.js – Interaktiver Datums-Picker für Wix-Projekte
+ * © 2025 Webmaster-FSG-Alfdorf Oliver Hoffmann
+ * Licensed under CC BY-NC 4.0 (Creative Commons Attribution-NonCommercial 4.0 International)
+ * https://creativecommons.org/licenses/by-nc/4.0/
+ */
+
 let current = new Date();
 let startDate = new Date();
 let disabledDates = new Set();
