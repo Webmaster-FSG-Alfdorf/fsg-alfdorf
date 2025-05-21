@@ -1,0 +1,76 @@
+body {
+    font-family: sans-serif;
+}
+
+th,
+td {
+    text-align: center;
+    padding: 0.6em;
+    border-radius: 50%;
+    user-select: none;
+    transition: all 0.6s ease;
+}
+
+td {
+    position: relative;
+}
+
+td .day-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.month-nav,
+.month-nav-disabled {
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.6s ease;
+}
+
+.month-nav-disabled {
+    color: grey !important;
+    cursor: default !important;
+    pointer-events: none;
+}
+
+.month-nav:hover {
+    color: darkorange;
+}
+
+.cell-cur {
+    color: black;
+    cursor: pointer;
+}
+
+.cell-other {
+    color: grey;
+    cursor: pointer;
+}
+
+.cell-disabled {
+    cursor: default !important;
+    pointer-events: none;
+}
+
+.cell-out-of-range {
+    cursor: default !important;
+    pointer-events: none;
+    color: grey !important;
+    background-color: silver !important;
+}
+
+.cell-cur:hover,
+.cell-other:hover {
+    color: white;
+    background: none;
+    background-color: #e74c3c;
+}
+
+.sel {
+    outline: dotted blue;
+    box-shadow: 0 0 1em 0.1em blue;
+    border-radius: 0;
+}
