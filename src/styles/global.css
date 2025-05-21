@@ -1,0 +1,22 @@
+/* CSS-Referenz: https://www.wix.com/velo/reference/$w/styling-elements-with-css */
+ 
+/* Diese CSS Styles werden global auf jede Seite dieser Website angewendet. Schreiben dein CSS hier, z. B.: */ 
+
+ /* Ändere die Hintergrundfarbe des Buttons zu Rot: */ 
+ /* .button {
+    background-color: red;
+} */
+
+.lightbox_map {
+    width: 100vw;
+    height: 100vh;
+}
+
+.month-nav {
+  cursor: pointer;
+  color: black;
+}
+
+.month-nav:hover {
+  color: red;
+}

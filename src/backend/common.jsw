@@ -1,0 +1,153 @@
+import wixData from 'wix-data';
+
+import { nightsBetween, toLocal, debugStr } from 'public/cms.js';
+
+/**
+ * Checks if given date range is (partially) disabled / occupied while respecting lodging based capacities.
+ * For sub lodgings it ensures capacity of the base lodging is sufficient and specific sub lodging is not occupied.
+ * @param {string} lodging
+ * @param {Number} lodgingSub
+ * @param {Date}   dateFrom
+ * @param {Date}   dateTo
+ * @param {string} exclude if set, reservations from this item will be ignored
+ * @returns {Promise<Object>} containing {Number} capacity, {{{Date} start, {Date} end, {Number} count} []} occupations
+ */
+export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude = "") {
+    if (!lodging) return { capacity: 0, occupations: [] };
+    const resL = await wixData.query("lodgings").eq("lodgingID", lodging).find();
+    if (resL.items.length > 1) console.error(`Have multiple matches from #lodgings with lodgingID == ${lodging}: ${resL.items}`);
+    const capacity = resL.items.length == 0 ? 0 : resL.items[0].capacity;
+
+    console.log("getOccupations for", lodging, "capacity", capacity, debugStr(dateFrom), "to", debugStr(dateTo));
+    if (capacity <= 0) return { capacity: 0, occupations: [] }; // cannot check availability if lodging field is empty / invalid
+
+    const res = await wixData.query("disabledDates").eq("lodging", lodging).le("dateFrom", dateTo).ge("dateTo", dateFrom).find();
+    let occupations = [];
+    res.items.forEach(item => {
+        if (item._id != exclude) {
+            const start = toLocal(item.dateFrom);
+            const end = toLocal(item.dateTo);
+            // if our specfic sub lodging is occupied, we have no capacity remaining, so count == maxAvailable
+            const count = lodgingSub > 0 && item.lodgingSub == lodgingSub ? capacity : 1;
+            occupations.push({ start, end, count });
+        }
+    });
+
+    console.log("getOccupations", occupations);
+
+    return { capacity, occupations };
+}
+
+/**
+ * Checks if any date within the given date range is fully occupied based on lodging capacities.
+ * For sub lodgings it ensures capacity of the base lodging is sufficient and specific sub lodging is not occupied.
+ * @param {string} lodging
+ * @param {Number} lodgingSub
+ * @param {Date}   dateFrom
+ * @param {Date}   dateTo
+ * @param {boolean} suggest later arrival or earlier departure suggestion
+ * @param {string} exclude if set, reservations from this item will be ignored
+ * @returns {Promise<any>}
+ */
+export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, suggest = false, exclude = "") {
+    const dt = new Date(dateFrom);
+    dt.setUTCHours(0, 0, 0, 0);
+    const res = await getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude);
+
+    const occupied = (dt) => {
+        let ocSum = 0;
+        res.occupations.forEach((oc) => {
+            if (dt > oc.start && dt < oc.end) ocSum += oc.count;
+        });
+        //console.log("isDateOccupied", debugStr(dt), "has occupation sum", ocSum);
+        return ocSum >= res.capacity;
+    };
+
+    console.log("isDateOccupied for", lodging, "sub", lodgingSub, debugStr(dateFrom), "to", debugStr(dateTo), "suggest", suggest, "got", res);
+    if (res.capacity <= 0) return { occupied: true } // not possible to find anything
+
+    //FIXME loop does not work if only one day selected 
+    dt.setDate(dt.getDate() + 1); // first day will be checked last so arrival suggestion comes after full block errors
+    while (dt <= dateTo) {
+        if (dt.toDateString() == dateTo.toDateString()) {
+            if (occupied(dateTo)) {
+                // would it still be occupied if guest chooses an earlier departure time?
+                if (suggest)
+                    for (let i = dateTo.getUTCHours() - 1; i >= 8; --i) {
+                        const dt2 = new Date(dt);
+                        dt2.setHours(i, 0, 0, 0);
+                        if (!occupied(dt2)) return { occupied: true, conflictingDate: dt2, suggestedDeparture: i };
+                    }
+                return { occupied: true, conflictingDate: dateTo };
+            }
+        } else if (occupied(dt))
+            return { occupied: true, conflictingDate: dt };
+        dt.setDate(dt.getDate() + 1);
+    }
+    if (occupied(dateFrom)) {
+        // would it still be occupied if guest chooses a later arrival time?
+        //console.log(new Date().getTimezoneOffset());
+        if (suggest)
+            for (let i = dateFrom.getUTCHours() + 1; i <= 22; ++i) {
+                const dt2 = new Date(dateFrom);
+                dt2.setHours(i, 0, 0, 0);
+                if (!occupied(dt2)) return { occupied: true, conflictingDate: dt2, suggestedArrival: i };
+            }
+        return { occupied: true, conflictingDate: dateFrom };
+    }
+
+    return { occupied: false };
+}
+
+/**
+ * Checks if given date range is (partially) disabled / occupied while respecting lodging based capacities..
+ * @param {string} lodging
+ * @param {Date}   dateFrom
+ * @param {Date}   dateTo
+ * @param {Number} cntAdults
+ * @param {Number} cntChildren
+ * @returns {Promise<any>}
+ */
+export async function calculateReservationPrice(lodging, dateFrom, dateTo, cntAdults, cntChildren) {
+    console.log("calculateReservationPrice for", lodging, debugStr(dateFrom), "to", debugStr(dateTo), "adults", cntAdults, "children", cntChildren);
+    if (!lodging || !dateFrom || !dateTo) return [];
+    let res = [];
+    const results = await wixData.query("pricesVisitor").contains("lodging", lodging).ascending("order").find();
+    results.items.forEach(item => {
+        console.log("calculateReservationPrice", item);
+        let line = { title: item.title, price: item.price, depositName: item.depositName };
+        if (item.perNight) {
+            let cntNights = 0;
+            if (item.start && item.end) {
+                const periods = [];
+                const dS = new Date(item.start);
+                const dE = new Date(item.end);
+                for (let y = dateFrom.getFullYear(); y <= dateTo.getFullYear(); ++y) {
+                    const start = new Date(y, dS.getUTCMonth(), dS.getUTCDate());
+                    const end = new Date(y, dE.getUTCMonth(), dE.getUTCDate());
+                    if (start <= end)
+                        // within one year
+                        periods.push({ start, end });
+                    else
+                        // overlapping a year => need to split
+                        periods.push({ start, end: new Date(y, 11, 31) }, { start: new Date(y, 0, 1), end });
+                }
+
+                periods.forEach(period => {
+                    // item.start and item.end only contain valid month and day-of-month, the year field is always 1970 and shall be ignored
+                    const overlapStart = new Date(Math.max(dateFrom.getTime(), period.start.getTime()));
+                    const overlapEnd = new Date(Math.min(dateTo.getTime(), period.end.getTime()));
+                    cntNights += nightsBetween(overlapStart, overlapEnd);
+                });
+                console.log("calculateReservationPrice periods", periods, "cntNights", cntNights);
+            } else
+                cntNights = nightsBetween(dateFrom, dateTo);
+            res.push({ ...line, cntNights: cntNights, cntAdults: item.perAdult ? cntAdults : 0 });
+        } else if (item.perAdult) {
+            res.push({ ...line, cntAdults: cntAdults });
+        } else if (item.perReservation) {
+            res.push(line);
+        }
+    });
+    return res;
+}

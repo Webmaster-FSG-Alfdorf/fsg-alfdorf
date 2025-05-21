@@ -1,0 +1,181 @@
+import wixData from 'wix-data';
+
+export async function testGenerateRandomBooking({
+    startDate = new Date(),
+    minDays = 1,
+    maxDays = 14,
+    maxStartDateDays = 4,
+    count = 30,
+} = {}) {
+    const firstNames = [
+        "Peter", "Hans", "Albert", "Lukas", "Leon", "Max", "Paul", "Tim", "Finn", "Tom",
+        "Anna", "Lisa", "Laura", "Julia", "Emma", "Lena", "Mia", "Sophie", "Marie", "Clara"
+    ];
+
+    const lastNames = [
+        "Müller", "Meier", "Schmidt", "Schneider", "Fischer", "Weber", "Bauer", "Wagner",
+        "Becker", "Hoffmann", "Koch", "Richter", "Klein", "Wolf", "Schröder", "Neumann",
+        "Schwarz", "Zimmermann", "Braun", "Krüger"
+    ];
+
+    const addresses = [{
+            streetAddress: "Musterstraße 12",
+            postalCode: "10115",
+            city: "Berlin",
+            country: "DE"
+        },
+        {
+            streetAddress: "Beispielweg 5",
+            postalCode: "80331",
+            city: "München",
+            country: "DE"
+        },
+        {
+            streetAddress: "Hauptstraße 77",
+            postalCode: "50667",
+            city: "Köln",
+            country: "DE"
+        },
+        {
+            streetAddress: "Testallee 3",
+            postalCode: "20095",
+            city: "Hamburg",
+            country: "DE"
+        },
+        {
+            streetAddress: "Fabrikstraße 8a",
+            postalCode: "70173",
+            city: "Stuttgart",
+            country: "DE"
+        },
+        {
+            streetAddress: "Bahnhofstraße 2",
+            postalCode: "90402",
+            city: "Nürnberg",
+            country: "DE"
+        },
+        {
+            streetAddress: "Marktplatz 1",
+            postalCode: "60311",
+            city: "Frankfurt",
+            country: "DE"
+        },
+        {
+            streetAddress: "Ringstraße 10",
+            postalCode: "04109",
+            city: "Leipzig",
+            country: "DE"
+        },
+        {
+            streetAddress: "Bergweg 22",
+            postalCode: "01067",
+            city: "Dresden",
+            country: "DE"
+        },
+        {
+            streetAddress: "Lindenallee 15",
+            postalCode: "99084",
+            city: "Erfurt",
+            country: "DE"
+        }
+    ];
+
+    const states = ["Anfrage", "Anfrage", "Anfrage", "Anfrage", "Reserviert", "Reserviert", "Bezahlt", "Abgelehnt"];
+
+    const lodgings = ["GW", "WW1", "WW2", "WW3", "SP"];
+    const lodgingWeights = [20, 3, 3, 3, 1];
+    const capacities = [10, 1, 1, 1, 250];
+
+    const hours = [6, 8, 10, 12, 14, 16, 18, 20];
+
+    const items = [];
+
+    const lastDates = new Map(); // lodging|sub to dateTo
+
+    for (let i = 0; i < count; ++i) {
+        const lodgingIdx = rndW(lodgingWeights);
+        const lodging = lodgings[lodgingIdx];
+        const lodgingSub = capacities[lodgingIdx] <= 1 ? 0 : rnd1(0, capacities[lodgingIdx]);
+
+        const hadEndDate = new Date(lastDates.get(`${lodging}|${lodgingSub}`) ?? startDate);
+
+        const dateFrom = new Date(hadEndDate);
+        let arrHour = Math.max(hours[rnd(hours.length)], hadEndDate.getHours() + 2);
+        dateFrom.setDate(dateFrom.getDate() + rnd(maxStartDateDays));
+        if (arrHour > 22) {
+            arrHour = hours[rnd(hours.length)];
+            dateFrom.setDate(dateFrom.getDate() + 1);
+        }
+
+        dateFrom.setHours(arrHour, 0, 0, 0);
+
+        const dateTo = new Date(dateFrom);
+        dateTo.setDate(dateTo.getDate() + rnd1(minDays, maxDays));
+        dateTo.setHours(hours[rnd(hours.length)], 0, 0, 0);
+        lastDates.set(`${lodging}|${lodgingSub}`, dateTo);
+
+        const firstName = firstNames[rnd(firstNames.length)];
+        const lastName = lastNames[rnd(lastNames.length)];
+
+        const addr = addresses[rnd(addresses.length)];
+
+        const item = {
+            firstName,
+            lastName,
+            email: `oliverhoffmann32+${firstName.toLowerCase()}_${lastName.toLowerCase()}_${(10000)}@gmail.com`,
+            phoneNumber: Array.from({ length: rnd1(6, 16) }, () => rnd1(0, 9)).join(""),
+            address: { ...addr, formatted: `${addr.streetAddress}, ${addr.postalCode} ${addr.city}` },
+            dateFrom,
+            dateTo,
+            lodging,
+            lodgingSub,
+            cntAdults: rnd1(1, 6),
+            cntChildren: rnd1(0, 6),
+            comment: 'Automatically generated for test cases',
+            state: states[rnd(states.length)],
+            privacyPolicy: rnd(10) < 8,
+            paidSum: rnd(10) < 7 ? 0 : rnd1(20 * 100, 200 * 100) / 100,
+            deposit: rnd(10) < 7 ? [] : ["Schlüssel"],
+        };
+        items.push(item);
+    }
+    try {
+        await Promise.all(items.map(item => {
+            wixData.insert("guestReservations", item).then(() => {
+                item.refId = item._id;
+                console.log("testGenerateRandomBooking", item);
+                wixData.update("guestReservations", item);
+            });
+        }));
+        console.log("testGenerateRandomBooking", `Created ${count} new entries`);
+    } catch (err) {
+        console.error("testGenerateRandomBooking:", err);
+    }
+}
+
+/**
+ * Returns a random number between 0 and max, exclusive max
+ */
+function rnd(max) {
+    return Math.floor(Math.random() * max);
+}
+
+/**
+ * Returns a random number between min and max, inclusive both
+ */
+function rnd1(min, max) {
+    return Math.floor(Math.random() * (max + 1 - min)) + min;
+}
+
+/**
+ * Returns a random number based on weights between 0 and weights.length, exclusive length
+ */
+function rndW(weights) {
+    const random = rnd(weights.reduce((acc, weight) => acc + weight, 0));
+    let runningWeight = 0;
+    for (let i = 0; i < weights.length; i++) {
+        runningWeight += weights[i];
+        if (random < runningWeight) return i;
+    }
+    return weights.length - 1;
+}
