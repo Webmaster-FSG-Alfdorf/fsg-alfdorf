@@ -78,11 +78,11 @@ async function buildSearchField(item) {
         item.lastName,
         item.email,
         item.phoneNumber,
-        item.address.formatted,
+        item.address?.formatted ?? "",
         dateRangeToString({ start: item.dateFrom, end: item.dateTo }),
         item.lodging,
         item.lodgingSub, // must be directly after item.lodging
-        `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}`,
+        lme ? `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}` : "",
         item.note,
         item.comment,
         item.state,
