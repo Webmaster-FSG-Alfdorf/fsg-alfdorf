@@ -321,7 +321,19 @@ function updateFields() {
     updateFilterSelection();
     let item = $w("#datasetGuestReservations").getCurrentItem();
     cloneItem(item);
-    $w("#textTitle").text = generateTitle(item);
+    const newTitle = generateTitle(item);
+    $w("#textTitle").text = newTitle;
+    if (item) {
+        $w("#repeaterFilterResults").forEachItem(($item, itemData) => {
+            if (itemData._id == item._id) {
+                $item("#textFilterResult").text = newTitle;
+                $item("#textFilterResultActive").text = newTitle;
+            }
+        });
+        let opt = $w("#dropdownFilterResultsMore").options;
+        opt.forEach((o) => { if (o.value == item._id) o.label = newTitle });
+        $w("#dropdownFilterResultsMore").options = opt;
+    }
     $w("#inputLodging").value = item ? `${item.lodging}|${item.lodgingSub ?? 0}` : "";
     if (item && item.dateFrom && item.dateTo)
         updateCurrentDate([new Date(item.dateFrom), new Date(item.dateTo)]);
