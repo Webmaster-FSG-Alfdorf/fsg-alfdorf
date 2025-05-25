@@ -39,7 +39,7 @@ export async function guestReservations_beforeInsert(item, context) {
         if ((await isDateOccupied(item.lodging, item.lodgingSub, new Date(item.dateFrom), new Date(item.dateTo)), false, item._id).occupied)
             throw new Error("Invalid date range");
     }
-    item = buildSearchField(item);
+    await buildSearchField(item);
     console.log("guestReservations_beforeInsert finally", item);
     return item;
 }
@@ -59,7 +59,7 @@ export async function guestReservations_beforeRemove(item, context) {
 export async function guestReservations_beforeUpdate(item, context) {
     console.log("guestReservations_beforeUpdate", item._id, context);
     if (!(await accessToGuests())) throw new Error("Not allowed");
-    item = buildSearchField(item);
+    await buildSearchField(item);
     console.log("guestReservations_beforeUpdate finally", item);
     return item;
 }
@@ -89,7 +89,6 @@ async function buildSearchField(item) {
         item.deposit,
         item.refId
     ].map(normalize).join(" ");
-    return item;
 }
 
 export async function guestReservations_afterInsert(item, context) {
