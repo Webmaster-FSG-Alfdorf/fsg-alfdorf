@@ -88,7 +88,7 @@ function pickDay(year, month, date) {
         }
     }
     pickStart = 1 - pickStart;
-    document.getElementById("tooltip").textContent = pickStart === 0 ? "Zum Ändern neues Datum wählen." : "Jetzt Abreisedatum wählen.";
+    document.getElementById("tooltip").textContent = pickStart == 0 ? "Zum Ändern neues Datum wählen." : "Jetzt Abreisedatum wählen.";
 }
 
 function selDay(year, month, date) {

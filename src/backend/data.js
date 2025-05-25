@@ -39,7 +39,8 @@ export async function guestReservations_beforeInsert(item, context) {
         if ((await isDateOccupied(item.lodging, item.lodgingSub, new Date(item.dateFrom), new Date(item.dateTo)), false, item._id).occupied)
             throw new Error("Invalid date range");
     }
-    buildSearchField(item);
+    item = buildSearchField(item);
+    console.log("guestReservations_beforeInsert finally", item);
     return item;
 }
 
@@ -52,19 +53,14 @@ export async function guestReservations_beforeQuery(request, context) {
 export async function guestReservations_beforeRemove(item, context) {
     console.log("guestReservations_beforeRemove", item._id, context);
     if (!(await accessToGuests())) throw new Error("Not allowed");
-    if (item.refId == "new") throw new Error("Cannot remove this item - it is a must-have placeholder");
     return item;
 }
 
 export async function guestReservations_beforeUpdate(item, context) {
     console.log("guestReservations_beforeUpdate", item._id, context);
     if (!(await accessToGuests())) throw new Error("Not allowed");
-    if (item.refId == "new") return {
-        _id: item._id,
-        refId: item.refId,
-        comment: "Placeholder for new items",
-    };
-    buildSearchField(item);
+    item = buildSearchField(item);
+    console.log("guestReservations_beforeUpdate finally", item);
     return item;
 }
 
@@ -93,6 +89,7 @@ async function buildSearchField(item) {
         item.deposit,
         item.refId
     ].map(normalize).join(" ");
+    return item;
 }
 
 export async function guestReservations_afterInsert(item, context) {
@@ -115,19 +112,17 @@ export function guestReservations_afterUpdate(item, context) {
 }
 
 function updateDisabledStates(item, insert) {
-    if (item.refId != "new") {
-        const data = {
-            _id: item._id,
-            dateFrom: item.dateFrom,
-            dateTo: item.dateTo,
-            lodging: item.lodging,
-            lodgingSub: item.lodgingSub
-        };
-        if (insert)
-            wixData.insert("disabledDates", data)
-        else
-            wixData.update("disabledDates", data);
-    }
+    const data = {
+        _id: item._id,
+        dateFrom: item.dateFrom,
+        dateTo: item.dateTo,
+        lodging: item.lodging,
+        lodgingSub: item.lodgingSub
+    };
+    if (insert)
+        wixData.insert("disabledDates", data)
+    else
+        wixData.update("disabledDates", data);
 }
 
 async function sendMails(item) {
@@ -259,7 +254,7 @@ function convertToTable(table, alignRight, fillChar = " ") {
 function sendMail(mailId, item, options) {
     contacts.appendOrCreateContact({
         name: { first: item.firstName, last: item.lastName, },
-        emails: [{ email: item.email }, ]
+        emails: [{ email: item.email },]
     }).then((contactInfo) => {
         triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables: options }).catch((err) => {
             console.error(`Cannot send e-mail ${mailId}`, err);

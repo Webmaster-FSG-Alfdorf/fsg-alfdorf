@@ -61,7 +61,7 @@ $w.onReady(function () {
             });
             $w("#repeaterResults").data = sorted;
             printDataSetSummary(sorted, " Sportart", "Sportarten", filtered);
-        }).catch((err) => console.log(`Cannot filter and sort data set:`, err));
+        }).catch((err) => console.error(`Cannot filter and sort data set:`, err));
     }
 
 });

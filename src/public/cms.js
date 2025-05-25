@@ -315,7 +315,7 @@ export function filterAndSortEvents(filterYouth) {
         });
         $w("#repeaterResults").data = sorted;
         printDataSetSummary(sorted, "r Event", "Events", filtered);
-    }).catch((err) => console.log(`Cannot filter and sort data set:`, err));
+    }).catch((err) => console.error(`Cannot filter and sort data set:`, err));
 }
 
 /**
