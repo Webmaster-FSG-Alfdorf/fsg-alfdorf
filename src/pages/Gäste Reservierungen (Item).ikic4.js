@@ -338,7 +338,8 @@ function generateTitle(item) {
 
 async function queryGuestReservations(searchText, minDate) {
     const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    let q = wixData.query("guestReservations").descending("_updatedDate").limit(1000);
+    // ignore empty entries
+    let q = wixData.query("guestReservations").isNotEmpty("searchField").descending("_updatedDate").limit(1000);
     if (minDate) q = q.ge("dateTo", minDate);
 
     const s = normalize(searchText).trim();
@@ -365,8 +366,6 @@ function save(onSuccess = () => { }) {
 
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
-    const hasContent = !!(currentDate[0] || currentDate[1] || item.firstName || item.lastName || item.lodging || item.comment || item.note);
-
     let diff = "";
     if (originalItem && item) for (const [f, v2] of Object.entries(item)) {
         const v1 = originalItem[f];
@@ -381,21 +380,15 @@ function save(onSuccess = () => { }) {
         } else if (v1 != v2) diff += `\n${f}: ${v1} => ${v2}`;
     }
 
-    console.log("save", item?._id, "hasContent:", hasContent, "diff:", diff);
+    console.log("save", item?._id, "diff:", diff);
 
-    if (hasContent)
-        $w("#datasetGuestReservations").save().then(() => {
-            console.log("save then");
-            if (diff)
-                wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", confirmations: true, details: diff });
-            cloneItem(item);
-            onSuccess();
-        }).catch(err => { showError(err) });
-    else {
-        console.log("save ommited as no content");
+    $w("#datasetGuestReservations").save().then(() => {
+        console.log("save then");
+        if (diff)
+            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", confirmations: true, details: diff });
         cloneItem(item);
         onSuccess();
-    }
+    }).catch(err => { showError(err) });
 }
 
 function revert(onSuccess = () => { }) {

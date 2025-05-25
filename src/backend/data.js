@@ -31,10 +31,6 @@ export async function guestReservations_beforeGet(request, context) {
 
 export async function guestReservations_beforeInsert(item, context) {
     console.log("guestReservations_beforeInsert", item._id, context);
-    const hasContent = !!(new Date(item.dateFrom).getFullYear() >= 2000 || new Date(item.dateTo).getFullYear() >= 2000 || item.firstName || item.lastName || item.lodging || item.comment || item.note);
-    if (!hasContent) {
-        throw new Error("Empty reservation");
-    }
     if (!(await accessToGuests())) {
         item.state = "Anfrage";
         delete item.comment;
@@ -72,12 +68,17 @@ export async function guestReservations_beforeUpdate(item, context) {
 let lodgingsMap = null;
 
 async function buildSearchField(item) {
+    const hasContent = !!(new Date(item.dateFrom).getFullYear() >= 2000 || new Date(item.dateTo).getFullYear() >= 2000 || item.firstName || item.lastName || item.lodging || item.comment || item.note);
     if (!lodgingsMap) lodgingsMap = Object.fromEntries((await wixData.query("lodgings").find()).items.map(l => [l.lodgingID, l]));
     const lme = lodgingsMap[item.lodging];
 
     const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || "";
     item.refId = item._id;
-    item.searchField = [
+    if (!hasContent) {
+        console.log("empty item will not get a searchfield:", item);
+        item.searchField = "";
+    }
+    else item.searchField = [
         item.firstName,
         item.lastName,
         item.email,
@@ -91,8 +92,7 @@ async function buildSearchField(item) {
         item.comment,
         item.state,
         item.paidSumup,
-        item.deposit,
-        item.refId
+        item.deposit
     ].map(normalize).join(" ");
 }
 
