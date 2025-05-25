@@ -59,6 +59,7 @@ export async function guestReservations_beforeRemove(item, context) {
 export async function guestReservations_beforeUpdate(item, context) {
     console.log("guestReservations_beforeUpdate", item._id, context);
     if (!(await accessToGuests())) throw new Error("Not allowed");
+    console.log("guestReservations_beforeUpdate allowed to edit");
     await buildSearchField(item);
     console.log("guestReservations_beforeUpdate finally", item);
     return item;
