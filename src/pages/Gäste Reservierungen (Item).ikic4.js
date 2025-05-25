@@ -330,7 +330,7 @@ function updateFields() {
 }
 
 function generateTitle(item) {
-    if (item)
+    if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging))
         return `${dateRangeToString({ start: item.dateFrom }, { hour: null, minute: null })} +${nightsBetween(item.dateFrom, item.dateTo)}n ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
     else
         return "(Neue Reservierung)";
@@ -338,7 +338,7 @@ function generateTitle(item) {
 
 async function queryGuestReservations(searchText, minDate) {
     const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    let q = wixData.query("guestReservations").ne("refId", "new").limit(1000);
+    let q = wixData.query("guestReservations").descending("_updatedDate").limit(1000);
     if (minDate) q = q.ge("dateTo", minDate);
 
     const s = normalize(searchText).trim();
@@ -365,6 +365,8 @@ function save(onSuccess = () => { }) {
 
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
+    const hasContent = !!(currentDate[0] || currentDate[1] || item.firstName || item.lastName || item.lodging || item.comment || item.note);
+
     let diff = "";
     if (originalItem && item) for (const [f, v2] of Object.entries(item)) {
         const v1 = originalItem[f];
@@ -379,15 +381,21 @@ function save(onSuccess = () => { }) {
         } else if (v1 != v2) diff += `\n${f}: ${v1} => ${v2}`;
     }
 
-    console.log("save", item?._id, diff);
+    console.log("save", item?._id, "hasContent:", hasContent, "diff:", diff);
 
-    $w("#datasetGuestReservations").save().then(() => {
-        console.log("save then");
-        if (diff)
-            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", confirmations: true, details: diff });
+    if (hasContent)
+        $w("#datasetGuestReservations").save().then(() => {
+            console.log("save then");
+            if (diff)
+                wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", confirmations: true, details: diff });
+            cloneItem(item);
+            onSuccess();
+        }).catch(err => { showError(err) });
+    else {
+        console.log("save ommited as no content");
         cloneItem(item);
         onSuccess();
-    }).catch(err => { showError(err) });
+    }
 }
 
 function revert(onSuccess = () => { }) {

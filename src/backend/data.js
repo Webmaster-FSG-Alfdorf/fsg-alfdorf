@@ -31,6 +31,10 @@ export async function guestReservations_beforeGet(request, context) {
 
 export async function guestReservations_beforeInsert(item, context) {
     console.log("guestReservations_beforeInsert", item._id, context);
+    const hasContent = !!(new Date(item.dateFrom).getFullYear() >= 2000 || new Date(item.dateTo).getFullYear() >= 2000 || item.firstName || item.lastName || item.lodging || item.comment || item.note);
+    if (!hasContent) {
+        throw new Error("Empty reservation");
+    }
     if (!(await accessToGuests())) {
         item.state = "Anfrage";
         delete item.comment;
