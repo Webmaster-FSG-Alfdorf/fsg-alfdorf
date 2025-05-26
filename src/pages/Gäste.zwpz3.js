@@ -58,7 +58,7 @@ $w.onReady(function () {
     });
 
     $w("#datasetGuestReservations").onReady(() => {
-        
+
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
@@ -127,7 +127,7 @@ function updateForm(updateFields) {
     const lodging = $w("#inputLodging").value.split("|");
     let dt0 = new Date(currentDate[0]);
     let dt1 = new Date(currentDate[1]);
-    isDateOccupied(lodging[0], +lodging[1], dt0, dt1, true).then((res) => {
+    isDateOccupied(lodging[0], Number(lodging[1]), dt0, dt1, true).then((res) => {
         if (!res.occupied)
             updateOccupiedState("");
         else if (res.suggestedArrival)
@@ -138,7 +138,9 @@ function updateForm(updateFields) {
             updateOccupiedState("Ihr Gewählter Datumsbereich ist leider nicht verfügbar");
     });
 
-    formatReservationPrice(currentDate).then(html => { $w("#textReservationPrice").html = html; });
+    formatReservationPrice(currentDate, lodging[0], Number($w("#inputAdults").value)).then(html => {
+        $w("#textReservationPrice").html = html;
+    });
 
     $w("#inputDate").value = dateRangeToString({ start: currentDate[0], end: currentDate[1] }, { hour: null, minute: null });
 

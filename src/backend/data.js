@@ -100,7 +100,7 @@ export async function guestReservations_afterInsert(item, context) {
     updateDisabledStates(item, true);
     sendMails(item, true, "Vielen Dank, [firstName] [lastName], für Ihre Anfrage!\n" +
         "Wir haben [lodging] vom [dateFrom] bis zum [dateTo] für Sie vorgemerkt.\n" +
-        "Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen.");
+        "Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen."); //TODO send all details like cntAdults, ...?
     return item;
 }
 

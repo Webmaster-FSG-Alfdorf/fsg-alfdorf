@@ -114,8 +114,8 @@ $w.onReady(function () {
 
         updateFilter();
         $w("#filterSearch").onKeyPress((event) => { if (event.key == "Enter") updateFilter(); });
-        $w("#filterSearch").onBlur(() => { updateFilter(); });
-        $w("#buttonFilter").onClick(() => { updateFilter(); });
+        $w("#filterSearch").onBlur(() => { updateFilter() });
+        $w("#buttonFilter").onClick(() => { updateFilter() });
 
         wixData.query("pricesVisitor").ascending("order").find().then((results) => {
             let options = [];
@@ -124,6 +124,9 @@ $w.onReady(function () {
             });
             $w("#inputDeposit").options = options;
         });
+        $w("#inputDeposit").onChange(() => updateForm());
+        $w("#inputPaidSum").onInput(() => updateForm());
+        $w("#inputPaidSum").onBlur(() => updateForm());
 
         $w("#dropdownFilterResultsMore").onChange(() => { setCurrentFilter($w("#dropdownFilterResultsMore").value); });
 
@@ -182,6 +185,9 @@ async function updateForm(writeDates, writeLodging) {
 
     const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
     const lodging = $w("#inputLodging").value.split("|");
+    const depositGiven = $w("#inputDeposit").value;
+    const cntAdults = Number($w("#inputAdults").value);
+    const paidSum = Number($w("#inputPaidSum").value);
     console.log("updateForm", curID, "lodging", lodging, "currentDate [", debugStr(currentDate[0]), ",", debugStr(currentDate[1]), "]");
 
     $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`;
@@ -205,7 +211,7 @@ async function updateForm(writeDates, writeLodging) {
         // would just return {occupied: true} anyway
         currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
     } else try {
-        const res = await isDateOccupied(lodging[0], +lodging[1], cd[0], cd[1], true, curID);
+        const res = await isDateOccupied(lodging[0], Number(lodging[1]), cd[0], cd[1], true, curID);
         if (!res.occupied)
             currentDateOccupied = "";
         else if (res.suggestedArrival)
@@ -240,7 +246,9 @@ async function updateForm(writeDates, writeLodging) {
 
     updateOccupations(curID, lodging);
 
-    $w("#textReservationPrice").html = await formatReservationPrice(cd);
+    $w("#textReservationPrice").html = await formatReservationPrice(cd, lodging[0], cntAdults, depositGiven, paidSum);
+
+    //TODO update deposit list: list only items that are part of lodging
 }
 
 async function updateOccupations(curId, lodging) {
@@ -395,7 +403,7 @@ function save(onSuccess = () => { }) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
     let diff = "";
-    if (originalItem && item) for (const [f, v2] of Object.entries(item)) {
+    if (originalItem && item) for (const [f, v2] of Object.entries(item)) { //TODO better readabnle
         const v1 = originalItem[f];
         if (f.startsWith("_") || f == "searchField" || f == "refId") {
             // ignore this fields
@@ -413,7 +421,12 @@ function save(onSuccess = () => { }) {
     $w("#datasetGuestReservations").save().then(() => {
         console.log("save then");
         if (diff)
-            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", item, details: diff, msgCustomer: "Ihre Reservierungsanfrage wurde geändert:\n" + diff });
+            wixWindow.openLightbox("CMSSuccessLightbox", {
+                msg: "Änderungen wurden gespeichert",
+                item,
+                details: diff,
+                msgCustomer: "Hallo, [firstName] [lastName]!\nIhre Reservierungsanfrage wurde geändert:\n" + diff
+            });
         cloneItem(item);
         onSuccess();
     }).catch(err => { showError(err) });
@@ -435,7 +448,11 @@ function remove(onSuccess = () => { }) {
     console.log("remove", item?._id);
     $w("#datasetGuestReservations").remove().then(() => {
         console.log("remove then");
-        wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Reservierung wurde gelöscht", item, msgCustomer: "Ihre Reservierungsanfrage wurde storniert." });
+        wixWindow.openLightbox("CMSSuccessLightbox", {
+            msg: "Reservierung wurde gelöscht",
+            item,
+            msgCustomer: "Hallo, [firstName] [lastName]!\nIhre Reservierungsanfrage wurde storniert."
+        });
         cloneItem(null);
         resetCustomFields(); //TODO assert getCurrentItem()==null ?
         onSuccess();
