@@ -101,19 +101,29 @@ export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, sugg
 }
 
 /**
+ * @typedef {{
+ *   title: string,
+ *   price: number,
+ *   depositName?: string,
+ *   cntNights?: number,
+ *   cntAdults?: number
+ * }} PriceLine
+ */
+
+/**
  * Checks if given date range is (partially) disabled / occupied while respecting lodging based capacities..
- * @param {string} lodging
+ * @param {string} lodgingID
  * @param {Date}   dateFrom
  * @param {Date}   dateTo
  * @param {Number} cntAdults
- * @param {Number} cntChildren
- * @returns {Promise<any>}
+ * @returns {Promise<PriceLine[]>}
  */
-export async function calculateReservationPrice(lodging, dateFrom, dateTo, cntAdults, cntChildren) {
-    console.log("calculateReservationPrice for", lodging, debugStr(dateFrom), "to", debugStr(dateTo), "adults", cntAdults, "children", cntChildren);
-    if (!lodging || !dateFrom || !dateTo) return [];
+export async function calculateReservationPrice(lodgingID, dateFrom, dateTo, cntAdults, depositGiven = []) {
+    console.log("calculateReservationPrice for", lodgingID, debugStr(dateFrom), "to", debugStr(dateTo), "adults", cntAdults);
+    if (!lodgingID || !dateFrom || !dateTo) return [];
     let res = [];
-    const results = await wixData.query("pricesVisitor").contains("lodging", lodging).ascending("order").find();
+    let q = wixData.query("pricesVisitor");
+    const results = await q.eq("lodging", lodgingID).or(q.hasSome("depositName", depositGiven)).ascending("order").find();
     results.items.forEach(item => {
         console.log("calculateReservationPrice", item);
         let line = { title: item.title, price: item.price, depositName: item.depositName };
@@ -214,7 +224,7 @@ function convertToHTML(table, alignRight) {
     const sumDeposit = 123;
     const sumReturn = 345;
     const sum = 678;
-    let html = `<table><thead><tr>`;
+    let html = `<html><table><thead><tr>`;
     html += `<th${cls}>Leistung</th>`;
     html += `<th${cls}>Anzahl Erw.</th>`;
     html += `<th${cls}>Nächte</th>`;
@@ -246,7 +256,7 @@ function convertToHTML(table, alignRight) {
         html += `<td${cls}"><b>(-${sumReturn.toFixed(2)} €)</b></td>`;
         html += "</tr>";
     }
-    html += "</tbody></table>";
+    html += "</tbody></table></html>";
     return html;
 }
 
