@@ -88,6 +88,19 @@ $w.onReady(function () {
             updateCurrentDate(stringToDateRange($w("#inputDate").value));
         });
 
+        $w("#inputPhone").onBlur(() => {
+            $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`
+        });
+        $w("#inputPhone").onInput(() => {
+            $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`
+        });
+        $w("#inputMail").onBlur(() => {
+            $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`
+        });
+        $w("#inputMail").onInput(() => {
+            $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`
+        });
+
         $w("#inputDate").onCustomValidation((value, reject) => { if (currentDateOccupied) reject(currentDateOccupied); });
         $w("#inputArrivalTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Ankunft")) reject(currentDateOccupied); });
         $w("#inputDepartureTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Abreise")) reject(currentDateOccupied); });
@@ -170,6 +183,9 @@ async function updateForm(writeDates, writeLodging) {
     const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
     const lodging = $w("#inputLodging").value.split("|");
     console.log("updateForm", curID, "lodging", lodging, "currentDate [", debugStr(currentDate[0]), ",", debugStr(currentDate[1]), "]");
+
+    $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`;
+    $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`;
 
     ["#inputArrivalTime", "#inputDepartureTime"].forEach((id, i) => {
         console.log("updateForm", id, "with", $w(id).value, "to", currentDate[i]);
@@ -397,7 +413,7 @@ function save(onSuccess = () => { }) {
     $w("#datasetGuestReservations").save().then(() => {
         console.log("save then");
         if (diff)
-            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", confirmations: true, details: diff });
+            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", item, details: diff, msgCustomer: "Ihre Reservierungsanfrage wurde geändert:\n" + diff });
         cloneItem(item);
         onSuccess();
     }).catch(err => { showError(err) });
@@ -419,7 +435,7 @@ function remove(onSuccess = () => { }) {
     console.log("remove", item?._id);
     $w("#datasetGuestReservations").remove().then(() => {
         console.log("remove then");
-        wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Reservierung wurde gelöscht", confirmations: true });
+        wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Reservierung wurde gelöscht", item, msgCustomer: "Ihre Reservierungsanfrage wurde storniert." });
         cloneItem(null);
         resetCustomFields(); //TODO assert getCurrentItem()==null ?
         onSuccess();

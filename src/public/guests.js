@@ -1,7 +1,7 @@
 import { calculateReservationPrice } from 'backend/common.jsw';
 
 export async function formatReservationPrice(currentDate) {
-    const cls = " class=\"font_8 wixui-rich-text__text\" style=\"padding: 8px\"";
+    const cls = " class=\"font_7\" style=\"padding: 8px\"";
     const lodging = $w("#inputLodging").value.split("|");
     const depositGiven = $w("#checkboxGroupDeposit").value
     const res = await calculateReservationPrice(lodging[0], currentDate[0], currentDate[1], +$w("#inputAdults").value, +$w("#inputChildren").value);

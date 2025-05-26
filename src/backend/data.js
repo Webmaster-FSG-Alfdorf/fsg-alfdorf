@@ -2,8 +2,7 @@ import wixData from 'wix-data';
 import wixUsers from 'wix-users-backend';
 import { currentMember } from 'wix-members-backend';
 
-import { triggeredEmails, contacts } from 'wix-crm-backend';
-import { isDateOccupied, calculateReservationPrice } from 'backend/common.jsw';
+import { isDateOccupied, sendMails } from 'backend/common.jsw';
 import { dateRangeToString } from 'public/cms.js';
 
 async function accessToGuests() {
@@ -99,7 +98,9 @@ async function buildSearchField(item) {
 export async function guestReservations_afterInsert(item, context) {
     console.log("guestReservations_afterInsert", item);
     updateDisabledStates(item, true);
-    sendMails(item);
+    sendMails(item, true, "Vielen Dank, [firstName] [lastName], für Ihre Anfrage!\n" +
+        "Wir haben [lodging] vom [dateFrom] bis zum [dateTo] für Sie vorgemerkt.\n" +
+        "Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen.");
     return item;
 }
 
@@ -127,143 +128,4 @@ function updateDisabledStates(item, insert) {
         wixData.insert("disabledDates", data)
     else
         wixData.update("disabledDates", data);
-}
-
-async function sendMails(item) {
-    try {
-        const resL = await wixData.query("lodgings").eq("lodgingID", item.lodging).find();
-        if (resL.items.length > 1) console.error(`Have multiple matches from #lodgings with lodgingID == ${item.lodging}: ${resL.items}`);
-        if (resL.items.length == 0) console.error(`Could not find #lodgings with lodgingID == ${item.lodging}`);
-        let lodgingName = String(item.lodging);
-        if (resL.items.length > 0) {
-            lodgingName = resL.items[0].title;
-            if (item.lodgingSub > 0) lodgingName = `${lodgingName} ${resL.items[0].capacityPrefix} ${item.lodgingSub}`;
-        }
-
-        let table = [];
-        table.push(["Leistung", "# Erw.", "# Nächte", "Preis je", "Gesamt"]);
-        let sum = 0;
-        let sumDeposit = 0;
-        (await calculateReservationPrice(item.lodging, new Date(item.dateFrom), new Date(item.dateTo), item.cntAdults, item.cntChildren)).forEach(line => {
-            console.log("calculateReservationPrice", line);
-            let row = [line.title, line.cntAdults ? `* ${line.cntAdults}` : "", line.cntNights ? `* ${line.cntNights}` : ""];
-            const price = line.price * (line.cntAdults || 1) * (line.cntNights || 1);
-            if (line.depositName) {
-                sumDeposit += price;
-                row.push(`(${line.price.toFixed(2)} €)`, `(${price.toFixed(2)} €)`);
-            } else {
-                sum += price;
-                row.push(`${line.price.toFixed(2)} € `, `${price.toFixed(2)} € `);
-            }
-            table.push(row);
-        });
-        table.push(["Summe", "", "", "", `${sum.toFixed(2)} € `]);
-        if (sumDeposit > 0)
-            table.push(["+ Kaution/Pfand", "", "", "", `(${sumDeposit.toFixed(2)} €)`]);
-
-        const options = {
-            firstName: item.firstName ?? "",
-            lastName: item.lastName ?? "",
-            email: item.email ?? "",
-            note: item.note ?? "",
-            lodging: lodgingName ?? "",
-            dateFrom: convertToDate(item.dateFrom),
-            dateTo: convertToDate(item.dateTo),
-            priceTable: convertToTable(table, [false, true, true, true, true]),
-            priceHTML: convertToHTML(table, [false, true, true, true, true])
-        };
-
-        console.log("sendMails", item.firstName, item.lastName, item.email, options);
-        //sendMail("ReservationRequested", item, options); FIXME
-        //sendMail("ReservationAttention", { firstName: "web", lastName: "master", email: "webmaster@fsg-alfdorf.de" }, options);
-    } catch (err) {
-        console.error("sendMails", err);
-    }
-}
-
-function convertToDate(v) {
-    return new Date(v).toLocaleDateString("de-DE", { weekday: "long", month: "long", year: "numeric", day: "numeric" });
-}
-
-function convertToHTML(table, alignRight) {
-    const cls = "";
-    const sumDeposit = 123;
-    const sumReturn = 345;
-    const sum = 678;
-    let html = `<table><thead><tr>`;
-    html += `<th${cls}>Leistung</th>`;
-    html += `<th${cls}>Anzahl Erw.</th>`;
-    html += `<th${cls}>Nächte</th>`;
-    html += `<th${cls}>Einzelpreis</th>`;
-    html += `<th${cls}>Gesamt</th>`;
-    html += "</tr></thead><tbody>";
-    html += "<tr>";
-    html += `<td${cls}"><b>Summe</b></td>`;
-    html += "<td></td>";
-    html += "<td></td>";
-    html += "<td></td>";
-    html += `<td${cls}"><b>${sum.toFixed(2)} €</b></td>`;
-    html += "</tr>";
-    if (sumDeposit > 0) {
-        html += "<tr>";
-        html += `<td${cls}"><b>+ Kaution/Pfand</b></td>`;
-        html += "<td></td>";
-        html += "<td></td>";
-        html += "<td></td>";
-        html += `<td${cls}"><b>(${sumDeposit.toFixed(2)} €)</b></td>`;
-        html += "</tr>";
-    }
-    if (sumReturn > 0) {
-        html += "<tr>";
-        html += `<td${cls}"><b>- Kaution/Pfand zurück</b></td>`;
-        html += "<td></td>";
-        html += "<td></td>";
-        html += "<td></td>";
-        html += `<td${cls}"><b>(-${sumReturn.toFixed(2)} €)</b></td>`;
-        html += "</tr>";
-    }
-    html += "</tbody></table>";
-    return html;
-}
-
-function convertToTable(table, alignRight, fillChar = " ") {
-    let colWidths = [];
-    for (let rowIdx = 0; rowIdx < table.length; ++rowIdx) {
-        const row = table[rowIdx];
-        for (let colIdx = 0; colIdx < row.length; ++colIdx) {
-            while (colIdx >= colWidths.length) colWidths.push(0);
-            colWidths[colIdx] = Math.max(colWidths[colIdx], String(row[colIdx]).length);
-        }
-    }
-    let res = "";
-    for (let rowIdx = 0; rowIdx < table.length; ++rowIdx) {
-        const row = table[rowIdx];
-        for (let colIdx = 0; colIdx < row.length; ++colIdx) {
-            const s = String(row[colIdx]);
-            const fill = fillChar.repeat(colWidths[colIdx] - s.length);
-            if (alignRight[colIdx]) {
-                res += fill;
-                res += s;
-            } else {
-                res += s;
-                res += fill;
-            }
-            if (colIdx < row.length - 1) res += fillChar + "|" + fillChar;
-        }
-        res += "\n";
-    }
-    return res;
-}
-
-function sendMail(mailId, item, options) {
-    contacts.appendOrCreateContact({
-        name: { first: item.firstName, last: item.lastName, },
-        emails: [{ email: item.email },]
-    }).then((contactInfo) => {
-        triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables: options }).catch((err) => {
-            console.error(`Cannot send e-mail ${mailId}`, err);
-        });
-    }).catch((err) => {
-        console.error("Cannot create contact", err);
-    });
 }

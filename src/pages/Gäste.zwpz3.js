@@ -85,7 +85,7 @@ $w.onReady(function () {
         $w("#inputArrivalTime").onChange((event) => { updateForm(true); })
         $w("#inputDepartureTime").onChange((event) => { updateForm(true); })
 
-        $w("#inputDate").onKeyPress((event) => { if (event.key === "Enter") updateCurrentDate(stringToDateRange($w("#inputDate").value)); });
+        $w("#inputDate").onKeyPress((event) => { if (event.key == "Enter") updateCurrentDate(stringToDateRange($w("#inputDate").value)); });
         $w("#inputDate").onBlur((event) => { updateCurrentDate(stringToDateRange($w("#inputDate").value)); });
 
         $w("#inputDate").onCustomValidation((value, reject) => { if (currentDateOccupied) reject(currentDateOccupied); });
