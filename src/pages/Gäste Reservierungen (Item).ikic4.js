@@ -10,9 +10,11 @@ let currentDate = [null, null];
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
 let originalItem = null;
+let lodgingsMap = {};
 
 $w.onReady(function () {
     wixData.query("lodgings").ascending("order").find().then((results) => {
+        lodgingsMap = Object.fromEntries(results.items.map(l => [l.lodgingID, l]));
         let options = [];
         // main lodgings go first
         results.items.forEach((lodging) => {
@@ -402,18 +404,64 @@ function save(onSuccess = () => { }) {
 
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
-    let diff = "";
-    if (originalItem && item) for (const [f, v2] of Object.entries(item)) { //TODO better readabnle
-        const v1 = originalItem[f];
-        if (f.startsWith("_") || f == "searchField" || f == "refId") {
-            // ignore this fields
-        } else if (v1 && v2 && new Date(v1).getFullYear() > 1900 && new Date(v2).getFullYear() > 1900) {
-            if (new Date(v1).getTime() != new Date(v2).getTime()) diff += `\n${f}: ${dateRangeToString({ start: toLocal(v1) })} => ${dateRangeToString({ start: toLocal(v2) })}`;
-        } else if (v1 && v2 && Array.isArray(v1) && Array.isArray(v2)) {
-            if (!unorderedEqual(v1, v2)) diff += `\n${f}: ${v1} => ${v2}`;
-        } else if (v1 && v2 && v1.formatted && v2.formatted) {
-            if (v1.formatted != v2.formatted) diff += `\n${f}: ${v1.formatted} => ${v2.formatted}`;
-        } else if (v1 != v2) diff += `\n${f}: ${v1} => ${v2}`;
+    let diff = [];
+    const diffField = (label, v1, v2, showUser = true) => {
+        if (v1 != v2) {
+            diff.push({ label, v1, v2, showUser });
+        }
+    };
+
+    if (originalItem && item) {
+        diffField("Status", originalItem.state, item.state);
+
+        const lme1 = lodgingsMap[originalItem.lodging];
+        const lme2 = lodgingsMap[item.lodging];
+        diffField("Unterkunft",
+            lme1 ? `${lme1.title} ${lme1.capacityPrefix} ${originalItem.lodgingSub}` : "",
+            lme2 ? `${lme2.title} ${lme2.capacityPrefix} ${item.lodgingSub}` : "");
+
+        diffField("Datum",
+            dateRangeToString({ start: originalItem.dateFrom, end: originalItem.dateTo }, { hour: null, minute: null }),
+            dateRangeToString({ start: item.dateFrom, end: item.dateTo }, { hour: null, minute: null })
+        );
+
+        const av0 = toLocal(originalItem.dateFrom).getHours().toString();
+        const av1 = toLocal(item.dateFrom).getHours().toString();
+        diffField("Ankunft ab",
+            $w("#inputArrivalTime").options.find(o => o.value == av0)?.label,
+            $w("#inputArrivalTime").options.find(o => o.value == av1)?.label
+        );
+
+        const dp0 = toLocal(originalItem.dateTo).getHours().toString();
+        const dp1 = toLocal(item.dateTo).getHours().toString();
+        diffField("Abreise bis",
+            $w("#inputDepartureTime").options.find(o => o.value == dp0)?.label,
+            $w("#inputDepartureTime").options.find(o => o.value == dp1)?.label
+        );
+
+        diffField("Erwachsene", originalItem.cntAdults, item.cntAdults);
+
+        diffField("Kinder", originalItem.cntChildren, item.cntChildren);
+
+        diffField("Name", originalItem.firstName + " " + originalItem.lastName, item.firstName + " " + item.lastName);
+
+        diffField("E-Mail", originalItem.email, item.email);
+
+        diffField("Telefonnummer", originalItem.phoneNumber, item.phoneNumber);
+
+        diffField("Adresse", originalItem.address?.formatted, item.address?.formatted);
+
+        diffField("Hinweise", originalItem.notes, item.notes);
+
+        diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
+
+        diffField("Pfand/Kaution", originalItem.deposit.toString(), item.deposit.toString());
+
+        diffField("Bezahlt", originalItem.paidSum.toFixed(2) + " €", item.paidSum.toFixed(2) + " €");
+
+        diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
+
+        diffField("Interner Kommentar", originalItem.comment, item.comment, false);
     }
 
     console.log("save", item?._id, "diff:", diff);
