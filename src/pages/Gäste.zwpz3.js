@@ -3,7 +3,7 @@ import wixLocation from 'wix-location';
 
 import { dateRangeToString, stringToDateRange, toUTC, toLocal, incUTCDate } from 'public/cms.js';
 import { formatReservationPrice } from 'public/guests.js';
-import { getOccupations, isDateOccupied } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName } from 'backend/common.jsw';
 
 let currentDate = [new Date(), new Date()];
 let currentDateOccupied = "";
@@ -47,14 +47,17 @@ $w.onReady(function () {
         results.items.forEach((lodging) => {
             options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
         });
+        $w("#inputLodging").options = options;
         // then all sub lodgings
-        results.items.forEach((lodging) => {
+        results.items.forEach(async (lodging) => {
             if (lodging.capacity > 1) {
-                for (let index = 1; index <= lodging.capacity; index++)
-                    options.push({ label: `${lodging.title} ${lodging.capacityPrefix} ${index}`, value: `${lodging.lodgingID}|${index}` });
+                for (let index = 1; index <= lodging.capacity; index++) options.push({
+                    label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
+                    value: `${lodging.lodgingID}|${index}`
+                });
+                $w("#inputLodging").options = options;
             }
         });
-        $w("#inputLodging").options = options;
     });
 
     $w("#datasetGuestReservations").onReady(() => {

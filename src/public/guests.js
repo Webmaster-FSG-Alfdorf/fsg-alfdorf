@@ -1,6 +1,6 @@
 import { calculateReservationPrice } from 'backend/common.jsw';
 
-export async function formatReservationPrice(currentDate, lodgingID, cntAdults, depositGiven = [], paidSum = NaN) {
+export async function formatReservationPrice(currentDate, lodgingID, cntAdults, depositGiven = [], paidSum = NaN) { //FIXME replace with generateHTMLTable
     const cls0 = " class=\"font_7\" style=\"padding: 8px; text-align: left\"";
     const cls1 = " class=\"font_7\" style=\"padding: 8px; text-align: center\"";
     const clsN = " class=\"font_7\" style=\"padding: 8px; text-align: right\"";

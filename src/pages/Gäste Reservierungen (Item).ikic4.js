@@ -4,30 +4,31 @@ import wixWindow from 'wix-window';
 
 import { dateRangeToString, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
 import { formatReservationPrice } from 'public/guests.js';
-import { getOccupations, isDateOccupied } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName } from 'backend/common.jsw';
 
 let currentDate = [null, null];
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
 let originalItem = null;
-let lodgingsMap = {};
 
 $w.onReady(function () {
     wixData.query("lodgings").ascending("order").find().then((results) => {
-        lodgingsMap = Object.fromEntries(results.items.map(l => [l.lodgingID, l]));
         let options = [];
         // main lodgings go first
         results.items.forEach((lodging) => {
             options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
         });
+        $w("#inputLodging").options = options;
         // then all sub lodgings
-        results.items.forEach((lodging) => {
+        results.items.forEach(async (lodging) => {
             if (lodging.capacity > 1) {
-                for (let index = 1; index <= lodging.capacity; index++)
-                    options.push({ label: `${lodging.title} ${lodging.capacityPrefix} ${index}`, value: `${lodging.lodgingID}|${index}` });
+                for (let index = 1; index <= lodging.capacity; index++) options.push({
+                    label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
+                    value: `${lodging.lodgingID}|${index}`
+                });
+                $w("#inputLodging").options = options;
             }
         });
-        $w("#inputLodging").options = options;
     });
 
     $w("#datasetGuestReservations").onReady(async () => {
@@ -200,7 +201,7 @@ async function updateForm(writeDates, writeLodging) {
         if (currentDate[i]) {
             currentDate[i].setUTCHours(0, 0, 0, 0);
             let local = toLocal(currentDate[i]);
-            local.setHours(+$w(id).value, 0, 0, 0);
+            local.setHours(Number($w(id).value), 0, 0, 0);
             currentDate[i] = toUTC(local);
         }
     });
@@ -399,26 +400,18 @@ function cloneItem(item) {
     console.log("originalItem now is", originalItem);
 }
 
-function save(onSuccess = () => { }) {
-    const unorderedEqual = (a, b) => a.length == b.length && a.every(v => b.includes(v)) && b.every(v => a.includes(v));
-
+async function save(onSuccess = () => { }) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
     let diff = [];
     const diffField = (label, v1, v2, showUser = true) => {
-        if (v1 != v2) {
-            diff.push({ label, v1, v2, showUser });
-        }
+        if (v1 != v2) diff.push([label, v1, v2]);
     };
 
     if (originalItem && item) {
         diffField("Status", originalItem.state, item.state);
 
-        const lme1 = lodgingsMap[originalItem.lodging];
-        const lme2 = lodgingsMap[item.lodging];
-        diffField("Unterkunft",
-            lme1 ? `${lme1.title} ${lme1.capacityPrefix} ${originalItem.lodgingSub}` : "",
-            lme2 ? `${lme2.title} ${lme2.capacityPrefix} ${item.lodgingSub}` : "");
+        diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
 
         diffField("Datum",
             dateRangeToString({ start: originalItem.dateFrom, end: originalItem.dateTo }, { hour: null, minute: null }),
@@ -469,12 +462,7 @@ function save(onSuccess = () => { }) {
     $w("#datasetGuestReservations").save().then(() => {
         console.log("save then");
         if (diff)
-            wixWindow.openLightbox("CMSSuccessLightbox", {
-                msg: "Änderungen wurden gespeichert",
-                item,
-                details: diff,
-                msgCustomer: "Hallo, [firstName] [lastName]!\nIhre Reservierungsanfrage wurde geändert:\n" + diff
-            });
+            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", item, diff });
         cloneItem(item);
         onSuccess();
     }).catch(err => { showError(err) });

@@ -2,7 +2,7 @@ import wixData from 'wix-data';
 import wixUsers from 'wix-users-backend';
 import { currentMember } from 'wix-members-backend';
 
-import { isDateOccupied, sendMails } from 'backend/common.jsw';
+import { isDateOccupied, sendMails, generateLodgingName } from 'backend/common.jsw';
 import { dateRangeToString } from 'public/cms.js';
 
 async function accessToGuests() {
@@ -64,12 +64,8 @@ export async function guestReservations_beforeUpdate(item, context) {
     return item;
 }
 
-let lodgingsMap = null;
-
 async function buildSearchField(item) {
     const hasContent = !!(new Date(item.dateFrom).getFullYear() >= 2000 || new Date(item.dateTo).getFullYear() >= 2000 || item.firstName || item.lastName || item.lodging || item.comment || item.note);
-    if (!lodgingsMap) lodgingsMap = Object.fromEntries((await wixData.query("lodgings").find()).items.map(l => [l.lodgingID, l]));
-    const lme = lodgingsMap[item.lodging];
 
     const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || "";
     item.refId = item._id;
@@ -86,7 +82,7 @@ async function buildSearchField(item) {
         dateRangeToString({ start: item.dateFrom, end: item.dateTo }),
         item.lodging,
         item.lodgingSub, // must be directly after item.lodging
-        lme ? `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}` : "",
+        await generateLodgingName(item),
         item.note,
         item.comment,
         item.state,
@@ -98,9 +94,12 @@ async function buildSearchField(item) {
 export async function guestReservations_afterInsert(item, context) {
     console.log("guestReservations_afterInsert", item);
     updateDisabledStates(item, true);
-    sendMails(item, true, "Vielen Dank, [firstName] [lastName], für Ihre Anfrage!\n" +
-        "Wir haben [lodging] vom [dateFrom] bis zum [dateTo] für Sie vorgemerkt.\n" +
-        "Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen."); //TODO send all details like cntAdults, ...?
+    sendMails(item, true, "<html>" + //FIXME rework
+        "<p>Vielen Dank, [[firstName]] [[lastName]], für Ihre Anfrage!</p>" +
+        "<p>Wir haben [[lodging]] vom [[dateFrom]] bis zum [[dateTo]] für Sie vorgemerkt.</p>" +
+        "<p>Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen.</p>" +
+        "<p>Voraussichtliche Kosten:</p>[[costs]]" +
+        "</html>"); //TODO send all details like cntAdults, ...?
     return item;
 }
 
