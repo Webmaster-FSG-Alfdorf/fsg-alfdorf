@@ -165,26 +165,37 @@ export async function calculateReservationPrice(lodgingID, dateFrom, dateTo, cnt
 
 export async function sendMails(item, informGuestManager, customMessage = "", diff = []) {
     try {
-        const options = new Map();
-        options.set("firstName", item.firstName);
-        options.set("lastName", item.lastName);
-        options.set("email", item.email);
-        options.set("lodging", await generateLodgingName(item));
-        options.set("dateFrom", convertToDate(item.dateFrom));
-        options.set("dateTo", convertToDate(item.dateTo));
-        options.set("customMessage", customMessage);
+        const options = {
+            firstName: item.firstName,
+            lastName: item.lastName,
+            email: item.email,
+            lodging: await generateLodgingName(item),
+            dateFrom: convertToDate(item.dateFrom),
+            dateTo: convertToDate(item.dateTo),
+            customMessage: customMessage
+        };
         generateTriggerMailTable(options, "a", diff);
-        //generateTriggerMailTable(options, "b", generateCostsTable(item));
+        generateTriggerMailTable(options, "b", await generateCostsTable(item));
         console.log("sendMails", item.firstName, item.lastName, item.email, options);
-        sendMail("ReservationRequested", item, Object.fromEntries(options));
-        if (informGuestManager)
-            sendMail("ReservationAttention", { firstName: "web", lastName: "master", email: "webmaster@fsg-alfdorf.de" }, Object.fromEntries(options));
+        sendMail("ReservationRequested", item, options);
+        if (informGuestManager) sendMail("ReservationAttention", { firstName: "web", lastName: "master", email: "webmaster@fsg-alfdorf.de" }, options);
     } catch (err) {
         console.error("sendMails", err);
     }
 }
 
-let lodgingsMap = null;
+export function sendMail(mailId, item, options) {
+    contacts.appendOrCreateContact({
+        name: { first: item.firstName, last: item.lastName, },
+        emails: [{ email: item.email },]
+    }).then((contactInfo) => {
+        triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables: options }).catch((err) => {
+            console.error(`Cannot send e-mail ${mailId}`, err);
+        });
+    }).catch((err) => {
+        console.error("Cannot create contact", err);
+    });
+}
 
 export async function generateLodgingName(item) {
     if (!lodgingsMap) lodgingsMap = Object.fromEntries((await wixData.query("lodgings").find()).items.map(l => [l.lodgingID, l]));
@@ -196,34 +207,39 @@ export async function generateLodgingName(item) {
         return item.lodgingSub > 0 && lme.capacityPrefix ? `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}` : lme.title;
     }
 }
+let lodgingsMap = null;
 
-async function generateCostsTable(item) { //TODO also use paidSum like in Guest Management
+export async function generateCostsTable(item, depositGiven = [], paidSum = NaN) {
     let costs = [];
-    costs.push(["Leistung", "# Erw.", "# Nächte", "Preis je", "Gesamt"]);
     let sum = 0;
     let sumDeposit = 0;
-    (await calculateReservationPrice(item.lodging, new Date(item.dateFrom), new Date(item.dateTo), item.cntAdults, item.cntChildren)).forEach(line => {
+    let sumReturn = 0;
+    (await calculateReservationPrice(item.lodging, new Date(item.dateFrom), new Date(item.dateTo), item.cntAdults, depositGiven)).forEach(line => {
         console.log("calculateReservationPrice", line);
-        let row = [line.title, line.cntAdults ? `* ${line.cntAdults}` : "", line.cntNights ? `* ${line.cntNights}` : ""];
         const price = line.price * (line.cntAdults || 1) * (line.cntNights || 1);
-        if (line.depositName) {
-            sumDeposit += price;
-            row.push(`(${line.price.toFixed(2)} €)`, `(${price.toFixed(2)} €)`);
-        } else {
-            sum += price;
-            row.push(`${line.price.toFixed(2)} € `, `${price.toFixed(2)} € `);
-        }
-        costs.push(row);
+        const dep = line.depositName != null;
+        const pf = !dep ? "" : "(";
+        const sf = !dep ? "&nbsp;" : ")";
+        costs.push([
+            line.title,
+            line.cntAdults ? `* ${line.cntAdults}` : "",
+            line.cntNights ? `* ${line.cntNights}` : "",
+            `${pf}${line.price.toFixed(2)} €${sf}`,
+            `${pf}${price.toFixed(2)} €${sf}`
+        ]);
+        if (!dep) sum += price; else if (depositGiven.includes(line.depositName)) sumReturn -= price; else sumDeposit += price;
     });
-    costs.push(["Summe", "", "", "", `${sum.toFixed(2)} € `]);
+    costs.push(["Summe", null, null, null, `${sum.toFixed(2)} €&nbsp;`]);
+    if (paidSum) {
+        costs.push(["Bereits bezahlt", null, null, null, `${paidSum.toFixed(2)} €&nbsp;`]);
+        if (paidSum != sum)
+            costs.push([paidSum <= sum ? "Noch zu bezahlen" : "- Rückzahlung", null, null, null, `${(sum - paidSum).toFixed(2)} €&nbsp;`]);
+    }
     if (sumDeposit > 0)
-        costs.push(["+ Kaution/Pfand", "", "", "", `(${sumDeposit.toFixed(2)} €)`]);
-    return generateHTMLTable(costs, [
-        "Leistung",
-        { align: "right", label: "# Erw." },
-        { align: "right", label: "# Nächte" },
-        { align: "right", label: "Preis je" },
-        { align: "right", label: "Gesamt" }]);
+        costs.push(["+ Kaution/Pfand", null, null, null, `(${sumDeposit.toFixed(2)} €)`]);
+    if (sumReturn < 0)
+        costs.push(["- Kaution/Pfand zurück", null, null, null, `(${sumReturn.toFixed(2)} €)`]);
+    return costs;
 }
 
 function convertToDate(v) {
@@ -242,9 +258,7 @@ function convertToDate(v) {
  * @returns {string} the <table> string
  */
 export function generateHTMLTable(rows, header = []) {
-    const clsStyle = (align = "") => {
-        return ` class="font_7" style="padding: 8px${align ? `; text-align: ${align}` : ""}"`;
-    };
+    const clsStyle = (align) => ` class="font_7" style="padding: 8px${align ? `; text-align: ${align}` : ""}"`;
 
     let html = `<table>`;
     let alignments = [];
@@ -255,7 +269,7 @@ export function generateHTMLTable(rows, header = []) {
                 html += `<th${clsStyle(v.align)}>${v.bold ? "<b>" : ""}${v.italic ? "<i>" : ""}${v.label}${v.italic ? "</i>" : ""}${v.bold ? "</b>" : ""}</th>`;
                 alignments.push(v.align);
             } else {
-                html += `<th${clsStyle()}>${v}</th>`;
+                html += `<th${clsStyle("")}>${v}</th>`;
                 alignments.push("");
             }
         });
@@ -284,26 +298,14 @@ export function generateHTMLTable(rows, header = []) {
  * @param rows {any[][]} a list of rows with each a list of cells a either 
  * a dict { value }, or any kind of data that will be converted to a string
  * @param prefix {string} prefix for the generated arguments (mostly single character)
- * @param options {Map} the Map in which the new arguments will be pushed.
+ * @param options {{}} the Map in which the new arguments will be pushed.
  */
 export function generateTriggerMailTable(options, prefix, rows) {
     rows.forEach((row, ri) => {
         if (ri <= 7) row.forEach((v, ci) => {
-            if (v != null && ci <= 4)
-                options.set(`${prefix}${ri + 1}${ci + 1}`, String(typeof v == "object" && v && "value" in v ? v.value : v));
+            if (v != null && ci <= 4) {
+                options[`${prefix}${ri + 1}${ci + 1}`] = String(typeof v === "object" && v && "value" in v ? v.value : v);
+            }
         });
-    });
-}
-
-export function sendMail(mailId, item, options) {
-    contacts.appendOrCreateContact({
-        name: { first: item.firstName, last: item.lastName, },
-        emails: [{ email: item.email },]
-    }).then((contactInfo) => {
-        triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables: options }).catch((err) => {
-            console.error(`Cannot send e-mail ${mailId}`, err);
-        });
-    }).catch((err) => {
-        console.error("Cannot create contact", err);
     });
 }

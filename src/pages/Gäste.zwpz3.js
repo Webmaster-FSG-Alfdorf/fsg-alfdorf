@@ -2,8 +2,7 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
 import { dateRangeToString, stringToDateRange, toUTC, toLocal, incUTCDate } from 'public/cms.js';
-import { formatReservationPrice } from 'public/guests.js';
-import { getOccupations, isDateOccupied, generateLodgingName } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDate = [new Date(), new Date()];
 let currentDateOccupied = "";
@@ -141,8 +140,14 @@ function updateForm(updateFields) {
             updateOccupiedState("Ihr Gewählter Datumsbereich ist leider nicht verfügbar");
     });
 
-    formatReservationPrice(currentDate, lodging[0], Number($w("#inputAdults").value)).then(html => {
-        $w("#textReservationPrice").html = html;
+    generateCostsTable({ lodging: lodging[0], dateFrom: currentDate[0], dateTo: currentDate[1], cntAdults: Number($w("#inputAdults").value) }).then(costs => {
+        generateHTMLTable(costs, [
+            "Leistung",
+            { label: "Anzahl Erw.", align: "right" },
+            { label: "Nächte", align: "right" },
+            { label: "Einzelpreis", align: "right" },
+            { label: "Gesamt", align: "right" },
+        ]).then(html => $w("#textReservationPrice").html = html);
     });
 
     $w("#inputDate").value = dateRangeToString({ start: currentDate[0], end: currentDate[1] }, { hour: null, minute: null });

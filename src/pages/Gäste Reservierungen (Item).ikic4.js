@@ -3,8 +3,7 @@ import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
 import { dateRangeToString, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
-import { formatReservationPrice } from 'public/guests.js';
-import { getOccupations, isDateOccupied, generateLodgingName } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDate = [null, null];
 let currentDateOccupied = "";
@@ -244,12 +243,20 @@ async function updateForm(writeDates, writeLodging) {
     }
     if (writeLodging) {
         await $w("#datasetGuestReservations").setFieldValue("lodging", lodging[0]);
-        await $w("#datasetGuestReservations").setFieldValue("lodgingSub", +lodging[1]);
+        await $w("#datasetGuestReservations").setFieldValue("lodgingSub", Number(lodging[1]));
     }
 
     updateOccupations(curID, lodging);
 
-    $w("#textReservationPrice").html = await formatReservationPrice(cd, lodging[0], cntAdults, depositGiven, paidSum);
+    generateCostsTable({ lodging: lodging[0], dateFrom: cd[0], dateTo: cd[1], cntAdults }, depositGiven, paidSum).then(costs => {
+        generateHTMLTable(costs, [
+            "Leistung",
+            { label: "Anzahl Erw.", align: "right" },
+            { label: "Nächte", align: "right" },
+            { label: "Einzelpreis", align: "right" },
+            { label: "Gesamt", align: "right" },
+        ]).then(html => $w("#textReservationPrice").html = html);
+    });
 
     //TODO update deposit list: list only items that are part of lodging
 }
