@@ -377,7 +377,7 @@ function updateFields() {
 
 function generateTitle(item) {
     if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging))
-        return `${dateRangeToString({ start: item.dateFrom }, { hour: null, minute: null })} +${nightsBetween(item.dateFrom, item.dateTo)}n ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
+        return `${dateRangeToString({ start: item.dateFrom }, { hour: null, minute: null })} +${nightsBetween(item.dateFrom, item.dateTo)}N ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
     else
         return "(Neue Reservierung)";
 }
@@ -411,13 +411,23 @@ async function save(onSuccess = () => { }) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
     let diff = [];
+    let diffUser = [];
+    let customMessage = "";
     const diffField = (label, v1, v2, showUser = true) => {
-        if (v1 != v2) diff.push([label, v1, v2]);
+        if (v1 != v2) {
+            diff.push([label, v1, v2]);
+            if (showUser) diffUser.push([label, v1, v2]);
+        }
     };
 
     if (originalItem && item) {
         diffField("Status", originalItem.state, item.state);
-
+        if (originalItem.state !== item.state) customMessage = {
+            "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
+            "Reserviert": "Ihre Anfrage wurde akzeptiert.",
+            "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
+            "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
+        }[item.state] || customMessage;
         diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
 
         diffField("Datum",
@@ -469,7 +479,13 @@ async function save(onSuccess = () => { }) {
     $w("#datasetGuestReservations").save().then(() => {
         console.log("save then");
         if (diff)
-            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden gespeichert", item, diff });
+            wixWindow.openLightbox("CMSSuccessLightbox", {
+                msg: "Änderungen wurden gespeichert",
+                item,
+                diff,
+                diffUser,
+                customMessage
+            });
         cloneItem(item);
         onSuccess();
     }).catch(err => { showError(err) });
@@ -494,7 +510,7 @@ function remove(onSuccess = () => { }) {
         wixWindow.openLightbox("CMSSuccessLightbox", {
             msg: "Reservierung wurde gelöscht",
             item,
-            msgCustomer: "Hallo, [firstName] [lastName]!\nIhre Reservierungsanfrage wurde storniert."
+            customMessage: "Ihre Reservierungsanfrage wurde storniert."
         });
         cloneItem(null);
         resetCustomFields(); //TODO assert getCurrentItem()==null ?

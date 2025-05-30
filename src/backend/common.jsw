@@ -172,7 +172,7 @@ export async function sendMails(item, informGuestManager, customMessage = "", di
             lodging: await generateLodgingName(item),
             dateFrom: convertToDate(item.dateFrom),
             dateTo: convertToDate(item.dateTo),
-            customMessage: customMessage
+            customMessage
         };
         generateTriggerMailTable(options, "a", diff);
         generateTriggerMailTable(options, "b", await generateCostsTable(item));
@@ -210,6 +210,7 @@ export async function generateLodgingName(item) {
 let lodgingsMap = null;
 
 export async function generateCostsTable(item, depositGiven = [], paidSum = NaN) {
+    const formatPrice = (price, br) => `${br ? "(" : ""}${price.toFixed(2)} €${br ? ")" : ""}`;
     let costs = [];
     let sum = 0;
     let sumDeposit = 0;
@@ -218,27 +219,25 @@ export async function generateCostsTable(item, depositGiven = [], paidSum = NaN)
         console.log("calculateReservationPrice", line);
         const price = line.price * (line.cntAdults || 1) * (line.cntNights || 1);
         const dep = line.depositName != null;
-        const pf = !dep ? "" : "(";
-        const sf = !dep ? "&nbsp;" : ")";
         costs.push([
             line.title,
             line.cntAdults ? `* ${line.cntAdults}` : "",
             line.cntNights ? `* ${line.cntNights}` : "",
-            `${pf}${line.price.toFixed(2)} €${sf}`,
-            `${pf}${price.toFixed(2)} €${sf}`
+            formatPrice(line.price, dep),
+            formatPrice(price, dep)
         ]);
         if (!dep) sum += price; else if (depositGiven.includes(line.depositName)) sumReturn -= price; else sumDeposit += price;
     });
-    costs.push(["Summe", null, null, null, `${sum.toFixed(2)} €&nbsp;`]);
+    costs.push(["Summe", null, null, null, formatPrice(sum, false)]);
     if (paidSum) {
-        costs.push(["Bereits bezahlt", null, null, null, `${paidSum.toFixed(2)} €&nbsp;`]);
+        costs.push(["Bereits bezahlt", null, null, null, formatPrice(paidSum, false)]);
         if (paidSum != sum)
-            costs.push([paidSum <= sum ? "Noch zu bezahlen" : "- Rückzahlung", null, null, null, `${(sum - paidSum).toFixed(2)} €&nbsp;`]);
+            costs.push([paidSum <= sum ? "Noch zu bezahlen" : "- Rückzahlung", null, null, null, formatPrice(sum - paidSum, false)]);
     }
     if (sumDeposit > 0)
-        costs.push(["+ Kaution/Pfand", null, null, null, `(${sumDeposit.toFixed(2)} €)`]);
+        costs.push(["+ Kaution/Pfand", null, null, null, formatPrice(sumDeposit, true)]);
     if (sumReturn < 0)
-        costs.push(["- Kaution/Pfand zurück", null, null, null, `(${sumReturn.toFixed(2)} €)`]);
+        costs.push(["- Kaution/Pfand zurück", null, null, null, formatPrice(sumReturn, false)]);
     return costs;
 }
 

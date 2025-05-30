@@ -12,9 +12,9 @@ $w.onReady(function () {
         $w('#textSuccess').html = "<html>" + data.msg + await generateHTMLTable(data.diff, ["Änderung", "Von", "Nach"]) + "</html>";
     });
 
-    if (data.diff && data.item) $w("#buttonSendMail").show();
+    if (data.item && (data.diffUser || data.customMessage)) $w("#buttonSendMail").show();
     $w("#buttonSendMail").onClick(() => {
         //TODO allow custom message : edit before send
-        sendMails(data.item, false, "", data.diff);
+        sendMails(data.item, false, data.customMessage ?? "", data.diffUser ?? []);
     });
 });
