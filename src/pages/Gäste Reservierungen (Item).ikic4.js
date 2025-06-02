@@ -85,7 +85,7 @@ $w.onReady(function () {
 
         $w("#inputDate").onKeyPress(async (event) => {
             if (event.key == "Enter") {
-                console.log("#inputDate onKeyPress Enter");
+                console.log("#inputDate onKeyPress Enter", $w("#inputDate").value);
                 updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
                 updateOccupations();
                 updateCostsTable();
@@ -93,7 +93,7 @@ $w.onReady(function () {
             }
         });
         $w("#inputDate").onBlur(async () => {
-            console.log("#inputDate onBlur");
+            console.log("#inputDate onBlur", $w("#inputDate").value);
             updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
             updateOccupations();
             updateCostsTable();
@@ -165,7 +165,7 @@ $w.onReady(function () {
             if (i != -1 && i < sortedResults.length - 1) setCurrentFilter(sortedResults[i + 1]);
         });
 
-        cloneItem(null); //TODO or current Item?
+        cloneItem(null); //TODO or current Item? TODO missing some cloneItem calls
 
         // end special block
     });
@@ -220,10 +220,9 @@ async function updateAllInputs() {
 
 function updateDatePicker() {
     const item = $w("#datasetGuestReservations").getCurrentItem();
-    if (item)
-        $w("#htmlDate").postMessage({ currentDate: [new Date(item.dateFrom), new Date(item.dateTo)] });
-    else
-        $w("#htmlDate").postMessage({ currentDate: [new Date(), new Date()] });
+    const msg = { currentDate: item ? [new Date(item.dateFrom), new Date(item.dateTo)] : [new Date(), new Date()] };
+    console.log("updateOccupations", "postMessage currentDate: {", debugStr(msg.currentDate[0]), ",", debugStr(msg.currentDate[1]), "}");
+    $w("#htmlDate").postMessage(msg);
 }
 
 async function updateHoursKeepingDate(field, hours) {
@@ -237,15 +236,16 @@ async function updateHoursKeepingDate(field, hours) {
 
 async function updateDateKeepingHours(utcDateRange) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
-
+    
     const dtFrom = new Date(utcDateRange[0] ?? new Date(0));
     dtFrom.setUTCHours(item ? new Date(item.dateFrom).getUTCHours() : 0, 0, 0, 0);
     await $w("#datasetGuestReservations").setFieldValue("dateFrom", dtFrom);
-
+    
     const dtTo = new Date(utcDateRange[1] ?? new Date(0));
     dtTo.setUTCHours(item ? new Date(item.dateTo).getUTCHours() : 0, 0, 0, 0);
     await $w("#datasetGuestReservations").setFieldValue("dateTo", dtTo);
-
+    
+    console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
     $w("#inputDate").value = dateRangeToString({ start: dtFrom, end: dtTo }, { hour: null, minute: null });
 }
 

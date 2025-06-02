@@ -19,17 +19,13 @@ let capacity = 0;
 let minDate = new Date(new Date(1900, 0, 1));
 let maxDate = new Date(new Date(3000, 0, 1));
 
-function changeMonth(delta) {
-    current.setUTCMonth(current.getUTCMonth() + delta);
-    generateDatePicker();
-    parent.postMessage({ displayedMonth: current.getUTCMonth(), displayedYear: current.getUTCFullYear() }, "*");
-}
-
 window.addEventListener("message", (event) => {
     if (event.data) {
+        console.log("message received", event.data);
         if (event.data.currentDate) {
             if (event.data.currentDate[0] && event.data.currentDate[1]) {
                 dateRange = [new Date(event.data.currentDate[0]), new Date(event.data.currentDate[1])];
+                console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
                 if (current.getUTCMonth() != dateRange[0].getUTCMonth() || current.getUTCFullYear() != dateRange[0].getUTCFullYear()) {
                     // go to the beginning of our selected range, if we not already show this month
                     current.setUTCFullYear(dateRange[0].getUTCFullYear());
@@ -38,6 +34,7 @@ window.addEventListener("message", (event) => {
                 }
             } else {
                 // reset to show the current month without any selection
+                console.log("dateRange now is empty and reset current");
                 dateRange = [null, null];
                 current = new Date();
                 current.setUTCDate(1);
@@ -63,6 +60,7 @@ window.addEventListener("message", (event) => {
 });
 
 function pickDay(year, month, date) {
+    console.log("pickDay y-m-d", year, month, date, "pickStart", pickStart);
     if (pickStart == 0) {
         // start selection with both on the same date
         const dt = new Date(Date.UTC(year, month, date));
@@ -87,11 +85,13 @@ function pickDay(year, month, date) {
             parent.postMessage({ selectedDates: dateRange }, "*");
         }
     }
+    console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
     pickStart = 1 - pickStart;
     document.getElementById("tooltip").textContent = pickStart == 0 ? "Zum Ändern neues Datum wählen." : "Jetzt Abreisedatum wählen.";
 }
 
 function selDay(year, month, date) {
+    console.log("selDay y-m-d", year, month, date, "pickStart", pickStart);
     if (pickStart == 1 && dateRange[0]) {
         const dtSel = new Date(Date.UTC(year, month, date));
         // check all selected days if they are valid in same direction as the user selected them
@@ -102,12 +102,14 @@ function selDay(year, month, date) {
                 // stop selection before first / after last blocked day
                 incUTCDate(dt, forward ? -1 : 1);
                 dateRange[1] = new Date(dt);
+                console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
                 updateSel();
                 return false;
             }
             incUTCDate(dt, forward ? 1 : -1);
         }
         dateRange[1] = dtSel;
+        console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
         updateSel();
         return true;
     }
@@ -133,6 +135,13 @@ function updateSel() {
     }
 }
 
+function changeMonth(delta) {
+    console.log("changeMonth current", debugStr(current), "+", delta);
+    current.setUTCMonth(current.getUTCMonth() + delta);
+    generateDatePicker();
+    parent.postMessage({ displayedMonth: current.getUTCMonth(), displayedYear: current.getUTCFullYear() }, "*");
+}
+
 function generateDatePicker() {
     startDate = new Date(current);
     startDate.setUTCDate(1);
@@ -146,6 +155,8 @@ function generateDatePicker() {
 
     const canPrev = minDate <= startDate;
     const canNext = maxDate >= endDate;
+
+    console.log("generateDatePicker for", debugStr(current), "displaying", debugStr(startDate), "to", debugStr(endDate));
 
     let html = `<table><thead>`;
     html += `<tr>`;
@@ -239,6 +250,21 @@ function incUTCDate(date, delta) {
     date.setUTCDate(date.getUTCDate() + delta);
     return date;
 }
+
+function debugStr(dt) {
+    return dt ? toLocal(dt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "null";
+}
+
+function toUTC(localDate) {
+    const dt = new Date(localDate);
+    return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000);
+}
+
+function toLocal(utcDate) {
+    const dt = new Date(utcDate);
+    return new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
+}
+
 
 changeMonth(0);
 document.getElementById("tooltip").textContent = "Bitte Anreisedatum wählen.";
