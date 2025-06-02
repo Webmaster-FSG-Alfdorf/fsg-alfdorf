@@ -11,7 +11,7 @@ async function accessToGuests() {
         return false;
     }
     const roles = await currentMember.getRoles();
-    console.log("accessToGuests", currentMember, wixUsers.currentUser, roles);
+    console.log("accessToGuests", currentMember, roles.map(r => r._id));
     // Role is "Gästerverwalter" or "Admin"
     return roles.some((role) => role._id == "276cacd9-b43e-4e4e-8e3f-92192eb8eba7" || role._id == "00000000-0000-0000-0000-000000000001");
 }

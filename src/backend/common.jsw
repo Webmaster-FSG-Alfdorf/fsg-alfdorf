@@ -100,69 +100,6 @@ export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, sugg
     return { occupied: false };
 }
 
-/**
- * @typedef {{
- *   title: string,
- *   price: number,
- *   depositName?: string,
- *   cntNights?: number,
- *   cntAdults?: number
- * }} PriceLine
- */
-
-/**
- * Checks if given date range is (partially) disabled / occupied while respecting lodging based capacities..
- * @param {string} lodgingID
- * @param {Date}   dateFrom
- * @param {Date}   dateTo
- * @param {Number} cntAdults
- * @returns {Promise<PriceLine[]>}
- */
-export async function calculateReservationPrice(lodgingID, dateFrom, dateTo, cntAdults, depositGiven = []) {
-    console.log("calculateReservationPrice for", lodgingID, debugStr(dateFrom), "to", debugStr(dateTo), "adults", cntAdults);
-    if (!lodgingID || !dateFrom || !dateTo) return [];
-    let res = [];
-    let q = wixData.query("pricesVisitor");
-    const results = await q.eq("lodging", lodgingID).or(q.hasSome("depositName", depositGiven)).ascending("order").find();
-    results.items.forEach(item => {
-        console.log("calculateReservationPrice", item);
-        let line = { title: item.title, price: item.price, depositName: item.depositName };
-        if (item.perNight) {
-            let cntNights = 0;
-            if (item.start && item.end) {
-                const periods = [];
-                const dS = new Date(item.start);
-                const dE = new Date(item.end);
-                for (let y = dateFrom.getFullYear(); y <= dateTo.getFullYear(); ++y) {
-                    const start = new Date(y, dS.getUTCMonth(), dS.getUTCDate());
-                    const end = new Date(y, dE.getUTCMonth(), dE.getUTCDate());
-                    if (start <= end)
-                        // within one year
-                        periods.push({ start, end });
-                    else
-                        // overlapping a year => need to split
-                        periods.push({ start, end: new Date(y, 11, 31) }, { start: new Date(y, 0, 1), end });
-                }
-
-                periods.forEach(period => {
-                    // item.start and item.end only contain valid month and day-of-month, the year field is always 1970 and shall be ignored
-                    const overlapStart = new Date(Math.max(dateFrom.getTime(), period.start.getTime()));
-                    const overlapEnd = new Date(Math.min(dateTo.getTime(), period.end.getTime()));
-                    cntNights += nightsBetween(overlapStart, overlapEnd);
-                });
-                console.log("calculateReservationPrice periods", periods, "cntNights", cntNights);
-            } else
-                cntNights = nightsBetween(dateFrom, dateTo);
-            res.push({ ...line, cntNights: cntNights, cntAdults: item.perAdult ? cntAdults : 0 });
-        } else if (item.perAdult) {
-            res.push({ ...line, cntAdults: cntAdults });
-        } else if (item.perReservation) {
-            res.push(line);
-        }
-    });
-    return res;
-}
-
 export async function sendMails(item, informGuestManager, customMessage = "", diff = []) {
     try {
         const options = {
@@ -209,30 +146,67 @@ export async function generateLodgingName(item) {
 }
 let lodgingsMap = null;
 
-export async function generateCostsTable(item, depositGiven = [], paidSum = NaN) {
+export async function generateCostsTable(item) {
     const formatPrice = (price, br) => `${br ? "(" : ""}${price.toFixed(2)} €${br ? ")" : ""}`;
+
+    const dateFrom = new Date(item.dateFrom);
+    const dateTo = new Date(item.dateTo);
+    console.log("generateCostsTable for", item.lodging, debugStr(dateFrom), "to", debugStr(dateTo), "adults", item.cntAdults);
     let costs = [];
     let sum = 0;
     let sumDeposit = 0;
     let sumReturn = 0;
-    (await calculateReservationPrice(item.lodging, new Date(item.dateFrom), new Date(item.dateTo), item.cntAdults, depositGiven)).forEach(line => {
-        console.log("calculateReservationPrice", line);
-        const price = line.price * (line.cntAdults || 1) * (line.cntNights || 1);
-        const dep = line.depositName != null;
-        costs.push([
-            line.title,
-            line.cntAdults ? `* ${line.cntAdults}` : "",
-            line.cntNights ? `* ${line.cntNights}` : "",
-            formatPrice(line.price, dep),
-            formatPrice(price, dep)
-        ]);
-        if (!dep) sum += price; else if (depositGiven.includes(line.depositName)) sumReturn -= price; else sumDeposit += price;
+    if (!item.lodging || !dateFrom || !dateTo) return [];
+    let q = wixData.query("pricesVisitor");
+    (await q.eq("lodging", item.lodging).or(q.hasSome("depositName", item.deposit)).ascending("order").find()).items.forEach(lodging => {
+        console.log("generateCostsTable", lodging);
+        let cntNights = 0;
+        if (lodging.perNight) {
+            if (lodging.start && lodging.end) {
+                const periods = [];
+                const dS = new Date(lodging.start);
+                const dE = new Date(lodging.end);
+                for (let y = dateFrom.getFullYear(); y <= dateTo.getFullYear(); ++y) {
+                    const start = new Date(y, dS.getUTCMonth(), dS.getUTCDate());
+                    const end = new Date(y, dE.getUTCMonth(), dE.getUTCDate());
+                    if (start <= end)
+                        // within one year
+                        periods.push({ start, end });
+                    else
+                        // overlapping a year => need to split
+                        periods.push({ start, end: new Date(y, 11, 31) }, { start: new Date(y, 0, 1), end });
+                }
+
+                periods.forEach(period => {
+                    // lodging.start and lodging.end only contain valid month and day-of-month, the year field is always 1970 and shall be ignored
+                    const overlapStart = new Date(Math.max(dateFrom.getTime(), period.start.getTime()));
+                    const overlapEnd = new Date(Math.min(dateTo.getTime(), period.end.getTime()));
+                    cntNights += nightsBetween(overlapStart, overlapEnd);
+                });
+                console.log("generateCostsTable periods", periods, "cntNights", cntNights);
+            } else
+                cntNights = nightsBetween(dateFrom, dateTo);
+        }
+        if (lodging.perNight || lodging.perAdult || lodging.perReservation) {
+            const cntAdults = lodging.perAdult ? item.cntAdults : 0;
+            const price = lodging.price * (cntAdults || 1) * (cntNights || 1);
+            const dep = lodging.depositName != null;
+            costs.push([
+                lodging.title,
+                cntAdults ? `* ${cntAdults}` : "",
+                cntNights ? `* ${cntNights}` : "",
+                formatPrice(lodging.price, dep),
+                formatPrice(price, dep)
+            ]);
+            if (!dep) sum += price; else if (item.deposit.includes(lodging.depositName)) sumReturn -= price; else sumDeposit += price;
+        }
     });
+
     costs.push(["Summe", null, null, null, formatPrice(sum, false)]);
-    if (paidSum) {
-        costs.push(["Bereits bezahlt", null, null, null, formatPrice(paidSum, false)]);
-        if (paidSum != sum)
-            costs.push([paidSum <= sum ? "Noch zu bezahlen" : "- Rückzahlung", null, null, null, formatPrice(sum - paidSum, false)]);
+    if (item.paidSum > 0) {
+        costs.push(["Bereits bezahlt", null, null, null, formatPrice(item.paidSum, false)]);
+        if (item.paidSum != sum)
+            costs.push([item.paidSum <= sum ? "Noch zu bezahlen" : "- Rückzahlung", null, null, null, formatPrice(sum - item.paidSum, false)]);
     }
     if (sumDeposit > 0)
         costs.push(["+ Kaution/Pfand", null, null, null, formatPrice(sumDeposit, true)]);
