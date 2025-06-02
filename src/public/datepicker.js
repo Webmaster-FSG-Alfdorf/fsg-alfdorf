@@ -25,6 +25,8 @@ window.addEventListener("message", (event) => {
         if (event.data.currentDate) {
             if (event.data.currentDate[0] && event.data.currentDate[1]) {
                 dateRange = [new Date(event.data.currentDate[0]), new Date(event.data.currentDate[1])];
+                dateRange[0].setUTCHours(0, 0, 0, 0);
+                dateRange[1].setUTCHours(0, 0, 0, 0);
                 console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
                 if (current.getUTCMonth() != dateRange[0].getUTCMonth() || current.getUTCFullYear() != dateRange[0].getUTCFullYear()) {
                     // go to the beginning of our selected range, if we not already show this month
