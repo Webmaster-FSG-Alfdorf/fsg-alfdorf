@@ -22,13 +22,13 @@ let maxDate = new Date(new Date(3000, 0, 1));
 window.addEventListener("message", (event) => {
     if (event.data) {
         console.log("message received", event.data);
-        if (event.data.currentDate) {
-            if (event.data.currentDate[0] && event.data.currentDate[1]) {
-                dateRange = [new Date(event.data.currentDate[0]), new Date(event.data.currentDate[1])];
+        if (event.data.utcDates) {
+            if (event.data.utcDates[0] && event.data.utcDates[1]) {
+                dateRange = [new Date(event.data.utcDates[0]), new Date(event.data.utcDates[1])];
                 dateRange[0].setUTCHours(0, 0, 0, 0);
                 dateRange[1].setUTCHours(0, 0, 0, 0);
                 console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
-                if (current.getUTCMonth() != dateRange[0].getUTCMonth() || current.getUTCFullYear() != dateRange[0].getUTCFullYear()) {
+                if (!sameMonth(current, dateRange[0])) {
                     // go to the beginning of our selected range, if we not already show this month
                     current.setUTCFullYear(dateRange[0].getUTCFullYear());
                     current.setUTCMonth(dateRange[0].getUTCMonth());
@@ -70,7 +70,7 @@ function pickDay(year, month, date) {
         dateRange[1] = dt;
         updateSel();
     } else { // pickStart == 1
-        if (dateRange[0].toLocaleDateString() == dateRange[1].toLocaleDateString()) {
+        if (sameDay(dateRange[0], dateRange[1])) {
             // cancel selection if not at least two day (one night) has been selected
             dateRange = [null, null];
             updateSel();
@@ -201,7 +201,7 @@ function generateDatePicker() {
         style += ")";
 
         // use different font color for days from neighbouring months
-        let cls = `${dt.getUTCMonth() == current.getUTCMonth() ? "cell-cur" : "cell-other"}`;
+        let cls = `${sameMonth(dt, current) ? "cell-cur" : "cell-other"}`;
 
         // ... and for cells outside of the valid range
         const outOfRange = dt < minDate || dt > maxDate;
@@ -267,6 +267,13 @@ function toLocal(utcDate) {
     return new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
 }
 
+function sameMonth(utc1, utc2) {
+    return utc1.getUTCFullYear() == utc2.getUTCFullYear() && utc1.getUTCMonth() == utc2.getUTCMonth();
+}
+
+function sameDay(utc1, utc2) {
+    return sameMonth(utc1, utc2) && utc1.getUTCDate() == utc2.getUTCDate();
+}
 
 changeMonth(0);
 document.getElementById("tooltip").textContent = "Bitte Anreisedatum wählen.";

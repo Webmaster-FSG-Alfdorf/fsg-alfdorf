@@ -30,8 +30,10 @@ $w.onReady(function () {
 
     $w("#datasetGuestReservations").onReady(async () => {
         console.log("#datasetGuestReservations onReady");
-        const msg = { minDate: new Date(), maxDate: incUTCDate(new Date(), 365) };
-        console.log("postMessage", msg);
+        const dt = toUTC(new Date());
+        dt.setUTCHours(0, 0, 0);
+        const msg = { minDate: dt, maxDate: incUTCDate(dt, 365) };
+        console.log("postMessage {minDate:", debugStr(msg.minDate), ", maxDate:", debugStr(msg.maxDate), "}");
         $w("#htmlDate").postMessage(msg);
 
         const query = wixLocation.query;
@@ -220,8 +222,8 @@ async function updateAllInputs() {
 
 function updateDatePicker() {
     const item = $w("#datasetGuestReservations").getCurrentItem();
-    const msg = { currentDate: item ? [new Date(item.dateFrom), new Date(item.dateTo)] : [new Date(), new Date()] };
-    console.log("updateOccupations", "postMessage currentDate: {", debugStr(msg.currentDate[0]), ",", debugStr(msg.currentDate[1]), "}");
+    const msg = { utcDates: item ? [new Date(item.dateFrom), new Date(item.dateTo)] : [new Date(), new Date()] };
+    console.log("updateOccupations", "postMessage utcDates: {", debugStr(msg.utcDates[0]), ",", debugStr(msg.utcDates[1]), "}");
     $w("#htmlDate").postMessage(msg);
 }
 
@@ -236,15 +238,15 @@ async function updateHoursKeepingDate(field, hours) {
 
 async function updateDateKeepingHours(utcDateRange) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
-    
+
     const dtFrom = new Date(utcDateRange[0] ?? new Date(0));
     dtFrom.setUTCHours(item ? new Date(item.dateFrom).getUTCHours() : 0, 0, 0, 0);
     await $w("#datasetGuestReservations").setFieldValue("dateFrom", dtFrom);
-    
+
     const dtTo = new Date(utcDateRange[1] ?? new Date(0));
     dtTo.setUTCHours(item ? new Date(item.dateTo).getUTCHours() : 0, 0, 0, 0);
     await $w("#datasetGuestReservations").setFieldValue("dateTo", dtTo);
-    
+
     console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
     $w("#inputDate").value = dateRangeToString({ start: dtFrom, end: dtTo }, { hour: null, minute: null });
 }

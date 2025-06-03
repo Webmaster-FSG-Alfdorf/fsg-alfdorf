@@ -8,10 +8,10 @@ import { nightsBetween, toLocal, debugStr } from 'public/cms.js';
  * For sub lodgings it ensures capacity of the base lodging is sufficient and specific sub lodging is not occupied.
  * @param {string} lodging
  * @param {Number} lodgingSub
- * @param {Date}   dateFrom
- * @param {Date}   dateTo
+ * @param {Date}   dateFrom date only (UTC)
+ * @param {Date}   dateTo date only (UTC)
  * @param {string} exclude if set, reservations from this item will be ignored
- * @returns {Promise<Object>} containing {Number} capacity, {{{Date} start, {Date} end, {Number} count} []} occupations
+ * @returns {Promise<Object>} containing {Number} capacity, {{{Date} start in UTC, {Date} end in UTC, {Number} count} []} occupations
  */
 export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude = "") {
     if (!lodging) return { capacity: 0, occupations: [] };
@@ -26,8 +26,8 @@ export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, excl
     let occupations = [];
     res.items.forEach(item => {
         if (item._id != exclude) {
-            const start = toLocal(item.dateFrom);
-            const end = toLocal(item.dateTo);
+            const start = new Date(item.dateFrom);
+            const end = new Date(item.dateTo);
             // if our specfic sub lodging is occupied, we have no capacity remaining, so count == maxAvailable
             const count = lodgingSub > 0 && item.lodgingSub == lodgingSub ? capacity : 1;
             occupations.push({ start, end, count });
@@ -44,8 +44,8 @@ export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, excl
  * For sub lodgings it ensures capacity of the base lodging is sufficient and specific sub lodging is not occupied.
  * @param {string} lodging
  * @param {Number} lodgingSub
- * @param {Date}   dateFrom
- * @param {Date}   dateTo
+ * @param {Date}   dateFrom date only (UTC)
+ * @param {Date}   dateTo date only (UTC)
  * @param {boolean} suggest later arrival or earlier departure suggestion
  * @param {string} exclude if set, reservations from this item will be ignored
  * @returns {Promise<any>}
@@ -53,19 +53,19 @@ export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, excl
 export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, suggest = false, exclude = "") {
     const dt = new Date(dateFrom);
     dt.setUTCHours(0, 0, 0, 0);
-    const res = await getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude);
+    const oc = await getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude);
 
     const occupied = (dt) => {
         let ocSum = 0;
-        res.occupations.forEach((oc) => {
+        oc.occupations.forEach((oc) => {
             if (dt > oc.start && dt < oc.end) ocSum += oc.count;
         });
         //console.log("isDateOccupied", debugStr(dt), "has occupation sum", ocSum);
-        return ocSum >= res.capacity;
+        return ocSum >= oc.capacity;
     };
 
-    console.log("isDateOccupied for", lodging, "sub", lodgingSub, debugStr(dateFrom), "to", debugStr(dateTo), "suggest", suggest, "got", res);
-    if (res.capacity <= 0) return { occupied: true } // not possible to find anything
+    console.log("isDateOccupied for", lodging, "sub", lodgingSub, debugStr(dateFrom), "to", debugStr(dateTo), "suggest", suggest, "got", oc);
+    if (oc.capacity <= 0) return { occupied: true } // not possible to find anything
 
     //FIXME loop does not work if only one day selected 
     dt.setDate(dt.getDate() + 1); // first day will be checked last so arrival suggestion comes after full block errors
