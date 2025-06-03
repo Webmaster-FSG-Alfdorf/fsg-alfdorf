@@ -93,8 +93,8 @@ function pickDay(year, month, date) {
 }
 
 function selDay(year, month, date) {
-    console.log("selDay y-m-d", year, month, date, "pickStart", pickStart);
     if (pickStart == 1 && dateRange[0]) {
+        console.log("selDay y-m-d", year, month, date, "pickStart", pickStart);
         const dtSel = new Date(Date.UTC(year, month, date));
         // check all selected days if they are valid in same direction as the user selected them
         let dt = new Date(dateRange[0]);
