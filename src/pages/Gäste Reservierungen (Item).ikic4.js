@@ -32,7 +32,7 @@ $w.onReady(function () {
         console.log("#datasetGuestReservations onReady");
         const dt = toUTC(new Date());
         dt.setUTCHours(0, 0, 0);
-        const msg = { minDate: dt, maxDate: incUTCDate(dt, 365) };
+        const msg = { minDate: new Date(dt), maxDate: incUTCDate(dt, 365) };
         console.log("postMessage {minDate:", debugStr(msg.minDate), ", maxDate:", debugStr(msg.maxDate), "}");
         $w("#htmlDate").postMessage(msg);
 
@@ -46,7 +46,7 @@ $w.onReady(function () {
         $w("#htmlDate").onMessage(async (event) => {
             console.log("received message", event.data);
             if (event.data && Array.isArray(event.data.selectedDates) && event.data.selectedDates.length == 2) {
-                updateDateKeepingHours(event.data.selectedDates);
+                await updateDateKeepingHours(event.data.selectedDates);
                 updateOccupations();
                 updateCostsTable();
             }
@@ -88,18 +88,18 @@ $w.onReady(function () {
         $w("#inputDate").onKeyPress(async (event) => {
             if (event.key == "Enter") {
                 console.log("#inputDate onKeyPress Enter", $w("#inputDate").value);
-                updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
+                await updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
+                updateDatePicker();
                 updateOccupations();
                 updateCostsTable();
-                updateDatePicker();
             }
         });
         $w("#inputDate").onBlur(async () => {
             console.log("#inputDate onBlur", $w("#inputDate").value);
-            updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
+            await updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
+            updateDatePicker();
             updateOccupations();
             updateCostsTable();
-            updateDatePicker();
         });
 
         $w("#inputPhone").onBlur(() => {
@@ -119,7 +119,7 @@ $w.onReady(function () {
         $w("#inputArrivalTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Ankunft")) reject(currentDateOccupied); });
         $w("#inputDepartureTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Abreise")) reject(currentDateOccupied); });
 
-        $w("#datasetGuestReservations").onAfterSave(async () => {
+        $w("#datasetGuestReservations").onAfterSave(() => {
             console.log("#datasetGuestReservations onAfterSave");
             updateAll();
         });
@@ -149,7 +149,7 @@ $w.onReady(function () {
         $w("#buttonRemove").onClick(() => remove());
         $w("#buttonNew").onClick(() => save(() => {
             console.log("#buttonNew onClick add()");
-            $w("#datasetGuestReservations").add().then(async () => {
+            $w("#datasetGuestReservations").add().then(() => {
                 console.log("#buttonNew onClick add() then");
                 updateAll();
             });
@@ -186,14 +186,14 @@ $w.onReady(function () {
  * input-price-paid.changed -> updateCostsTable
  */
 async function updateAll() {
-    updateOccupations();
-    updateCostsTable();
     updateDatePicker();
     updateAllInputs();
     updateTitle();
+    await updateOccupations();
+    await updateCostsTable();
 }
 
-async function updateAllInputs() {
+function updateAllInputs() {
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
     console.log("updateAllInputs", item?._id, "lodging", item?.lodging, item?.lodgingSub, debugStr(item?.dateFrom), "to", debugStr(item?.dateTo));
@@ -233,7 +233,7 @@ async function updateHoursKeepingDate(field, hours) {
     dt.setUTCHours(0, 0, 0, 0);
     dt = toLocal(dt);
     dt.setHours(hours, 0, 0, 0);
-    $w("#datasetGuestReservations").setFieldValue(field, toUTC(dt));
+    await $w("#datasetGuestReservations").setFieldValue(field, toUTC(dt));
 }
 
 async function updateDateKeepingHours(utcDateRange) {
@@ -295,6 +295,11 @@ async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO spli
     let oc = [];
     if (item) try {
         oc = await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id);
+        if (item.lodgingSub > 0 && oc.capacity >= 1) {
+            // report only capacity 0 and 1 for sub lodgings
+            oc.occupations.forEach((/** @type {{ count: number; capacity: number; }} */ oc) => { oc.count = oc.count >= oc.capacity ? 1 : 0; });
+            oc.capacity = 1;
+        }
     } catch (err) {
         oc.capacity = 0;
         oc.occupations = [];
@@ -363,11 +368,11 @@ function setCurrentFilter(itemId) {
     console.log("setCurrentFilter save", itemId);
     save(() => {
         console.log("setCurrentFilter setFilter", itemId);
-        $w("#datasetGuestReservations").setFilter(wixData.filter().eq('_id', itemId)).then(() => {
+        $w("#datasetGuestReservations").setFilter(wixData.filter().eq('_id', itemId)).then(async () => {
             loadingID = "";
             console.log("setCurrentFilter update", itemId);
-            updateAll();
             updateFilterSelection();
+            await updateAll();
         }).catch((err) => showError(err));
     });
 }
@@ -510,10 +515,10 @@ async function save(onSuccess = () => { }) {
 function revert(onSuccess = () => { }) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
     console.log("revert", item?._id);
-    $w("#datasetGuestReservations").revert().then(() => {
+    $w("#datasetGuestReservations").revert().then(async () => {
         console.log("revert then");
         wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-        updateAll();
+        await updateAll();
         onSuccess();
     }).catch(err => { showError(err) });
 }
@@ -521,7 +526,7 @@ function revert(onSuccess = () => { }) {
 function remove(onSuccess = () => { }) {
     const item = $w("#datasetGuestReservations").getCurrentItem();
     console.log("remove", item?._id);
-    $w("#datasetGuestReservations").remove().then(() => {
+    $w("#datasetGuestReservations").remove().then(async () => {
         console.log("remove then");
         wixWindow.openLightbox("CMSSuccessLightbox", {
             msg: "Reservierung wurde gelöscht",
@@ -529,7 +534,7 @@ function remove(onSuccess = () => { }) {
             customMessage: "Ihre Reservierungsanfrage wurde storniert."
         });
         cloneItem(null);
-        updateAll();
+        await updateAll();
         onSuccess();
     }).catch(err => { showError(err) });
 }

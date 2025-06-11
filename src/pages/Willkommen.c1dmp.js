@@ -1,5 +1,6 @@
-//import { testGenerateRandomBooking } from 'backend/guests-testcases.jsw';
+import { testOccupations, testGenerateRandomBooking } from 'backend/guests-testcases.jsw';
 
 $w.onReady(async function () {
     //await testGenerateRandomBooking();
+    //await testOccupations();
 });

@@ -11,7 +11,8 @@ for /f "usebackq delims=" %%A in (`wix preview --source local 2^>^&1`) do (
         set "url=!line:*https://=https://!"
         for /f "delims= " %%U in ("!url!") do set "url=%%U"
         start "" "!url!"
-        pause
+        REM TODO only pause if error or warning
+        REM pause
         goto :eof
     )
 )

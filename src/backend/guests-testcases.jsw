@@ -1,5 +1,7 @@
 import wixData from 'wix-data';
 
+import { getOccupations, isDateOccupied } from 'backend/common.jsw';
+
 export async function testGenerateRandomBooking({
     startDate = new Date(),
     minDays = 1,
@@ -19,65 +21,65 @@ export async function testGenerateRandomBooking({
     ];
 
     const addresses = [{
-            streetAddress: "Musterstraße 12",
-            postalCode: "10115",
-            city: "Berlin",
-            country: "DE"
-        },
-        {
-            streetAddress: "Beispielweg 5",
-            postalCode: "80331",
-            city: "München",
-            country: "DE"
-        },
-        {
-            streetAddress: "Hauptstraße 77",
-            postalCode: "50667",
-            city: "Köln",
-            country: "DE"
-        },
-        {
-            streetAddress: "Testallee 3",
-            postalCode: "20095",
-            city: "Hamburg",
-            country: "DE"
-        },
-        {
-            streetAddress: "Fabrikstraße 8a",
-            postalCode: "70173",
-            city: "Stuttgart",
-            country: "DE"
-        },
-        {
-            streetAddress: "Bahnhofstraße 2",
-            postalCode: "90402",
-            city: "Nürnberg",
-            country: "DE"
-        },
-        {
-            streetAddress: "Marktplatz 1",
-            postalCode: "60311",
-            city: "Frankfurt",
-            country: "DE"
-        },
-        {
-            streetAddress: "Ringstraße 10",
-            postalCode: "04109",
-            city: "Leipzig",
-            country: "DE"
-        },
-        {
-            streetAddress: "Bergweg 22",
-            postalCode: "01067",
-            city: "Dresden",
-            country: "DE"
-        },
-        {
-            streetAddress: "Lindenallee 15",
-            postalCode: "99084",
-            city: "Erfurt",
-            country: "DE"
-        }
+        streetAddress: "Musterstraße 12",
+        postalCode: "10115",
+        city: "Berlin",
+        country: "DE"
+    },
+    {
+        streetAddress: "Beispielweg 5",
+        postalCode: "80331",
+        city: "München",
+        country: "DE"
+    },
+    {
+        streetAddress: "Hauptstraße 77",
+        postalCode: "50667",
+        city: "Köln",
+        country: "DE"
+    },
+    {
+        streetAddress: "Testallee 3",
+        postalCode: "20095",
+        city: "Hamburg",
+        country: "DE"
+    },
+    {
+        streetAddress: "Fabrikstraße 8a",
+        postalCode: "70173",
+        city: "Stuttgart",
+        country: "DE"
+    },
+    {
+        streetAddress: "Bahnhofstraße 2",
+        postalCode: "90402",
+        city: "Nürnberg",
+        country: "DE"
+    },
+    {
+        streetAddress: "Marktplatz 1",
+        postalCode: "60311",
+        city: "Frankfurt",
+        country: "DE"
+    },
+    {
+        streetAddress: "Ringstraße 10",
+        postalCode: "04109",
+        city: "Leipzig",
+        country: "DE"
+    },
+    {
+        streetAddress: "Bergweg 22",
+        postalCode: "01067",
+        city: "Dresden",
+        country: "DE"
+    },
+    {
+        streetAddress: "Lindenallee 15",
+        postalCode: "99084",
+        city: "Erfurt",
+        country: "DE"
+    }
     ];
 
     const states = ["Anfrage", "Anfrage", "Anfrage", "Anfrage", "Reserviert", "Reserviert", "Bezahlt", "Abgelehnt"];
@@ -178,4 +180,124 @@ function rndW(weights) {
         if (random < runningWeight) return i;
     }
     return weights.length - 1;
+}
+
+export async function testOccupations() {
+    const utcDate = (d, h = 0) => new Date(Date.UTC(2000, 0, d, h));
+
+    const simData = {
+        lodgings: [
+            { lodgingID: "A", capacity: 1 }, //     AAAAAAA
+            { lodgingID: "B", capacity: 1 }, //     BBBBBBB   BB
+            { lodgingID: "C", capacity: 3 },
+        ],
+        disabledDates: [
+            { _id: "A1", lodging: "A", lodgingSub: 0, dateFrom: utcDate(10, 22), dateTo: utcDate(20, 2) },
+            { _id: "B1", lodging: "B", lodgingSub: 0, dateFrom: utcDate(10, 22), dateTo: utcDate(20, 2) },
+            { _id: "B2", lodging: "B", lodgingSub: 0, dateFrom: utcDate(25, 6), dateTo: utcDate(26, 2) },
+        ]
+    };
+
+    const testCases = [
+        {
+            title: "Free (after)",
+            //     AAAAAAA
+            //             ???
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(21), dateTo: utcDate(25),
+            expOccupied: false
+        },
+        {
+            title: "Free (before)",
+            //     AAAAAAA
+            // ??        
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(7), dateTo: utcDate(9),
+            expOccupied: false
+        },
+        {
+            title: "Occupied (partial)",
+            //     AAAAAAA
+            //  ????????????
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(7), dateTo: utcDate(25),
+            expOccupied: true
+        },
+        {
+            title: "Occupied (within)",
+            //     AAAAAAA
+            //      ?????
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(14), dateTo: utcDate(17),
+            expOccupied: true
+        },
+        {
+            title: "Occupied (after)",
+            //     AAAAAAA
+            //           ????
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(17), dateTo: utcDate(25),
+            expOccupied: true
+        },
+        {
+            title: "Occupied (overlapping arrival)",
+            //     AAAAAAA
+            //           .???
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(20, 1), dateTo: utcDate(25),
+            expOccupied: true
+        },
+        {
+            title: "Free (overlapping arrival)",
+            //     AAAAAAA
+            //           .???
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(20, 2), dateTo: utcDate(25),
+            expOccupied: false
+        },
+        {
+            title: "Occupied (before)",
+            //     AAAAAAA
+            //  ????
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(7), dateTo: utcDate(14),
+            expOccupied: true
+        },
+        {
+            title: "Occupied (overlapping departure)",
+            //     AAAAAAA
+            //  ???.
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(7), dateTo: utcDate(10, 23),
+            expOccupied: true
+        },
+        {
+            title: "Free (overlapping departure)",
+            //     AAAAAAA
+            //  ???.
+            lodging: "A", lodgingSub: 0, dateFrom: utcDate(7), dateTo: utcDate(10, 22),
+            expOccupied: false
+        },
+        {
+            title: "Free (within)",
+            //     BBBBBBB   BB
+            //           .???.
+            lodging: "B", lodgingSub: 0, dateFrom: utcDate(20, 2), dateTo: utcDate(25, 6),
+            expOccupied: false
+        },
+        {
+            title: "Occupied (within-block-arrival)",
+            //     BBBBBBB   BB
+            //           .???.
+            lodging: "B", lodgingSub: 0, dateFrom: utcDate(20, 1), dateTo: utcDate(25, 6),
+            expOccupied: true
+        },
+        {
+            title: "Occupied (within-block-departure)",
+            //     BBBBBBB   BB
+            //           .???.
+            lodging: "B", lodgingSub: 0, dateFrom: utcDate(20, 2), dateTo: utcDate(25, 7),
+            expOccupied: true
+        },
+    ];
+
+    let cntFailed = 0;
+    for (const t of testCases) {
+        const res = await isDateOccupied(t.lodging, t.lodgingSub, t.dateFrom, t.dateTo, false, "", simData);
+        const passed = res.occupied == t.expOccupied;
+        if (!passed) console.log(`${t.title}: ${passed ? "✅ PASSED" : "❌ FAILED"}`, JSON.stringify(res, null, 2));
+        if (!passed) ++cntFailed;
+    }
+    console.log(`testOccupations: ${cntFailed ? "❌❌❌" : "✅"} ${cntFailed} of ${testCases.length} failed`);
 }
