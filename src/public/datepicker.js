@@ -94,7 +94,7 @@ function pickDay(year, month, date) {
 
 function selDay(year, month, date) {
     if (pickStart == 1 && dateRange[0]) {
-        console.log("selDay y-m-d", year, month, date, "pickStart", pickStart);
+        //console.log("selDay y-m-d", year, month, date, "pickStart", pickStart);
         const dtSel = new Date(Date.UTC(year, month, date));
         // check all selected days if they are valid in same direction as the user selected them
         let dt = new Date(dateRange[0]);
@@ -104,14 +104,14 @@ function selDay(year, month, date) {
                 // stop selection before first / after last blocked day
                 incUTCDate(dt, forward ? -1 : 1);
                 dateRange[1] = new Date(dt);
-                console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+                //console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
                 updateSel();
                 return false;
             }
             incUTCDate(dt, forward ? 1 : -1);
         }
         dateRange[1] = dtSel;
-        console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+        //console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
         updateSel();
         return true;
     }

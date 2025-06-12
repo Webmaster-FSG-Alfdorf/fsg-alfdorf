@@ -15,7 +15,7 @@ import { nightsBetween, toLocal, debugStr } from 'public/cms.js';
  * @returns {Promise<Object>} containing {Number} capacity, {{{Date} start in UTC, {Date} end in UTC, {Number} count} []} occupations
  */
 export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude = "", simulation = null) {
-    if (!lodging) return { capacity: 0, occupations: [] };
+    if (!lodging || !dateFrom || !dateTo) return { capacity: 0, occupations: [] };
     const lodgings = simulation? simulation.lodgings.filter(l => l.lodgingID == lodging) : (await wixData.query("lodgings").eq("lodgingID", lodging).find()).items;
     if (lodgings.length > 1) console.error(`Have multiple matches from #lodgings with lodgingID == ${lodging}: ${lodgings}`);
     const capacity = lodgings.length == 0 ? 0 : lodgings[0].capacity;
@@ -160,8 +160,10 @@ export async function generateCostsTable(item) {
     let sumDeposit = 0;
     let sumReturn = 0;
     if (!item.lodging || !dateFrom || !dateTo) return [];
-    let q = wixData.query("pricesVisitor");
-    (await q.eq("lodging", item.lodging).or(q.hasSome("depositName", item.deposit)).ascending("order").find()).items.forEach(lodging => {
+    let q = wixData.query("pricesVisitor").eq("lodging", item.lodging);
+    if (item.deposit && item.deposit.length > 0)
+        q = q.or(wixData.query("pricesVisitor").hasSome("depositName", item.deposit));
+    (await q.ascending("order").find()).items.forEach(lodging => {
         console.log("generateCostsTable", lodging);
         let cntNights = 0;
         if (lodging.perNight) {
@@ -201,7 +203,7 @@ export async function generateCostsTable(item) {
                 formatPrice(lodging.price, dep),
                 formatPrice(price, dep)
             ]);
-            if (!dep) sum += price; else if (item.deposit.includes(lodging.depositName)) sumReturn -= price; else sumDeposit += price;
+            if (!dep) sum += price; else if (item.deposit?.includes(lodging.depositName) == true) sumReturn -= price; else sumDeposit += price;
         }
     });
 
