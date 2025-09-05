@@ -1,3 +1,5 @@
+/* global google */
+
 const flashDelay = 500;
 const polyFillOpacity = 0.2;
 const polyBorderWidth = 0.3;
@@ -554,7 +556,7 @@ function initMap() {
         const poly = [];
         const names = [];
         const nrs = [];
-        for (i = 0; i <= cnt; ++i) {
+        for (let i = 0; i <= cnt; ++i) {
             const latC = cnt == 0 ? lat0 : lat0 + latDiff / cnt * i;
             const lngC = cnt == 0 ? lng0 : lng0 + lngDiff / cnt * i;
             const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
