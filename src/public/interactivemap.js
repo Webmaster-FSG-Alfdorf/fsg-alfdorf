@@ -610,8 +610,6 @@ function initMap() {
         poly.getPath().forEach(latlng => bounds.extend(latlng));
     }
 
-    const mobile = window.innerWidth <= 768;
-
     const map = new google.maps.Map(document.getElementById("map"), {
         zoom: mobile ? 17 : 18,
         center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
