@@ -526,6 +526,8 @@ class TooltipOverlay extends google.maps.OverlayView {
 }
 
 function initMap() {
+    if (typeof google === "undefined") return;
+
     const mobile = window.innerWidth <= 768;
 
     const map = new google.maps.Map(document.getElementById("map"), {
