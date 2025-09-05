@@ -484,49 +484,131 @@ const places = [
     [236, 240, 48.83854851024745, 9.76624427110358, 48.83880778534419, 9.766529292898875],
 ];
 
-class TooltipOverlay extends google.maps.OverlayView {
-    constructor(position, name, descr) {
-        super();
-        this.position = position;
-        this.name = name;
-        this.descr = descr;
-        this.div = null;
-    }
+function initMap() {
+    if (typeof google === "undefined") return;
 
-    onAdd() {
-        this.div = document.createElement('div');
-        this.div.style.position = 'absolute';
-        this.div.style.background = 'rgba(255, 255, 255, 0.9)';
-        this.div.style.border = '1px solid #999';
-        this.div.style.borderRadius = '8px';
-        this.div.style.padding = '8px 12px';
-        this.div.style.fontSize = '14px';
-        this.div.style.color = '#333';
-        this.div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-        this.div.style.pointerEvents = 'none';
-        this.div.style.maxWidth = '220px';
-        this.div.style.lineHeight = '1.4';
-        this.div.innerHTML = `<strong>${this.name}</strong><br>${this.descr}`;
+    class TooltipOverlay extends google.maps.OverlayView {
+        constructor(position, name, descr) {
+            super();
+            this.position = position;
+            this.name = name;
+            this.descr = descr;
+            this.div = null;
+        }
 
-        this.getPanes().overlayMouseTarget.appendChild(this.div);
-    }
+        onAdd() {
+            this.div = document.createElement('div');
+            this.div.style.position = 'absolute';
+            this.div.style.background = 'rgba(255, 255, 255, 0.9)';
+            this.div.style.border = '1px solid #999';
+            this.div.style.borderRadius = '8px';
+            this.div.style.padding = '8px 12px';
+            this.div.style.fontSize = '14px';
+            this.div.style.color = '#333';
+            this.div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+            this.div.style.pointerEvents = 'none';
+            this.div.style.maxWidth = '220px';
+            this.div.style.lineHeight = '1.4';
+            this.div.innerHTML = `<strong>${this.name}</strong><br>${this.descr}`;
 
-    draw() {
-        if (this.div) {
-            const pos = this.getProjection().fromLatLngToDivPixel(this.position);
-            this.div.style.left = `${pos.x}px`;
-            this.div.style.top = `${pos.y - 30}px`;
+            this.getPanes().overlayMouseTarget.appendChild(this.div);
+        }
+
+        draw() {
+            if (this.div) {
+                const pos = this.getProjection().fromLatLngToDivPixel(this.position);
+                this.div.style.left = `${pos.x}px`;
+                this.div.style.top = `${pos.y - 30}px`;
+            }
+        }
+
+        onRemove() {
+            if (this.div) this.div.remove();
+            this.div = null;
         }
     }
 
-    onRemove() {
-        if (this.div) this.div.remove();
-        this.div = null;
-    }
-}
+    function drawPoly(map, bounds, cat, name, descr, url, paths) {
 
-function initMap() {
-    if (typeof google === "undefined") return;
+        const poly = new google.maps.Polygon({
+            paths: paths,
+            map,
+            fillColor: categories[cat].color,
+            fillOpacity: polyFillOpacity,
+            strokeWeight: polyBorderWidth,
+        });
+        // handle a tooltip when moving mouse over the place
+        let tooltip;
+        poly.addListener("mouseover", (e) => {
+            tooltip = new TooltipOverlay(e.latLng, name, descr);
+            tooltip.setMap(map);
+        });
+        poly.addListener("mouseout", () => {
+            if (tooltip) {
+                tooltip.setMap(null);
+                tooltip = null;
+            }
+        });
+
+        if (url != "")
+            poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-alfdorf/" + url, "self"); });
+
+        poly.getPath().forEach(latlng => bounds.extend(latlng));
+
+        return poly;
+    }
+
+    function createLegend() {
+        const legend = document.getElementById("legend");
+        for (const category of Object.values(categories)) {
+            const item = document.createElement("div");
+            item.innerHTML = `
+              <span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>
+              ${capitalize(category.legend)}
+            `;
+            legend.appendChild(item);
+        }
+    }
+
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function startSearch(map) {
+        const bounds = new google.maps.LatLngBounds();
+        const s = document.getElementById("search").value.trim().toLowerCase();
+        if (s) areas.forEach(area => {
+            if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s)))
+                flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
+        });
+        if (s) places.forEach(stripe => {
+            const opts = stripe[6];
+            if (opts && opts["poly"]) {
+                if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
+                    const c = nr[s.length];
+                    if (nr.startsWith(s) && !(c >= '0' && c <= '9'))
+                        flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                });
+                if (opts["names"]) opts["names"].forEach((name, i) => {
+                    if (name.toLowerCase().includes(s))
+                        flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                });
+            }
+        });
+        map.fitBounds(bounds);
+    }
+
+    function flashPoly(bounds, poly, orgColor, flashColor = orgColor) {
+        const optFlash = { fillOpacity: 1, fillColor: flashColor };
+        const optOrg = { fillOpacity: polyFillOpacity, fillColor: orgColor };
+        poly.setOptions(optFlash);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
+        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 3);
+        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 4);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 5);
+        poly.getPath().forEach(latlng => bounds.extend(latlng));
+    }
 
     const mobile = window.innerWidth <= 768;
 
@@ -582,92 +664,6 @@ function initMap() {
 
     map.fitBounds(bounds);
 
-    return map;
-}
-
-function drawPoly(map, bounds, cat, name, descr, url, paths) {
-    const poly = new google.maps.Polygon({
-        paths: paths,
-        map,
-        fillColor: categories[cat].color,
-        fillOpacity: polyFillOpacity,
-        strokeWeight: polyBorderWidth,
-    });
-    // handle a tooltip when moving mouse over the place
-    let tooltip;
-    poly.addListener("mouseover", (e) => {
-        tooltip = new TooltipOverlay(e.latLng, name, descr);
-        tooltip.setMap(map);
-    });
-    poly.addListener("mouseout", () => {
-        if (tooltip) {
-            tooltip.setMap(null);
-            tooltip = null;
-        }
-    });
-
-    if (url != "")
-        poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-alfdorf/" + url, "self"); });
-
-    poly.getPath().forEach(latlng => bounds.extend(latlng));
-
-    return poly;
-}
-
-function createLegend() {
-    const legend = document.getElementById("legend");
-    for (const category of Object.values(categories)) {
-        const item = document.createElement("div");
-        item.innerHTML = `
-              <span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>
-              ${capitalize(category.legend)}
-            `;
-        legend.appendChild(item);
-    }
-}
-
-function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function startSearch(map) {
-    const bounds = new google.maps.LatLngBounds();
-    const s = document.getElementById("search").value.trim().toLowerCase();
-    if (s) areas.forEach(area => {
-        if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s)))
-            flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
-    });
-    if (s) places.forEach(stripe => {
-        const opts = stripe[6];
-        if (opts && opts["poly"]) {
-            if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
-                const c = nr[s.length];
-                if (nr.startsWith(s) && !(c >= '0' && c <= '9'))
-                    flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
-            });
-            if (opts["names"]) opts["names"].forEach((name, i) => {
-                if (name.toLowerCase().includes(s))
-                    flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
-            });
-        }
-    });
-    map.fitBounds(bounds);
-}
-
-function flashPoly(bounds, poly, orgColor, flashColor = orgColor) {
-    const optFlash = { fillOpacity: 1, fillColor: flashColor };
-    const optOrg = { fillOpacity: polyFillOpacity, fillColor: orgColor };
-    poly.setOptions(optFlash);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
-    setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 3);
-    setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 4);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 5);
-    poly.getPath().forEach(latlng => bounds.extend(latlng));
-}
-
-function init() {
-    const map = initMap();
     createLegend();
 
     const mobile = window.innerWidth <= 768;
