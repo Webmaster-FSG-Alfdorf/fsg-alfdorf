@@ -679,3 +679,20 @@ function initMap() {
         }
     });
 }
+
+/*
+<!DOCTYPE html>
+<html>
+<link rel="stylesheet" href="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.css">
+<body>
+    <div id="map" style="width:100%; height:100vh"></div>
+    <input style="position:absolute; top:60px; left:10px; z-index: 999" type="text" autocomplete="off" id="search" placeholder="Suchen (Person/Platz/...)">
+    <div id="legend"
+        style="position:absolute; top:100px; left:10px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif; font-size:14px;">
+        <strong>Legende</strong>
+    </div>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAW2eD9E9n8kRAFCx34eWq5031PVZ_bxWY&callback=initMap" async defer></script>
+    <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
+</body>
+</html>
+ */
