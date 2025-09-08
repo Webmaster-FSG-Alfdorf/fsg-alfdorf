@@ -576,26 +576,31 @@ function initMap() {
 
     function startSearch(map) {
         const bounds = new google.maps.LatLngBounds();
-        const s = document.getElementById("search").value.trim().toLowerCase();
-        if (s) areas.forEach(area => {
-            if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s)))
-                flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
-        });
-        if (s) places.forEach(stripe => {
-            const opts = stripe[6];
-            if (opts && opts["poly"]) {
-                if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
-                    const c = nr[s.length];
-                    if (nr.startsWith(s) && !(c >= '0' && c <= '9'))
-                        flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
-                });
-                if (opts["names"]) opts["names"].forEach((name, i) => {
-                    if (name.toLowerCase().includes(s))
-                        flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
-                });
-            }
-        });
-        map.fitBounds(bounds);
+        let s = document.getElementById("search").value.trim().toLowerCase();
+        if (s) {
+            if (s.startsWith("nr ")) s = s.substring(3).trim();
+            if (s.startsWith("platz ")) s = s.substring(6).trim();
+            if (s.startsWith("place ")) s = s.substring(6).trim();
+            areas.forEach(area => {
+                if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s)))
+                    flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
+            });
+            places.forEach(stripe => {
+                const opts = stripe[6];
+                if (opts && opts["poly"]) {
+                    if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
+                        const c = nr[s.length];
+                        if (nr.startsWith(s) && !(c >= '0' && c <= '9'))
+                            flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                    });
+                    if (opts["names"]) opts["names"].forEach((name, i) => {
+                        if (name.toLowerCase().includes(s))
+                            flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                    });
+                }
+            });
+        }
+        if (bounds.isValid()) map.fitBounds(bounds);
     }
 
     function flashPoly(bounds, poly, orgColor, flashColor = orgColor) {
@@ -663,13 +668,12 @@ function initMap() {
 
     map.fitBounds(bounds);
 
-    createLegend();
-
-    if (mobile) document.getElementById("legend").hidden = true;
-
-    //document.getElementById("search").value = `${window.innerWidth}px x ${window.innerHeight}px`
-    //      document.getElementById("map").style.width = `${window.innerWidth}px`;
-    if (mobile) document.getElementById("map").style.height = `50dvh`;
+    if (mobile) {
+        document.getElementById("legend").hidden = true;
+        document.getElementById("map").style.height = `50dvh`;
+    } else {
+        createLegend();
+    }
 
     document.getElementById("search").addEventListener("keydown", function (event) {
         if (event.key === "Enter") {
@@ -691,7 +695,7 @@ function initMap() {
         style="position:absolute; top:100px; left:10px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif; font-size:14px;">
         <strong>Legende</strong>
     </div>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAW2eD9E9n8kRAFCx34eWq5031PVZ_bxWY&callback=initMap" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCerYSObwqwjPepIBEwZUn4Q1Zgee-f7RI&callback=initMap" async defer></script>
     <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
 </body>
 </html>
