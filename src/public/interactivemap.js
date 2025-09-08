@@ -577,30 +577,37 @@ function initMap() {
     function startSearch(map) {
         const bounds = new google.maps.LatLngBounds();
         let s = document.getElementById("search").value.trim().toLowerCase();
+        let found = false
         if (s) {
             if (s.startsWith("nr ")) s = s.substring(3).trim();
             if (s.startsWith("platz ")) s = s.substring(6).trim();
             if (s.startsWith("place ")) s = s.substring(6).trim();
             areas.forEach(area => {
-                if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s)))
+                if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s))) {
+                    found = true;
                     flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
+                }
             });
             places.forEach(stripe => {
                 const opts = stripe[6];
                 if (opts && opts["poly"]) {
                     if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
                         const c = nr[s.length];
-                        if (nr.startsWith(s) && !(c >= '0' && c <= '9'))
+                        if (nr.startsWith(s) && !(c >= '0' && c <= '9')) {
+                            found = true;
                             flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                        }
                     });
                     if (opts["names"]) opts["names"].forEach((name, i) => {
-                        if (name.toLowerCase().includes(s))
+                        if (name.toLowerCase().includes(s)) {
+                            found = true;
                             flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                        }
                     });
                 }
             });
         }
-        if (bounds.isValid()) map.fitBounds(bounds);
+        if (found) map.fitBounds(bounds);
     }
 
     function flashPoly(bounds, poly, orgColor, flashColor = orgColor) {
