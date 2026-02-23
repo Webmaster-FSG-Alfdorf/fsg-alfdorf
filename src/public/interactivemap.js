@@ -1,13 +1,13 @@
 /* global google */
 
 const flashDelay = 500;
-const polyFillOpacity = 0.2;
+const polyFillOpacity = 0.3;
 const polyBorderWidth = 0.3;
 
 const categories = {
-    sport: { color: "#ffcc00", legend: "Sportplätze" },
-    infra: { color: "#2196f3", legend: "Infrastruktur" },
-    places: { color: "#9e9e9e", legend: "Wohnwagen-Plätze", flashColor: "#ff0000" },
+    sport: { color: "#ffcc00", legend: "Sportplätze", opacity: polyFillOpacity },
+    infra: { color: "#2196f3", legend: "Infrastruktur", opacity: polyFillOpacity },
+    places: { color: "#ff0000", legend: "Wohnwagen-Plätze", opacity: 0.0 },
 };
 
 const areas = [
@@ -534,7 +534,7 @@ function initMap() {
             paths: paths,
             map,
             fillColor: categories[cat].color,
-            fillOpacity: polyFillOpacity,
+            fillOpacity: categories[cat].opacity,
             strokeWeight: polyBorderWidth,
         });
         // handle a tooltip when moving mouse over the place
@@ -585,7 +585,7 @@ function initMap() {
             areas.forEach(area => {
                 if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s))) {
                     found = true;
-                    flashPoly(bounds, area.poly, categories[area.category].color, categories[area.category].flashColor);
+                    flashPoly(bounds, area.poly, area.category);
                 }
             });
             places.forEach(stripe => {
@@ -595,13 +595,13 @@ function initMap() {
                         const c = nr[s.length];
                         if (nr.startsWith(s) && !(c >= '0' && c <= '9')) {
                             found = true;
-                            flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                            flashPoly(bounds, opts["poly"][i], "places");
                         }
                     });
                     if (opts["names"]) opts["names"].forEach((name, i) => {
                         if (name.toLowerCase().includes(s)) {
                             found = true;
-                            flashPoly(bounds, opts["poly"][i], categories["places"].color, categories["places"].flashColor);
+                            flashPoly(bounds, opts["poly"][i], "places");
                         }
                     });
                 }
@@ -610,9 +610,9 @@ function initMap() {
         if (found) map.fitBounds(bounds);
     }
 
-    function flashPoly(bounds, poly, orgColor, flashColor = orgColor) {
-        const optFlash = { fillOpacity: 1, fillColor: flashColor };
-        const optOrg = { fillOpacity: polyFillOpacity, fillColor: orgColor };
+    function flashPoly(bounds, poly, cat) {
+        const optFlash = { fillOpacity: 1 };
+        const optOrg = { fillOpacity: categories[cat].opacity };
         poly.setOptions(optFlash);
         setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
         setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
