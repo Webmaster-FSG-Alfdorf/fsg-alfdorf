@@ -551,7 +551,7 @@ function initMap() {
         });
 
         if (url != "")
-            poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-alfdorf/" + url, "self"); });
+            poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-a/" + url, "self"); });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
 
