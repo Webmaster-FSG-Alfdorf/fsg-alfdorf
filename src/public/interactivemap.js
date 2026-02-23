@@ -515,6 +515,7 @@ function initMap() {
             this.div.style.lineHeight = '1.4';
             let content = `<strong>${this.name}</strong><br>${this.descr}`;
             if (this.image != null) content += `<img src="https://static.wixstatic.com/media/${this.image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+            content += `<img src="https://static.wixstatic.com/media/7236a3_bb2c9ae5b9664b338a2cafc1d301f73e~mv2.jpg" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
             this.div.innerHTML = content;
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
