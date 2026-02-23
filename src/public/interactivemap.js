@@ -13,9 +13,10 @@ const categories = {
 const areas = [
     {
         name: "Tischtennis",
-        url: "sportarten/volleyball",
+        url: "sportarten/tischtennis",
         descr: "6 Tischtennisplatten und Gerätehäuschen mit Ausrüstung",
         category: "sport",
+        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.8370765, lng: 9.7663122 },
             { lat: 48.8369557, lng: 9.7666099 },
@@ -28,6 +29,7 @@ const areas = [
         url: "sportarten/volleyball",
         descr: "Zwei 9x9m Hartplatz-Felder und ein 8x8m Beachfeld",
         category: "sport",
+        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.836962726928824, lng: 9.766190828726653 },
             { lat: 48.83681642693739, lng: 9.766491732022612 },
@@ -42,6 +44,7 @@ const areas = [
         url: "sportarten/minigolf",
         descr: "18 Löcher Minigolf Platz",
         category: "sport",
+        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.837296557424715, lng: 9.76654362324287 },
             { lat: 48.8371952579206, lng: 9.7668131693689 },
@@ -488,11 +491,12 @@ function initMap() {
     if (typeof google === "undefined") return;
 
     class TooltipOverlay extends google.maps.OverlayView {
-        constructor(position, name, descr) {
+        constructor(position, name, descr, image) {
             super();
             this.position = position;
             this.name = name;
             this.descr = descr;
+            this.image = image; 
             this.div = null;
         }
 
@@ -509,8 +513,9 @@ function initMap() {
             this.div.style.pointerEvents = 'none';
             this.div.style.maxWidth = '220px';
             this.div.style.lineHeight = '1.4';
-            this.div.innerHTML = `<strong>${this.name}</strong><br>${this.descr}`;
-
+            let content = `<strong>${this.name}</strong><br>${this.descr}`;
+            if (this.image != null) content += `<img src="https://static.wixstatic.com/media/${this.image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+            this.div.innerHTML = content;
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
 
@@ -528,7 +533,7 @@ function initMap() {
         }
     }
 
-    function drawPoly(map, bounds, cat, name, descr, url, paths) {
+    function drawPoly(map, bounds, cat, name, descr, url, paths, image = null) {
 
         const poly = new google.maps.Polygon({
             paths: paths,
@@ -540,7 +545,7 @@ function initMap() {
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, name, descr);
+            tooltip = new TooltipOverlay(e.latLng, name, descr, image);
             tooltip.setMap(map);
         });
         poly.addListener("mouseout", () => {
@@ -635,7 +640,7 @@ function initMap() {
     const bounds = new google.maps.LatLngBounds();
 
     areas.forEach(area => {
-        area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path);
+        area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.image);
     });
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m

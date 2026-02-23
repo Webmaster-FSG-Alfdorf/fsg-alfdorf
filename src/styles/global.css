@@ -23,11 +23,11 @@
 a,
 .wixui-rich-text__text a {
   transition: color 0.3s ease-in-out !important;
-  text-decoration: none;
+  /*text-decoration: none;*/
 }
 
 a:hover,
 .wixui-rich-text__text a:hover {
   transition: color 0.3s ease-in-out !important;
-  color: red !important;
+  color: #E85A2A !important;
 }
