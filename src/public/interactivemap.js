@@ -130,7 +130,7 @@ const areas = [
         url: "",
         descr: "Kleines Schwimmbecken mit Dusche und Babybecken",
         category: "infra",
-        images: ["https://static.wixstatic.com/media/7236a3_616699c6e7f14cf190b5d3077d10390a~mv2.jpg"],
+        images: ["7236a3_616699c6e7f14cf190b5d3077d10390a~mv2.jpg"],
         path: [
             { lat: 48.83653406344804, lng: 9.765787959528103 },
             { lat: 48.836465917148075, lng: 9.76599630878448 },
@@ -213,7 +213,7 @@ const areas = [
         descr: "Winterwaschhaus mit WCs, Duschbereich, Spülbereich, Waschmaschinen und Trockner",
         category: "infra",
         images: [
-            "https://static.wixstatic.com/media/7236a3_a4adef7753854c9e86c8987095434742~mv2.jpg",
+            "7236a3_a4adef7753854c9e86c8987095434742~mv2.jpg",
         ],
         path: [
             { lat: 48.83641985978718, lng: 9.763933139503067 },
@@ -228,7 +228,7 @@ const areas = [
         descr: "Sommerwaschhaus mit WCs, Duschbereich Außen-Spülbereich und Behinderten-WC/Dusche sowie Jugend-Matratzenlager im DG",
         category: "infra",
         images: [
-            "https://static.wixstatic.com/media/7236a3_813a5cae910f4dfc8495b7d72b451d6e~mv2.jpg",
+            "7236a3_813a5cae910f4dfc8495b7d72b451d6e~mv2.jpg",
         ],
         path: [
             { lat: 48.83747646374687, lng: 9.765055139200014 },
@@ -258,7 +258,7 @@ const areas = [
         descr: "",
         category: "infra",
         images: [
-            "https://static.wixstatic.com/media/7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg",
+            "7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg",
         ],
         path: [
             { lat: 48.838011690740146, lng: 9.76342625110989 },
@@ -378,10 +378,10 @@ const areas = [
         url: "",
         descr: "Sauna, Jugendraum und Kegelbahn sowie WCs und Duschen sowie Durchgang zur Festhalle (Winter Tischtennis, Winter Lince Dance, ...)",
         images: [
-            "https://static.wixstatic.com/media/7236a3_37eced2e10874563a5d49af95534c8fc~mv2.jpg", // Kegeln
-            "https://static.wixstatic.com/media/7236a3_4419178ab90f4d71b4db9936ab83a238~mv2.jpg", // Dart
-            "https://static.wixstatic.com/media/7236a3_bb2c9ae5b9664b338a2cafc1d301f73e~mv2.jpg", // Airhockey
-            "https://static.wixstatic.com/media/7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg", // Billiard            
+            "7236a3_37eced2e10874563a5d49af95534c8fc~mv2.jpg", // Kegeln
+            "7236a3_4419178ab90f4d71b4db9936ab83a238~mv2.jpg", // Dart
+            "7236a3_bb2c9ae5b9664b338a2cafc1d301f73e~mv2.jpg", // Airhockey
+            "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg", // Billiard            
         ],
         category: "infra",
         path: [
@@ -423,8 +423,8 @@ const areas = [
         url: "",
         category: "infra",
         images: [
-            "https://static.wixstatic.com/media/7236a3_938d7da3eeb7452c93e7f95a33220a07~mv2.jpeg",
-            "https://static.wixstatic.com/media/7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg"
+            "7236a3_938d7da3eeb7452c93e7f95a33220a07~mv2.jpeg",
+            "7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg"
         ],
         path: [
             { lat: 48.836480735375964, lng: 9.76542220477662 },
