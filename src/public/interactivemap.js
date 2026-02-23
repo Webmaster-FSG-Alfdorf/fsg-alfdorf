@@ -16,7 +16,6 @@ const areas = [
         url: "sportarten/tischtennis",
         descr: "6 Tischtennisplatten und Gerätehäuschen mit Ausrüstung",
         category: "sport",
-        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.8370765, lng: 9.7663122 },
             { lat: 48.8369557, lng: 9.7666099 },
@@ -29,7 +28,6 @@ const areas = [
         url: "sportarten/volleyball",
         descr: "Zwei 9x9m Hartplatz-Felder und ein 8x8m Beachfeld",
         category: "sport",
-        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.836962726928824, lng: 9.766190828726653 },
             { lat: 48.83681642693739, lng: 9.766491732022612 },
@@ -44,7 +42,6 @@ const areas = [
         url: "sportarten/minigolf",
         descr: "18 Löcher Minigolf Platz",
         category: "sport",
-        image: "7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg",
         path: [
             { lat: 48.837296557424715, lng: 9.76654362324287 },
             { lat: 48.8371952579206, lng: 9.7668131693689 },
@@ -133,6 +130,7 @@ const areas = [
         url: "",
         descr: "Kleines Schwimmbecken mit Dusche und Babybecken",
         category: "infra",
+        images: ["https://static.wixstatic.com/media/7236a3_616699c6e7f14cf190b5d3077d10390a~mv2.jpg"],
         path: [
             { lat: 48.83653406344804, lng: 9.765787959528103 },
             { lat: 48.836465917148075, lng: 9.76599630878448 },
@@ -214,6 +212,9 @@ const areas = [
         url: "",
         descr: "Winterwaschhaus mit WCs, Duschbereich, Spülbereich, Waschmaschinen und Trockner",
         category: "infra",
+        images: [
+            "https://static.wixstatic.com/media/7236a3_a4adef7753854c9e86c8987095434742~mv2.jpg",
+        ],
         path: [
             { lat: 48.83641985978718, lng: 9.763933139503067 },
             { lat: 48.83635294413979, lng: 9.764042715827653 },
@@ -226,6 +227,9 @@ const areas = [
         url: "",
         descr: "Sommerwaschhaus mit WCs, Duschbereich Außen-Spülbereich und Behinderten-WC/Dusche sowie Jugend-Matratzenlager im DG",
         category: "infra",
+        images: [
+            "https://static.wixstatic.com/media/7236a3_813a5cae910f4dfc8495b7d72b451d6e~mv2.jpg",
+        ],
         path: [
             { lat: 48.83747646374687, lng: 9.765055139200014 },
             { lat: 48.8374383261253, lng: 9.765191333238871 },
@@ -253,6 +257,9 @@ const areas = [
         url: "",
         descr: "",
         category: "infra",
+        images: [
+            "https://static.wixstatic.com/media/7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg",
+        ],
         path: [
             { lat: 48.838011690740146, lng: 9.76342625110989 },
             { lat: 48.83800640923195, lng: 9.764337118120476 },
@@ -370,6 +377,12 @@ const areas = [
         name: "Eingang",
         url: "",
         descr: "Sauna, Jugendraum und Kegelbahn sowie WCs und Duschen sowie Durchgang zur Festhalle (Winter Tischtennis, Winter Lince Dance, ...)",
+        images: [
+            "https://static.wixstatic.com/media/7236a3_37eced2e10874563a5d49af95534c8fc~mv2.jpg", // Kegeln
+            "https://static.wixstatic.com/media/7236a3_4419178ab90f4d71b4db9936ab83a238~mv2.jpg", // Dart
+            "https://static.wixstatic.com/media/7236a3_bb2c9ae5b9664b338a2cafc1d301f73e~mv2.jpg", // Airhockey
+            "https://static.wixstatic.com/media/7236a3_f71cc91ff5e24b439c690ce3257f5e97~mv2.jpg", // Billiard            
+        ],
         category: "infra",
         path: [
             { lat: 48.837465356759495, lng: 9.763924684466808 },
@@ -409,6 +422,10 @@ const areas = [
         descr: "Badesee mit Seerosen-Teich, über eine Steinbrücke verbunden",
         url: "",
         category: "infra",
+        images: [
+            "https://static.wixstatic.com/media/7236a3_938d7da3eeb7452c93e7f95a33220a07~mv2.jpeg",
+            "https://static.wixstatic.com/media/7236a3_ab17cdcaa85d4204964c35172fd9938b~mv2.jpg"
+        ],
         path: [
             { lat: 48.836480735375964, lng: 9.76542220477662 },
             { lat: 48.83642299434768, lng: 9.76564164608839 },
@@ -491,12 +508,12 @@ function initMap() {
     if (typeof google === "undefined") return;
 
     class TooltipOverlay extends google.maps.OverlayView {
-        constructor(position, name, descr, image) {
+        constructor(position, name, descr, images) {
             super();
             this.position = position;
             this.name = name;
             this.descr = descr;
-            this.image = image; 
+            this.images = images; 
             this.div = null;
         }
 
@@ -514,8 +531,8 @@ function initMap() {
             this.div.style.maxWidth = '220px';
             this.div.style.lineHeight = '1.4';
             let content = `<strong>${this.name}</strong><br>${this.descr}`;
-            if (this.image != null) content += `<img src="https://static.wixstatic.com/media/${this.image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
-            content += `<img src="https://static.wixstatic.com/media/7236a3_bb2c9ae5b9664b338a2cafc1d301f73e~mv2.jpg" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+            if (this.images != null && this.images.length > 0) for (const image of this.images)
+                content += `<img src="https://static.wixstatic.com/media/${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
             this.div.innerHTML = content;
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
@@ -534,7 +551,7 @@ function initMap() {
         }
     }
 
-    function drawPoly(map, bounds, cat, name, descr, url, paths, image = null) {
+    function drawPoly(map, bounds, cat, name, descr, url, paths, images = null) {
 
         const poly = new google.maps.Polygon({
             paths: paths,
@@ -546,7 +563,7 @@ function initMap() {
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, name, descr, image);
+            tooltip = new TooltipOverlay(e.latLng, name, descr, images);
             tooltip.setMap(map);
         });
         poly.addListener("mouseout", () => {
@@ -641,7 +658,7 @@ function initMap() {
     const bounds = new google.maps.LatLngBounds();
 
     areas.forEach(area => {
-        area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.image);
+        area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.images);
     });
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
