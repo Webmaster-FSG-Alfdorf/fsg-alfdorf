@@ -23,12 +23,14 @@
 
 a,
 .LhCmu6,
+.F9vrFF,
 .wixui-rich-text__text a {
   transition: color 0.3s ease-in-out !important;
 }
 
 a:hover,
 .LhCmu6:hover,
+.F9vrFF:hover,
 .wixui-rich-text__text a:hover {
   color: #E85A2A !important;
 }
