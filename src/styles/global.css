@@ -31,3 +31,21 @@ a:hover,
   transition: color 0.3s ease-in-out !important;
   color: #E85A2A !important;
 }
+[data-mesh-id*="DocumentItem"],
+.wixui-file-item a,
+.wixui-file-item {
+  transition: all 0.3s ease-in-out !important;
+}
+
+.wixui-file-item:hover [data-testid="file-item-title"],
+.wixui-file-item:hover .wixui-file-item__title,
+.wixui-file-item:hover i {
+  color: #E85A2A !important;
+  transition: color 0.3s ease-in-out !important;
+}
+
+/* Falls du das Icon im Dokument-Element auch färben willst */
+.wixui-file-item:hover svg {
+  fill: #E85A2A !important;
+  transition: fill 0.3s ease-in-out !important;
+}
