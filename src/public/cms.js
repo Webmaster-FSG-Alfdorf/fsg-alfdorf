@@ -285,9 +285,9 @@ export function filterAndSortEvents(filterYouth) {
     switch (type) {
     case "Alle":
         break;
-    case "Sportveranstaltung":
+        case "Sport-Event":
         filtered = true;
-        q = q.hasSome("type", [type, "Sportturnier"]);
+            q = q.hasSome("type", [type, "Sport-Turnier"]);
         break;
     default:
         if (type) {
@@ -331,7 +331,7 @@ export function insertLocation(html, onGround, address) {
         else
             html += `<li><div><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}">🏠 ${a}</a></div>`;
     } else if (onGround)
-        html += `<li><div>🏠 Auf dem Gelände der FSG Alfdorf e.V.</div>`;
+        html += `<li><div>🏠 Auf unserem Gelände</div>`;
     return html;
 }
 
