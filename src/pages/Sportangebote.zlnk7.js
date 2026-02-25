@@ -8,7 +8,7 @@ $w.onReady(function () {
     });
 
 
-    $w("#checkboxAlltime").onChange(() => update());
+    $w("#checkboxNoReservation").onChange(() => update());
     $w("#checkboxWeatherIndep").onChange(() => update());
     $w("#checkboxNoEquipment").onChange(() => update());
     $w("#checkboxNoPrice").onChange(() => update());
@@ -30,7 +30,7 @@ $w.onReady(function () {
             q = q.eq("weatherIndep", true);
         }
 
-        if ($w("#checkboxAlltime").checked) {
+        if ($w("#checkboxNoReservation").checked) {
             filtered = true;
             q = q.isEmpty("alltime");
         }
