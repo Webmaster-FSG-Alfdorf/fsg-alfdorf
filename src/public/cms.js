@@ -5,8 +5,7 @@ import wixData from 'wix-data';
  * @param {object} trg — the text field that will be filled with the summary
  */
 export async function printEventSummary(id, trg) {
-    // need to query data again and include eventDates collection references
-    let event = (await wixData.query("events").eq("_id", id).include("dates").find()).items[0];
+    let event = (await wixData.query("events").eq("_id", id).find()).items[0];
 
     let html = "<ul>";
 
@@ -20,12 +19,11 @@ export async function printEventSummary(id, trg) {
         html += `<li>👤 ${event.responsible}`
 
     if (event.registration)
-        html += `<li>📝 Vornameldung bis ${dateRangeToString({start: new Date(event.registration)})}`;
+        html += `<li>📝 Vornameldung bis ${dateRangeToString({ start: new Date(event.registration) })}`;
 
-    let dates = event.dates || [];
-    if (dates.length > 0) {
+    if (event.dates.length > 0) {
         html += "<li>📅";
-        dates.forEach((ed, i) => {
+        event.dates.forEach((ed, i) => {
             if (i > 0) html += "<br>";
             html += printRanges(ed)
         });
@@ -64,14 +62,14 @@ export function printDataSetSummary(sorted, nameSingularWPrefix, namePlural, fil
     let cnt = sorted.length;
     $w("#textCountResults").text = (() => {
         switch (true) {
-        case cnt == 0:
-            return `Leider keine passenden ${namePlural}`;
-        case cnt == 1:
-            return `1 passende${nameSingularWPrefix}:`;
-        case filtered:
-            return `${cnt} passende ${namePlural}:`;
-        default:
-            return `Alle ${cnt} ${namePlural}:`;
+            case cnt == 0:
+                return `Leider keine passenden ${namePlural}`;
+            case cnt == 1:
+                return `1 passende${nameSingularWPrefix}:`;
+            case filtered:
+                return `${cnt} passende ${namePlural}:`;
+            default:
+                return `Alle ${cnt} ${namePlural}:`;
         }
     })();
 }
@@ -148,18 +146,18 @@ export function listAllRanges(eventDate) {
             res.push({ start: new Date(cur), end: duration > 0 ? new Date(cur.getTime() + duration * 1000) : null });
         if (itv <= 0) return res; // no / invalid interval (in which case we now may at least have one push)
         switch (rct) {
-        case "daily":
-            cur.setDate(cur.getDate() + itv);
-            break;
-        case "weekly":
-            // check each day, but respect itv after having processed all weekdays
-            cur.setDate(cur.getDate() + 1 + (count % 7 == 0 ? (itv - 1) * 7 : 0));
-            break;
-        case "monthly":
-            cur.setMonth(cur.getMonth() + itv);
-            break;
-        default:
-            return res; // no iteration at all
+            case "daily":
+                cur.setDate(cur.getDate() + itv);
+                break;
+            case "weekly":
+                // check each day, but respect itv after having processed all weekdays
+                cur.setDate(cur.getDate() + 1 + (count % 7 == 0 ? (itv - 1) * 7 : 0));
+                break;
+            case "monthly":
+                cur.setMonth(cur.getMonth() + itv);
+                break;
+            default:
+                return res; // no iteration at all
         }
     }
     console.log(`Stopped after ${count} iterations, didn't reach ${end} from ${start}, got to ${cur}`);
@@ -188,31 +186,31 @@ export function printRanges(eventDate) {
     res += dateRangeToString(ranges[0], { year: sameYear ? null : "numeric", month: sameMonth ? null : "short" });
     res += ` jede${n} `;
     switch (eventDate.recurrenceInterval) {
-    case 0:
-    case 1:
-        break;
-    case 2:
-        res += `zweite${n} `;
-        break;
-    case 3:
-        res += `dritte${n} `;
-        break;
-    case 4:
-        res += `vierte${n} `;
-        break;
-    default:
-        res += `${eventDate.recurrenceInterval}. `;
+        case 0:
+        case 1:
+            break;
+        case 2:
+            res += `zweite${n} `;
+            break;
+        case 3:
+            res += `dritte${n} `;
+            break;
+        case 4:
+            res += `vierte${n} `;
+            break;
+        default:
+            res += `${eventDate.recurrenceInterval}. `;
     }
     switch (rct) {
-    case "daily":
-        res += "Tag";
-        break;
-    case "weekly":
-        res += "Woche";
-        break;
-    case "monthly":
-        res += "Monat";
-        break;
+        case "daily":
+            res += "Tag";
+            break;
+        case "weekly":
+            res += "Woche";
+            break;
+        case "monthly":
+            res += "Monat";
+            break;
     }
     if (rct == "weekly" && eventDate.recurrenceDays.length != 7) {
         eventDate.recurrenceDays.forEach((wd, i) => { res += `${i == 0 ? " " : " , "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
@@ -260,7 +258,7 @@ export function generateICS(events) {
 
 export function filterAndSortEvents(filterYouth) {
     let filtered = false;
-    let q = wixData.query("events").include("dates");
+    let q = wixData.query("events");
 
     if (filterYouth) q = q.eq("youth", true); // does not count as filtered
 
@@ -283,17 +281,17 @@ export function filterAndSortEvents(filterYouth) {
 
     const type = $w("#dropdownType").value;
     switch (type) {
-    case "Alle":
-        break;
+        case "Alle":
+            break;
         case "Sport-Event":
-        filtered = true;
-            q = q.hasSome("type", [type, "Sport-Turnier"]);
-        break;
-    default:
-        if (type) {
             filtered = true;
-            q = q.hasSome("type", [type]);
-        }
+            q = q.hasSome("type", [type, "Sport-Turnier"]);
+            break;
+        default:
+            if (type) {
+                filtered = true;
+                q = q.hasSome("type", [type]);
+            }
     }
 
     q.find().then((results) => {
@@ -301,16 +299,13 @@ export function filterAndSortEvents(filterYouth) {
         if (!showPast) {
             const now = new Date();
             res = res.filter(v => {
-                const dates = v.dates || [];
-                const firstStart = dates.length ? new Date(dates[0].start) : null;
+                const firstStart = v.dates.length > 0 ? new Date(v.dates[0].start) : null;
                 return firstStart && firstStart >= now;
             });
         }
         const sorted = res.sort((a, b) => {
-            const aDates = a.dates || [];
-            const bDates = b.dates || [];
-            const aMin = aDates.length ? Math.min(...aDates.map(d => new Date(d.start))) : Infinity;
-            const bMin = bDates.length ? Math.min(...bDates.map(d => new Date(d.start))) : Infinity;
+            const aMin = a.dates.length > 0 ? Math.min(...a.dates.map(d => new Date(d.start))) : Infinity;
+            const bMin = b.dates.length > 0 ? Math.min(...b.dates.map(d => new Date(d.start))) : Infinity;
             return aMin - bMin;
         });
         $w("#repeaterResults").data = sorted;
