@@ -220,7 +220,7 @@ export function printRanges(eventDate) {
     return res;
 }
 
-const WEAKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEAKDAY_NAMES = ["su", "mo", "tu", "we", "th", "fr", "sa"];
 const WEAKDAY_NAMES_HR = ["Sonntags", "Montags", "Dienstags", "Mittwochs", "Donnerstags", "Freitags", "Samstags"];
 
 export function generateICS(events) {
