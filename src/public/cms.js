@@ -21,7 +21,7 @@ export async function printEventSummary(id, trg) {
     if (event.registration)
         html += `<li>📝 Vornameldung bis ${dateRangeToString({ start: new Date(event.registration) })}`;
 
-    if (event.dates.length > 0) {
+    if (event.dates && event.dates.length > 0) {
         html += "<li>📅";
         event.dates.forEach((ed, i) => {
             if (i > 0) html += "<br>";
@@ -88,11 +88,15 @@ export function dateRangeToString(dateRange, { locales = "de-DE", weekday = "sho
         if (year != null) df.year = year;
         if (hour != null) df.hour = hour;
         if (minute != null) df.minute = minute;
-        res += toLocal(dateRange.start).toLocaleString(locales, df);
+        const dStart = toLocal(dateRange.start);
+        res += dStart.toLocaleString(locales, df);
         if (dateRange.end) {
             res += " - ";
-            res += toLocal(dateRange.end).toLocaleString(locales, df);
-            //TODO cut duplicate date part
+            const dEnd = toLocal(dateRange.end);
+            if (dStart.getDate() === dEnd.getDate() && dStart.getMonth() === dEnd.getMonth() && dStart.getFullYear() === dEnd.getFullYear())
+                res += dEnd.toLocaleString(locales, { timeZone: "Europe/Berlin", hour, minute });
+            else
+                res += dEnd.toLocaleString(locales, df);
         }
     }
     return res;
@@ -129,29 +133,35 @@ export function listAllRanges(eventDate) {
     if (!eventDate.start) return res;
     let start = new Date(eventDate.start);
     let end = new Date(eventDate.end || start);
-    let itv = eventDate.recurrenceInterval;
+    let itv = parseInt(eventDate.recurrenceInterval, 10) || 1;
     let rct = eventDate.recurrenceType;
 
-    // contains only the time difference between end and start
-    let duration = end.getHours() * 3600 + end.getMinutes() * 60 + end.getSeconds() - start.getHours() * 3600 - start.getMinutes() * 60 - start.getSeconds();
-    // if no recurrence, and end - start differ by more then a day, this is a multi-day event
-    if (rct != "daily" && rct != "weekly" && rct != "monthly") duration = (end.getTime() - start.getTime()) / 1000;
+    let duration = end.getTime() - start.getTime();
+
+    if (itv > 0) {
+        // duration shall only contain the *time* difference between end and start
+        let e = new Date(end);
+        e.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
+        duration = e.getTime() - start.getTime();
+        if (duration < 0) duration += 24 * 3600 * 1000;
+    }
 
     let cur = new Date(start);
     let count = 0;
     while (count < 1000) { // safety measure against dead loops
         ++count;
         if (cur > end) return res; // end reached
-        if (rct != "weekly" || eventDate.recurrenceDays.includes(WEAKDAY_NAMES[cur.getDay()]))
-            res.push({ start: new Date(cur), end: duration > 0 ? new Date(cur.getTime() + duration * 1000) : null });
-        if (itv <= 0) return res; // no / invalid interval (in which case we now may at least have one push)
+        if (rct != "weekly" || eventDate.recurrenceDays.length == 0 || eventDate.recurrenceDays.includes(WEAKDAY_NAMES[cur.getDay()]))
+            res.push({ start: new Date(cur), end: duration > 0 ? new Date(cur.getTime() + duration) : null });
+        if (itv <= 0) return res; // no repetition, one-time event
         switch (rct) {
             case "daily":
                 cur.setDate(cur.getDate() + itv);
                 break;
             case "weekly":
                 // check each day, but respect itv after having processed all weekdays
-                cur.setDate(cur.getDate() + 1 + (count % 7 == 0 ? (itv - 1) * 7 : 0));
+                cur.setDate(cur.getDate() + 1);
+                if (cur.getDay() === start.getDay()) cur.setDate(cur.getDate() + (itv - 1) * 7);
                 break;
             case "monthly":
                 cur.setMonth(cur.getMonth() + itv);
@@ -299,13 +309,13 @@ export function filterAndSortEvents(filterYouth) {
         if (!showPast) {
             const now = new Date();
             res = res.filter(v => {
-                const firstStart = v.dates.length > 0 ? new Date(v.dates[0].start) : null;
+                const firstStart = v.dates && v.dates.length > 0 ? new Date(v.dates[0].start) : null;
                 return firstStart && firstStart >= now;
             });
         }
         const sorted = res.sort((a, b) => {
-            const aMin = a.dates.length > 0 ? Math.min(...a.dates.map(d => new Date(d.start))) : Infinity;
-            const bMin = b.dates.length > 0 ? Math.min(...b.dates.map(d => new Date(d.start))) : Infinity;
+            const aMin = a.dates && a.dates.length > 0 ? Math.min(...a.dates.map(d => new Date(d.start))) : Infinity;
+            const bMin = b.dates && b.dates.length > 0 ? Math.min(...b.dates.map(d => new Date(d.start))) : Infinity;
             return aMin - bMin;
         });
         $w("#repeaterResults").data = sorted;

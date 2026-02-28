@@ -3,32 +3,42 @@ $w.onReady(function () {
 
         // REPEATER LOGIK: Felder und Lösch-Button verknüpfen
         $w("#datesRepeater").onItemReady(($item, itemData, index) => {
-            // Werte aus dem Objekt-Array in die Eingabefelder schreiben
-            $item("#pickerDatesStart").value = itemData.start;
-            $item("#pickerDatesEnd").value = itemData.end;
-            $item("#dropdownDatesType").value = itemData.recurrenceType || "none";
-            $item("#dropdownDatesInterval").value = itemData.recurrenceInterval || 1;
-            $item("#checkboxDatesDays").value = itemData.recurrenceDays || [];
+            const togglePickers = () => {
+                if ($item("#dropdownDatesType").value === "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
+                if (parseInt($item("#dropdownDatesInterval").value, 10) != 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
+            };
 
-            // Änderungen im Repeater sofort in das Dataset-Array zurückschreiben
-            $item("#pickerDatesStart").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value));
-            $item("#pickerDatesEnd").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value));
-            $item("#dropdownDatesType").onChange(() => updateDatesArray(index, 'recurrenceType', $item("#dropdownDatesType").value));
-            $item("#dropdownDatesInterval").onChange(() => updateDatesArray(index, 'recurrenceInterval', $item("#dropdownDatesInterval").value));
-            $item("#checkboxDatesDays").onChange(() => updateDatesArray(index, 'recurrenceDays', $item("#checkboxDatesDays").value));
+            const setDateTime = (pickerDate, pickerTime, date) => {
+                pickerDate.value = date;
+                pickerTime.value = date ? date.getHours().toString().padStart(2, '0') + ":" + date.getMinutes().toString().padStart(2, '0') : "";
+            };
+            setDateTime($item("#pickerDatesStart"), $item("#pickerDatesStartTime"), itemData.start);
+            setDateTime($item("#pickerDatesEnd"), $item("#pickerDatesEndTime"), itemData.end);
+            $item("#dropdownDatesType").value = itemData.recurrenceType || "daily";
+            $item("#dropdownDatesInterval").value = itemData.recurrenceInterval || 0;
+            $item("#checkboxDatesWeekdays").value = itemData.recurrenceDays || [];
 
-            // LÖSCHEN-BUTTON (jetzt innerhalb der Repeater-Box)
-            $item("#btnDateRemove").onClick(() => {
-                removeDate(index);
+            $item("#pickerDatesStart").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
+            $item("#pickerDatesEnd").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
+            $item("#pickerDatesStartTime").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
+            $item("#pickerDatesEndTime").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
+            $item("#dropdownDatesType").onChange(() => {
+                togglePickers();
+                updateDatesArray(index, 'recurrenceType', $item("#dropdownDatesType").value);
             });
+            $item("#dropdownDatesInterval").onChange(() => {
+                togglePickers();
+                updateDatesArray(index, 'recurrenceInterval', $item("#dropdownDatesInterval").value);
+            });
+            $item("#checkboxDatesWeekdays").onChange(() => updateDatesArray(index, 'recurrenceDays', $item("#checkboxDatesWeekdays").value));
+
+            $item("#btnDateRemove").onClick(() => { removeDate(index); });
+
+            togglePickers();
         });
 
-        // HINZUFÜGEN-BUTTON (außerhalb)
-        $w("#btnDateAdd").onClick(() => {
-            addDate();
-        });
+        $w("#btnDateAdd").onClick(() => { addDate(); });
 
-        // Initiales Laden der Daten
         refreshDatesUI();
     });
 });
@@ -41,7 +51,7 @@ function addDate() {
     dates.push({
         start: new Date(),
         end: new Date(),
-        recurrenceType: "none",
+        recurrenceType: "daily",
         recurrenceInterval: 1,
         recurrenceDays: []
     });
@@ -68,9 +78,18 @@ function refreshDatesUI() {
 }
 
 // Hilfsfunktion: Einzelne Feldänderungen ins Dataset schreiben
-function updateDatesArray(index, field, value) {
+function updateDatesArray(index, field, value, timeValue = null) {
     let item = $w("#eventsDataset").getCurrentItem();
     let dates = item.dates;
-    dates[index][field] = value;
+
+    if (timeValue != null) {
+        let finalDate = new Date(value);
+        const [hours, minutes] = timeValue.split(':');
+        finalDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        dates[index][field] = finalDate;
+    } else {
+        dates[index][field] = value;
+    }
+
     $w("#eventsDataset").setFieldValue("dates", dates);
 }

@@ -27,7 +27,7 @@ $w.onReady(function () {
             html += `<li><div>📝 Voranmeldung bis ${dateRangeToString({ start: new Date(item.registration) })}</div>`;
 
         let allDates = new Map();
-        item.dates.forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+        (item.dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
         html += "<li><div>📅 ";
         if (allDates.size == 0) html += "<i>Diesem Event ist kein spezifischer Termin zugeordnet.</i></div>";
         if (allDates.size > 1) html += `Zu den folgenden ${allDates.size} Terminen: <ul>`;
