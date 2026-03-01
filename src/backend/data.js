@@ -136,8 +136,8 @@ async function accessToEvents() {
     }
     const roles = await currentMember.getRoles();
     console.log("accessToEvents", currentMember, roles.map(r => r._id));
-    // Role is "Events bearbeiten" or "Admin" TODO "Events bearbeiten" role is currently the same as "Gästerverwalter" 
-    return roles.some((role) => role._id == "276cacd9-b43e-4e4e-8e3f-92192eb8eba7" || role._id == "00000000-0000-0000-0000-000000000001");
+    // Role is "Events bearbeiten" or "Admin"
+    return roles.some((role) => role._id == "231ed231-93cf-45c1-9cbe-d99e7e45a27e" || role._id == "00000000-0000-0000-0000-000000000001");
 }
 
 export async function events_beforeInsert(item, context) {
