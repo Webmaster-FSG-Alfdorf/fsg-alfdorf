@@ -130,10 +130,6 @@ function updateDisabledStates(item, insert) {
 }
 
 async function accessToEvents() {
-    if (!wixUsers.currentUser.loggedIn) {
-        console.warn("No user logged in");
-        return false;
-    }
     const roles = await currentMember.getRoles();
     console.log("accessToEvents", currentMember, roles.map(r => r._id));
     // Role is "Events bearbeiten" or "Admin"
@@ -142,14 +138,21 @@ async function accessToEvents() {
 
 export async function events_beforeInsert(item, context) {
     console.log("events_beforeInsert", item._id, context);
-    if (!(await accessToEvents())) throw new Error("Not allowed");
-    console.log("events_beforeInsert finally", item);
+    if (!(await accessToEvents())) {
+        console.warn("User is not allowed to insert events");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to insert events");
     return item;
 }
 
 export async function events_beforeRemove(item, context) {
     console.log("events_beforeRemove", item._id, context);
-    if (!(await accessToEvents())) throw new Error("Not allowed");
+    if (!(await accessToEvents())) {
+        console.warn("User is not allowed to remove events");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to remove events");
     return item;
 }
 
