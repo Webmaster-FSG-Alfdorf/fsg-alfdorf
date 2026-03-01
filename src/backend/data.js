@@ -128,3 +128,34 @@ function updateDisabledStates(item, insert) {
     else
         wixData.update("disabledDates", data);
 }
+
+async function accessToEvents() {
+    if (!wixUsers.currentUser.loggedIn) {
+        console.warn("No user logged in");
+        return false;
+    }
+    const roles = await currentMember.getRoles();
+    console.log("accessToEvents", currentMember, roles.map(r => r._id));
+    // Role is "Events bearbeiten" or "Admin" TODO "Events bearbeiten" role is currently the same as "Gästerverwalter" 
+    return roles.some((role) => role._id == "276cacd9-b43e-4e4e-8e3f-92192eb8eba7" || role._id == "00000000-0000-0000-0000-000000000001");
+}
+
+export async function events_beforeInsert(item, context) {
+    console.log("events_beforeInsert", item._id, context);
+    if (!(await accessToEvents())) throw new Error("Not allowed");
+    console.log("events_beforeInsert finally", item);
+    return item;
+}
+
+export async function events_beforeRemove(item, context) {
+    console.log("events_beforeRemove", item._id, context);
+    if (!(await accessToEvents())) throw new Error("Not allowed");
+    return item;
+}
+
+export async function events_beforeUpdate(item, context) {
+    console.log("events_beforeUpdate", item._id, context);
+    if (!(await accessToEvents())) throw new Error("Not allowed");
+    console.log("events_beforeUpdate finally", item);
+    return item;
+}
