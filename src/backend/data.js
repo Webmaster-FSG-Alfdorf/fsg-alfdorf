@@ -155,7 +155,10 @@ export async function events_beforeRemove(item, context) {
 
 export async function events_beforeUpdate(item, context) {
     console.log("events_beforeUpdate", item._id, context);
-    if (!(await accessToEvents())) throw new Error("Not allowed");
-    console.log("events_beforeUpdate finally", item);
+    if (!(await accessToEvents())) {
+        console.warn("User is not allowed to update events");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to update events");
     return item;
 }
