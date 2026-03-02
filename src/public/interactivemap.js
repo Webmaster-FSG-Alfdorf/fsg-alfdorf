@@ -504,16 +504,36 @@ const places = [
     [236, 240, 48.83854851024745, 9.76624427110358, 48.83880778534419, 9.766529292898875],
 ];
 
+let map;
+let bounds;
+let mobile;
+
 function initMap() {
     if (typeof google === "undefined") return;
 
+    mobile = window.innerWidth <= 768;
+    map = new google.maps.Map(document.getElementById("map"), {
+        zoom: mobile ? 17 : 18,
+        center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
+        mapTypeId: "satellite",
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false
+    });
+
+    bounds = new google.maps.LatLngBounds();
+
+    window.parent.postMessage("ready", "*");
+}
+
+function drawCMSContent(cmsAreas) {
     class TooltipOverlay extends google.maps.OverlayView {
         constructor(position, name, descr, images) {
             super();
             this.position = position;
             this.name = name;
             this.descr = descr;
-            this.images = images; 
+            this.images = images;
             this.div = null;
         }
 
@@ -645,18 +665,6 @@ function initMap() {
         poly.getPath().forEach(latlng => bounds.extend(latlng));
     }
 
-    const mobile = window.innerWidth <= 768;
-    const map = new google.maps.Map(document.getElementById("map"), {
-        zoom: mobile ? 17 : 18,
-        center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
-        mapTypeId: "satellite",
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false
-    });
-
-    const bounds = new google.maps.LatLngBounds();
-
     areas.forEach(area => {
         area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.images);
     });
@@ -725,8 +733,21 @@ function initMap() {
         style="position:absolute; top:100px; left:10px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif; font-size:14px;">
         <strong>Legende</strong>
     </div>
+
+    <script>
+        let areas = [];
+
+        // 2. Empfänger für die CMS-Daten von Wix
+        window.onmessage = (event) => {
+            if (event.data && Array.isArray(event.data)) {
+                areas = event.data;
+                drawCMSContent(areas); 
+            }
+        };
+    </script>
+
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCerYSObwqwjPepIBEwZUn4Q1Zgee-f7RI&callback=initMap" async defer></script>
     <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
 </body>
 </html>
- */
+*/
