@@ -68,145 +68,150 @@ let bounds;
 let mobile = false;
 let areas = [];
 
-class TooltipOverlay extends google.maps.OverlayView {
-    constructor(position, name, descr, images) {
-        super();
-        this.position = position;
-        this.name = name;
-        this.descr = descr;
-        this.images = images;
-        this.div = null;
-    }
+function drawCMSContent(areasCMS) {
 
-    onAdd() {
-        this.div = document.createElement('div');
-        this.div.style.position = 'absolute';
-        this.div.style.background = 'rgba(255, 255, 255, 0.9)';
-        this.div.style.border = '1px solid #999';
-        this.div.style.borderRadius = '8px';
-        this.div.style.padding = '8px 12px';
-        this.div.style.fontSize = '14px';
-        this.div.style.color = '#333';
-        this.div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-        this.div.style.pointerEvents = 'none';
-        this.div.style.maxWidth = '220px';
-        this.div.style.lineHeight = '1.4';
-        let content = `<strong>${this.name}</strong><br>${this.descr}`;
-        if (this.images != null && this.images.length > 0) for (const image of this.images)
-            content += `<img src="https://static.wixstatic.com/media/${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
-        this.div.innerHTML = content;
-        this.getPanes().overlayMouseTarget.appendChild(this.div);
-    }
+    class TooltipOverlay extends google.maps.OverlayView {
+        constructor(position, name, descr, images) {
+            super();
+            this.position = position;
+            this.name = name;
+            this.descr = descr;
+            this.images = images;
+            this.div = null;
+        }
 
-    draw() {
-        if (this.div) {
-            const pos = this.getProjection().fromLatLngToDivPixel(this.position);
-            this.div.style.left = `${pos.x}px`;
-            this.div.style.top = `${pos.y - 30}px`;
+        onAdd() {
+            this.div = document.createElement('div');
+            this.div.style.position = 'absolute';
+            this.div.style.background = 'rgba(255, 255, 255, 0.9)';
+            this.div.style.border = '1px solid #999';
+            this.div.style.borderRadius = '8px';
+            this.div.style.padding = '8px 12px';
+            this.div.style.fontSize = '14px';
+            this.div.style.color = '#333';
+            this.div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+            this.div.style.pointerEvents = 'none';
+            this.div.style.maxWidth = '220px';
+            this.div.style.lineHeight = '1.4';
+            let content = `<strong>${this.name}</strong><br>${this.descr}`;
+            if (this.images != null && this.images.length > 0) for (const image of this.images)
+                content += `<img src="https://static.wixstatic.com/media/${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+            this.div.innerHTML = content;
+            this.getPanes().overlayMouseTarget.appendChild(this.div);
+        }
+
+        draw() {
+            if (this.div) {
+                const pos = this.getProjection().fromLatLngToDivPixel(this.position);
+                this.div.style.left = `${pos.x}px`;
+                this.div.style.top = `${pos.y - 30}px`;
+            }
+        }
+
+        onRemove() {
+            if (this.div) this.div.remove();
+            this.div = null;
         }
     }
 
-    onRemove() {
-        if (this.div) this.div.remove();
-        this.div = null;
+    function drawPoly(map, bounds, cat, name, descr, url, paths, images = null) {
+
+        const poly = new google.maps.Polygon({
+            paths: paths,
+            map,
+            fillColor: categories[cat].color,
+            fillOpacity: categories[cat].opacity,
+            strokeWeight: polyBorderWidth,
+        });
+        // handle a tooltip when moving mouse over the place
+        let tooltip;
+        poly.addListener("mouseover", (e) => {
+            tooltip = new TooltipOverlay(e.latLng, name, descr, images);
+            tooltip.setMap(map);
+        });
+        poly.addListener("mouseout", () => {
+            if (tooltip) {
+                tooltip.setMap(null);
+                tooltip = null;
+            }
+        });
+
+        if (url != "")
+            poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-a/" + url, "self"); });
+
+        poly.getPath().forEach(latlng => bounds.extend(latlng));
+
+        return poly;
     }
-}
 
-function drawPoly(map, bounds, cat, name, descr, url, paths, images = null) {
-
-    const poly = new google.maps.Polygon({
-        paths: paths,
-        map,
-        fillColor: categories[cat].color,
-        fillOpacity: categories[cat].opacity,
-        strokeWeight: polyBorderWidth,
-    });
-    // handle a tooltip when moving mouse over the place
-    let tooltip;
-    poly.addListener("mouseover", (e) => {
-        tooltip = new TooltipOverlay(e.latLng, name, descr, images);
-        tooltip.setMap(map);
-    });
-    poly.addListener("mouseout", () => {
-        if (tooltip) {
-            tooltip.setMap(null);
-            tooltip = null;
-        }
-    });
-
-    if (url != "")
-        poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-a/" + url, "self"); });
-
-    poly.getPath().forEach(latlng => bounds.extend(latlng));
-
-    return poly;
-}
-
-function createLegend() {
-    const legend = document.getElementById("legend");
-    for (const category of Object.values(categories)) {
-        const item = document.createElement("div");
-        item.innerHTML = `
+    function createLegend() {
+        const legend = document.getElementById("legend");
+        for (const category of Object.values(categories)) {
+            const item = document.createElement("div");
+            item.innerHTML = `
               <span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>
               ${capitalize(category.legend)}
             `;
-        legend.appendChild(item);
+            legend.appendChild(item);
+        }
     }
-}
 
-function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function startSearch(map) {
-    const bounds = new google.maps.LatLngBounds();
-    let s = document.getElementById("search").value.trim().toLowerCase();
-    let found = false
-    if (s) {
-        if (s.startsWith("nr ")) s = s.substring(3).trim();
-        if (s.startsWith("platz ")) s = s.substring(6).trim();
-        if (s.startsWith("place ")) s = s.substring(6).trim();
-        areas.forEach(area => {
-            if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s))) {
-                found = true;
-                flashPoly(bounds, area.poly, area.category);
-            }
-        });
-        places.forEach(stripe => {
-            const opts = stripe[6];
-            if (opts && opts["poly"]) {
-                if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
-                    const c = nr[s.length];
-                    if (nr.startsWith(s) && !(c >= '0' && c <= '9')) {
-                        found = true;
-                        flashPoly(bounds, opts["poly"][i], "places");
-                    }
-                });
-                if (opts["names"]) opts["names"].forEach((name, i) => {
-                    if (name.toLowerCase().includes(s)) {
-                        found = true;
-                        flashPoly(bounds, opts["poly"][i], "places");
-                    }
-                });
-            }
-        });
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
     }
-    if (found) map.fitBounds(bounds);
-}
 
-function flashPoly(bounds, poly, cat) {
-    const optFlash = { fillOpacity: 1 };
-    const optOrg = { fillOpacity: categories[cat].opacity };
-    poly.setOptions(optFlash);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
-    setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 3);
-    setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 4);
-    setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 5);
-    poly.getPath().forEach(latlng => bounds.extend(latlng));
-}
+    function startSearch(map) {
+        const bounds = new google.maps.LatLngBounds();
+        let s = document.getElementById("search").value.trim().toLowerCase();
+        let found = false
+        if (s) {
+            if (s.startsWith("nr ")) s = s.substring(3).trim();
+            if (s.startsWith("platz ")) s = s.substring(6).trim();
+            if (s.startsWith("place ")) s = s.substring(6).trim();
+            areas.forEach(area => {
+                if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s))) {
+                    found = true;
+                    flashPoly(bounds, area.poly, area.category);
+                }
+            });
+            places.forEach(stripe => {
+                const opts = stripe[6];
+                if (opts && opts["poly"]) {
+                    if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
+                        const c = nr[s.length];
+                        if (nr.startsWith(s) && !(c >= '0' && c <= '9')) {
+                            found = true;
+                            flashPoly(bounds, opts["poly"][i], "places");
+                        }
+                    });
+                    if (opts["names"]) opts["names"].forEach((name, i) => {
+                        if (name.toLowerCase().includes(s)) {
+                            found = true;
+                            flashPoly(bounds, opts["poly"][i], "places");
+                        }
+                    });
+                }
+            });
+        }
+        if (found) map.fitBounds(bounds);
+    }
 
-function drawCMSContent(areasCMS) {
+    function flashPoly(bounds, poly, cat) {
+        const optFlash = { fillOpacity: 1 };
+        const optOrg = { fillOpacity: categories[cat].opacity };
+        poly.setOptions(optFlash);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
+        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 3);
+        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 4);
+        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 5);
+        poly.getPath().forEach(latlng => bounds.extend(latlng));
+    }
+
+
+    // actual start of drawCMSContent
+    /////////////////////////////////
+
     areas = areasCMS;
     console.log("drawCMSContent", typeof google, areas);
     if (typeof google === "undefined") return;
