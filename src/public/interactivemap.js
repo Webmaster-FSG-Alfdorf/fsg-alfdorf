@@ -509,6 +509,7 @@ let bounds;
 let mobile;
 
 function initMap() {
+    console.log("initMap", typeof google);
     if (typeof google === "undefined") return;
 
     mobile = window.innerWidth <= 768;
@@ -523,6 +524,7 @@ function initMap() {
 
     bounds = new google.maps.LatLngBounds();
 
+    console.log("initMap", "map initialized, sending ready");
     window.parent.postMessage("ready", "*");
 }
 
@@ -665,6 +667,8 @@ function drawCMSContent(cmsAreas) {
         poly.getPath().forEach(latlng => bounds.extend(latlng));
     }
 
+    console.log("drawCMSContent", "drawing CMS content", cmsAreas);
+
     areas.forEach(area => {
         area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.images);
     });
@@ -737,8 +741,8 @@ function drawCMSContent(cmsAreas) {
     <script>
         let areas = [];
 
-        // 2. Empfänger für die CMS-Daten von Wix
         window.onmessage = (event) => {
+            console.log("window.onmessage", event);
             if (event.data && Array.isArray(event.data)) {
                 areas = event.data;
                 drawCMSContent(areas); 
