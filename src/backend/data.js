@@ -165,3 +165,40 @@ export async function events_beforeUpdate(item, context) {
     console.log("User is allowed to update events");
     return item;
 }
+
+async function accessToFoods() {
+    const roles = await currentMember.getRoles();
+    console.log("accessToFoods", currentMember, roles.map(r => r._id));
+    // Role is "Speisen bearbeiten" or "Admin"
+    return roles.some((role) => role._id == "231ed231-93cf-45c1-9cbe-d99e7e45a27e" || role._id == "00000000-0000-0000-0000-000000000001");
+}
+
+export async function foods_beforeInsert(item, context) {
+    console.log("foods_beforeInsert", item._id, context);
+    if (!(await accessToFoods())) {
+        console.warn("User is not allowed to insert foods");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to insert foods");
+    return item;
+}
+
+export async function foods_beforeRemove(item, context) {
+    console.log("foods_beforeRemove", item._id, context);
+    if (!(await accessToFoods())) {
+        console.warn("User is not allowed to remove foods");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to remove foods");
+    return item;
+}
+
+export async function foods_beforeUpdate(item, context) {
+    console.log("foods_beforeUpdate", item._id, context);
+    if (!(await accessToFoods())) {
+        console.warn("User is not allowed to update foods");
+        throw new Error("Not allowed");
+    }
+    console.log("User is allowed to update foods");
+    return item;
+}
