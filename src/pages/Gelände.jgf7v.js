@@ -1,3 +1,4 @@
+import wixData from 'wix-data';
 import wixWindow from 'wix-window';
 
 $w.onReady(async function () {
@@ -13,8 +14,8 @@ $w.onReady(async function () {
         category: item.category,
         placeNumber: item.placeNumber,
         url: item.url,
-        path: item.path ? JSON.parse(item.path) : [],
-        images: item.images ? item.images.map(img => img.src.split('/').pop()) : []
+        path: item.path,
+        images: item.images
     }));
 
     $w("#htmlMap").onMessage((event) => {
