@@ -508,26 +508,6 @@ let map;
 let bounds;
 let mobile;
 
-function initMap() {
-    console.log("initMap", typeof google);
-    if (typeof google === "undefined") return;
-
-    mobile = window.innerWidth <= 768;
-    map = new google.maps.Map(document.getElementById("map"), {
-        zoom: mobile ? 17 : 18,
-        center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
-        mapTypeId: "satellite",
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false
-    });
-
-    bounds = new google.maps.LatLngBounds();
-
-    console.log("initMap", "map initialized, sending ready");
-    window.parent.postMessage("ready", "*");
-}
-
 function drawCMSContent(cmsAreas) {
     class TooltipOverlay extends google.maps.OverlayView {
         constructor(position, name, descr, images) {
@@ -667,7 +647,22 @@ function drawCMSContent(cmsAreas) {
         poly.getPath().forEach(latlng => bounds.extend(latlng));
     }
 
-    console.log("drawCMSContent", "drawing CMS content", cmsAreas);
+    console.log("drawCMSContent", typeof google, cmsAreas);
+    if (typeof google === "undefined") return;
+
+    mobile = window.innerWidth <= 768;
+    map = new google.maps.Map(document.getElementById("map"), {
+        zoom: mobile ? 17 : 18,
+        center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
+        mapTypeId: "satellite",
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false
+    });
+
+    bounds = new google.maps.LatLngBounds();
+
+    console.log("drawCMSContent", "drawing CMS content");
 
     areas.forEach(area => {
         area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.images);
