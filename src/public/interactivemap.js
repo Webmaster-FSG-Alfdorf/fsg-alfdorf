@@ -183,7 +183,7 @@ function drawCMSContent(areasCMS) {
                     const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
                     const lngS = distributeLng ? lngDiff / cnt : defWidthLng; // longitude size of the rectangle
                     const have = areas.find(a => a.category == area.category && a.placeNumber == area.placeNumber + i);
-                    const areaOnePlace = have ?? { category: area.category, title: area.placeNumber + i };
+                    const areaOnePlace = have ?? { category: area.category, title: String(area.placeNumber + i) };
                     if (!have) areas.push(areaOnePlace);
                     areaOnePlace.poly = drawPoly(
                         map,
