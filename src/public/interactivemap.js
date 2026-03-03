@@ -168,7 +168,7 @@ function drawCMSContent(areasCMS) {
             if (s.startsWith("platz ")) s = s.substring(6).trim();
             if (s.startsWith("place ")) s = s.substring(6).trim();
             areas.forEach(area => {
-                if (area.poly && (area.name.toLowerCase().includes(s) || area.description.toLowerCase().includes(s))) {
+                if (area.poly && ((area.name && area.name.toLowerCase().includes(s)) || (area.description && area.description.toLowerCase().includes(s)))) {
                     found = true;
                     flashPoly(bounds, area.poly, area.category);
                 }
