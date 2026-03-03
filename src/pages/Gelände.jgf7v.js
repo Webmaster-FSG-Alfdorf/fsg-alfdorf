@@ -6,7 +6,7 @@ $w.onReady(async function () {
         wixWindow.openLightbox("InteractiveMap");
     });
 
-    $w("#htmlMap").onMessage((event) => async () => {
+    $w("#htmlMap").onMessage(async (event) => {
         if (event.data === "ready") {
             const { items } = await wixData.query("mapAreas").find();
             $w("#htmlMap").postMessage(items);
