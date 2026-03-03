@@ -13,7 +13,7 @@ const categories = {
 let map;
 let bounds;
 let mobile = false;
-let areas = [];
+let areasSearch = [];
 
 function drawCMSContent(areasCMS) {
 
@@ -61,19 +61,19 @@ function drawCMSContent(areasCMS) {
         }
     }
 
-    function drawPoly(map, bounds, cat, name, descr, url, paths, images = null) {
+    function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
 
         const poly = new google.maps.Polygon({
             paths: paths,
             map,
-            fillColor: categories[cat].color,
-            fillOpacity: categories[cat].opacity,
+            fillColor: categories[category].color,
+            fillOpacity: categories[category].opacity,
             strokeWeight: polyBorderWidth,
         });
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, name, descr, images);
+            tooltip = new TooltipOverlay(e.latLng, title, description, images);
             tooltip.setMap(map);
         });
         poly.addListener("mouseout", () => {
@@ -87,7 +87,12 @@ function drawCMSContent(areasCMS) {
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
 
-        return poly;
+        areasSearch.push({
+            title: String(title ?? "").toLowerCase(),
+            description: String(description ?? "").toLowerCase(),
+            category,
+            poly
+        });
     }
 
     function createLegend() {
@@ -114,12 +119,12 @@ function drawCMSContent(areasCMS) {
             if (s.startsWith("nr ")) s = s.substring(3).trim();
             if (s.startsWith("platz ")) s = s.substring(6).trim();
             if (s.startsWith("place ")) s = s.substring(6).trim();
-            areas.forEach(area => {
-                if (area.poly && ((area.name && area.name.toLowerCase().includes(s)) || (area.description && area.description.toLowerCase().includes(s)))) {
+            areasSearch.forEach(area => {
+                if (area.title.includes(s) || area.description.includes(s)) {
                     found = true;
                     flashPoly(bounds, area.poly, area.category);
                 }
-                if (area.poly && area.category == "places" && area.title && area.title.startsWith(s) && !(area.title.length > s.length && area.title[s.length] >= '0' && area.title[s.length] <= '9')) {
+                if (area.category == "places" && area.title.startsWith(s) && !(area.title.length > s.length && area.title[s.length] >= '0' && area.title[s.length] <= '9')) {
                     found = true;
                     flashPoly(bounds, area.poly, area.category);
                 }
@@ -144,8 +149,8 @@ function drawCMSContent(areasCMS) {
     // actual start of drawCMSContent
     /////////////////////////////////
 
-    areas = areasCMS;
-    console.log("drawCMSContent", areas);
+    console.log("drawCMSContent", areasCMS);
+    areasSearch = [];
 
     mobile = window.innerWidth <= 768;
     map = new google.maps.Map(document.getElementById("map"), {
@@ -164,54 +169,51 @@ function drawCMSContent(areasCMS) {
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
 
-    areas.forEach(area => {
-        if (area.path) {
-            if (area.placesCount && area.placesCount > 0 && area.path && area.path.length == 2) {
-                const lat0 = area.path[0].lat;
-                const lng0 = area.path[0].lng;
-                const latN = area.path[1].lat;
-                const lngN = area.path[1].lng;
-                const cnt = area.placesCount - 1; // number of places between
-                const latDiff = latN - lat0;
-                const lngDiff = lngN - lng0;
-                // check in which direction we want to distribute our places (in none, if we only have one)
-                const distributeLng = lngDiff > latDiff && cnt > 0;
-                const distributeLat = lngDiff < latDiff && cnt > 0;
-                for (let i = 0; i <= cnt; ++i) {
-                    const latC = cnt == 0 ? lat0 : lat0 + latDiff / cnt * i;
-                    const lngC = cnt == 0 ? lng0 : lng0 + lngDiff / cnt * i;
-                    const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
-                    const lngS = distributeLng ? lngDiff / cnt : defWidthLng; // longitude size of the rectangle
-                    const have = areas.find(a => a.category == area.category && a.placeNumber == area.placeNumber + i);
-                    const areaOnePlace = have ?? { category: area.category, title: String(area.placeNumber + i) };
-                    if (!have) areas.push(areaOnePlace);
-                    areaOnePlace.poly = drawPoly(
-                        map,
-                        bounds,
-                        areaOnePlace.category,
-                        areaOnePlace.title ?? "",
-                        areaOnePlace?.description ?? "Stellplatz",
-                        areaOnePlace.url,
-                        areaOnePlace.path ?? [
-                            { lat: latC - latS / 2, lng: lngC - lngS / 2 },
-                            { lat: latC + latS / 2, lng: lngC - lngS / 2 },
-                            { lat: latC + latS / 2, lng: lngC + lngS / 2 },
-                            { lat: latC - latS / 2, lng: lngC + lngS / 2 },
-                        ],
-                        areaOnePlace.images ? areaOnePlace.images.map((img => img.src)) : []);
-                }
-            } else
-                area.poly = drawPoly(
+    areasCMS.forEach(area => {
+        if (area.path && area.placesCount && area.placesCount > 0 && area.path.length == 2) {
+            const lat0 = area.path[0].lat;
+            const lng0 = area.path[0].lng;
+            const latN = area.path[1].lat;
+            const lngN = area.path[1].lng;
+            const cnt = area.placesCount - 1; // number of places between
+            const latDiff = latN - lat0;
+            const lngDiff = lngN - lng0;
+            // check in which direction we want to distribute our places (in none, if we only have one)
+            const distributeLng = lngDiff > latDiff && cnt > 0;
+            const distributeLat = lngDiff < latDiff && cnt > 0;
+            for (let i = 0; i <= cnt; ++i) {
+                const latC = cnt == 0 ? lat0 : lat0 + latDiff / cnt * i;
+                const lngC = cnt == 0 ? lng0 : lng0 + lngDiff / cnt * i;
+                const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
+                const lngS = distributeLng ? lngDiff / cnt : defWidthLng; // longitude size of the rectangle
+                const haveOverride = areasCMS.find(a => a.category == area.category && a.placeNumber == area.placeNumber + i && !a.placesCount);
+                drawPoly(
                     map,
                     bounds,
-                    area.category,
-                    area.title ?? "",
-                    area.description ?? "",
-                    area.url,
-                    area.path,
-                    area.images ? area.images.map((img => img.src)) : [],
-                )
-        }
+                    haveOverride?.category ?? area.category,
+                    String(haveOverride?.title ?? area.placeNumber + i),
+                    String(haveOverride?.description ?? "Stellplatz"),
+                    haveOverride?.url,
+                    haveOverride?.path ?? [
+                        { lat: latC - latS / 2, lng: lngC - lngS / 2 },
+                        { lat: latC + latS / 2, lng: lngC - lngS / 2 },
+                        { lat: latC + latS / 2, lng: lngC + lngS / 2 },
+                        { lat: latC - latS / 2, lng: lngC + lngS / 2 },
+                    ],
+                    haveOverride?.images ? haveOverride.images.map((img => img.src)) : []
+                );
+            }
+        } else if (area.path)
+            drawPoly(
+                map,
+                bounds,
+                area.category,
+                area.title ?? "",
+                area.description ?? "",
+                area.url,
+                area.path,
+                area.images ? area.images.map((img => img.src)) : [],
+            );
     });
 
     map.fitBounds(bounds);
