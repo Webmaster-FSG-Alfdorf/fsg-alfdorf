@@ -13,13 +13,13 @@ const categories = {
 // an array of array with [place nr first, place nr last, latitude of center point first, longitude of center point first, latitude of center point last, longitude of center point last, ]
 // each such array defines a stripe of equaly distributed places
 const places = [
-    [1, 18, 48.83575977980719, 9.763329800116484, 48.8373670028252, 9.763395194141582, { 16: "16a", 17: "16b", 18: "16c" }],
+    [1, 18, 48.83575977980719, 9.763329800116484, 48.8373670028252, 9.763395194141582],
     [17, 26, 48.83633097514284, 9.763506424511618, 48.837156055803014, 9.763597303632862],
-    [26, 32, 48.836539221564585, 9.763718603912853, 48.837062440499906, 9.763793679924333, { 26: "27a", 27: "27b" }],
+    [26, 32, 48.836539221564585, 9.763718603912853, 48.837062440499906, 9.763793679924333],
     [33, 34, 48.83715799798317, 9.763844313668455, 48.83725602968279, 9.763948928670361],
     [35, 42, 48.83661293301137, 9.763862864599455, 48.83719817579144, 9.764027775468218],
     [43, 49, 48.83650495368246, 9.764006995755722, 48.837099327277585, 9.764124142956964],
-    [50, 52, 48.83662401888115, 9.76416343005434, 48.836870631921, 9.764220931828527, { 51: "51a", 52: "51b" }],
+    [50, 52, 48.83662401888115, 9.76416343005434, 48.836870631921, 9.764220931828527],
     [52, 55, 48.835620446732456, 9.76350271323776, 48.83594508147658, 9.763574468528457],
     [56, 60, 48.83558995854129, 9.763796659884786, 48.836092986240914, 9.763869306728248],
     [61, 61, 48.83617907642538, 9.763747294938572],
@@ -28,15 +28,15 @@ const places = [
     [66, 68, 48.83602927244979, 9.764188067168485, 48.836233158800944, 9.764272979454592],
     [69, 70, 48.83567000006237, 9.764180332312964, 48.83567445026981, 9.764337888210795],
     // 71 ???
-    [88, 88, 48.83635976830587, 9.764333386670462, null, null, { 88: "88 ???" }],
-    [72, 75, 48.83595075634674, 9.76429645585823, 48.836227941473815, 9.764410298332301, { 75: "75a" }],
-    [75, 75, 48.836315232020254, 9.764486022962728, null, null, { 75: "75b" }],
-    [75, 75, 48.83642155709868, 9.764661630195354, null, null, { 75: "75c" }],
+    [8801, 8801, 48.83635976830587, 9.764333386670462, null, null],
+    [72, 75, 48.83595075634674, 9.76429645585823, 48.836227941473815, 9.764410298332301],
+    [7501, 7501, 48.836315232020254, 9.764486022962728, null, null],
+    [7502, 7502, 48.83642155709868, 9.764661630195354, null, null],
     [76, 82, 48.83579648910798, 9.764333734514906, 48.83629219884369, 9.76460345990195],
-    [83, 89, 48.838025890354764, 9.76456286434779, 48.83841502919975, 9.76526876253226, { 88: "88a ???", 89: "88b ???" }],
-    [89, 96, 48.836933553520986, 9.764451193381408, 48.83762380215355, 9.764576598975896, { "93_name": "Oliver Hoffmann und Katrin Feisst - EDV<br>WLAN/Wifi<br>Kegelbahn<br>Volleyball" }],
-    [97, 104, 48.8377249811905, 9.764658473445385, 48.83814164930723, 9.765360277010771, { 103: "103 ???", 104: "104 ???" }],
-    [104, 111, 48.83699352256115, 9.764613652257806, 48.83760122032082, 9.764759719592085, { 104: "105a", 105: "105b" }],
+    [83, 89, 48.838025890354764, 9.76456286434779, 48.83841502919975, 9.76526876253226],
+    [89, 96, 48.836933553520986, 9.764451193381408, 48.83762380215355, 9.764576598975896],
+    [97, 10401, 48.8377249811905, 9.764658473445385, 48.83814164930723, 9.765360277010771],
+    [104, 111, 48.83699352256115, 9.764613652257806, 48.83760122032082, 9.764759719592085],
     [112, 117, 48.83767668884647, 9.764802689616243, 48.837981295644944, 9.765297655986885],
     [118, 119, 48.836727887064, 9.76457178467303, 48.836810959549055, 9.76465863902205],
     [120, 127, 48.83689394878972, 9.76473713452227, 48.837559011855504, 9.76490722029549],
@@ -136,7 +136,7 @@ function drawCMSContent(areasCMS) {
             }
         });
 
-        if (url != "") poly.addListener("click", () => { window.open(url, "self"); });
+        if (url) poly.addListener("click", () => { window.open(url, "self"); });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
 
@@ -168,27 +168,13 @@ function drawCMSContent(areasCMS) {
             if (s.startsWith("platz ")) s = s.substring(6).trim();
             if (s.startsWith("place ")) s = s.substring(6).trim();
             areas.forEach(area => {
-                if (area.poly && (area.name.toLowerCase().includes(s) || area.descr.toLowerCase().includes(s))) {
+                if (area.poly && (area.name.toLowerCase().includes(s) || area.description.toLowerCase().includes(s))) {
                     found = true;
                     flashPoly(bounds, area.poly, area.category);
                 }
-            });
-            places.forEach(stripe => {
-                const opts = stripe[6];
-                if (opts && opts["poly"]) {
-                    if (opts["nrs"]) opts["nrs"].forEach((nr, i) => {
-                        const c = nr[s.length];
-                        if (nr.startsWith(s) && !(c >= '0' && c <= '9')) {
-                            found = true;
-                            flashPoly(bounds, opts["poly"][i], "places");
-                        }
-                    });
-                    if (opts["names"]) opts["names"].forEach((name, i) => {
-                        if (name.toLowerCase().includes(s)) {
-                            found = true;
-                            flashPoly(bounds, opts["poly"][i], "places");
-                        }
-                    });
+                if (area.poly && area.category == "places" && area.title && area.title.startsWith(s) && !(area.title.length > s.length && area.title[s.length] >= '0' && area.title[s.length] <= '9')) {
+                    found = true;
+                    flashPoly(bounds, area.poly, area.category);
                 }
             });
         }
@@ -212,8 +198,7 @@ function drawCMSContent(areasCMS) {
     /////////////////////////////////
 
     areas = areasCMS;
-    console.log("drawCMSContent", typeof google, areas);
-    if (typeof google === "undefined") return;
+    console.log("drawCMSContent", areas);
 
     mobile = window.innerWidth <= 768;
     map = new google.maps.Map(document.getElementById("map"), {
@@ -230,7 +215,7 @@ function drawCMSContent(areasCMS) {
     console.log("drawCMSContent", "drawing CMS content");
 
     areas.forEach(area => {
-        area.poly = drawPoly(
+        if (area.path) area.poly = drawPoly(
             map,
             bounds,
             area.category,
@@ -242,39 +227,40 @@ function drawCMSContent(areasCMS) {
         )
     });
 
+    // all places have their path calculated as part of a stripe
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
     places.forEach(stripe => {
-        const [nr0, nrN, lat0, lng0, latN = lat0, lngN = lng0, opts = {}] = stripe;
+        const [nr0, nrN, lat0, lng0, latN = lat0, lngN = lng0] = stripe;
         const cnt = nrN - nr0; // number of places between
         const latDiff = latN - lat0;
         const lngDiff = lngN - lng0;
         // check in which direction we want to distribute our places (in none, if we only have one)
         const distributeLng = lngDiff > latDiff && cnt > 0;
         const distributeLat = lngDiff < latDiff && cnt > 0;
-        const poly = [];
-        const names = [];
-        const nrs = [];
         for (let i = 0; i <= cnt; ++i) {
             const latC = cnt == 0 ? lat0 : lat0 + latDiff / cnt * i;
             const lngC = cnt == 0 ? lng0 : lng0 + lngDiff / cnt * i;
             const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
             const lngS = distributeLng ? lngDiff / cnt : defWidthLng; // longitude size of the rectangle
-            const nr = `${opts[nr0 + i] ?? nr0 + i}`;
-            const name = opts[`${nr0 + i}_name`] ?? opts[`${nr}_name`] ?? "";
-            names.push(name);
-            nrs.push(nr);
-            poly.push(drawPoly(map, bounds, "places", nr, name || "Stellplatz", "", [
-                { lat: latC - latS / 2, lng: lngC - lngS / 2 },
-                { lat: latC + latS / 2, lng: lngC - lngS / 2 },
-                { lat: latC + latS / 2, lng: lngC + lngS / 2 },
-                { lat: latC - latS / 2, lng: lngC + lngS / 2 },
-            ]));
+            const have = areas.find(area => area.category == "places" && area.placeNumber == nr0 + i);
+            const area = have ?? { category: "places", title: nr0 + i };
+            if (!have) areas.push(area);
+            area.poly = drawPoly(
+                map,
+                bounds,
+                area.category,
+                area.title ?? "",
+                area?.description ?? "Stellplatz",
+                area.url,
+                area.path ?? [
+                    { lat: latC - latS / 2, lng: lngC - lngS / 2 },
+                    { lat: latC + latS / 2, lng: lngC - lngS / 2 },
+                    { lat: latC + latS / 2, lng: lngC + lngS / 2 },
+                    { lat: latC - latS / 2, lng: lngC + lngS / 2 },
+                ],
+                area.images ? area.images.map((img => img.src)) : []);
         }
-        opts["poly"] = poly;
-        opts["nrs"] = nrs;
-        opts["names"] = names;
-        stripe[6] = opts; // in case it was null at stripe
     });
 
     map.fitBounds(bounds);
