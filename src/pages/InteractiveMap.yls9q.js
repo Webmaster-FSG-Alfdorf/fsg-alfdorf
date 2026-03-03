@@ -1,15 +1,10 @@
-// API-Referenz: https://www.wix.com/velo/reference/api-overview/introduction
+import wixData from 'wix-data';
 
-$w.onReady(function () {
-
-	// Eigenen Javascript-Code unter Verwendung der Velo-Framework-API hier schreiben
-
-	// Print Hallo Welt:
-	// console.log("Hallo Welt!");
-
-	// Funktionen auf Seitenelementen aufrufen z. B..:
-	// $w("#button1").label = "Klicke mich!";
-
-	// Auf „Ausführen“ klicken oder die Vorschau deiner Website ansehen, um deinen Code auszuführen
-
+$w.onReady(async function () {
+	$w("#htmlMap").onMessage(async (event) => {
+		if (event.data === "ready") {
+			const { items } = await wixData.query("mapAreas").find();
+			$w("#htmlMap").postMessage(items);
+		}
+	});
 });
