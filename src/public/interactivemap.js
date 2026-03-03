@@ -238,7 +238,7 @@ function drawCMSContent(areasCMS) {
             area.description ?? "",
             area.url,
             area.path,
-            area.images.map((img => img.src))
+            area.images ? area.images.map((img => img.src)) : [],
         )
     });
 
