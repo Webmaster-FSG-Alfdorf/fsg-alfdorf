@@ -6,21 +6,10 @@ $w.onReady(async function () {
         wixWindow.openLightbox("InteractiveMap");
     });
 
-    const { items } = await wixData.query("mapAreas").find();
-
-    const formattedAreas = items.map(item => ({
-        name: item.title,
-        descr: item.description,
-        category: item.category,
-        placeNumber: item.placeNumber,
-        url: item.url,
-        path: item.path,
-        images: item.images
-    }));
-
-    $w("#htmlMap").onMessage((event) => {
+    $w("#htmlMap").onMessage((event) => async () => {
         if (event.data === "ready") {
-            $w("#htmlMap").postMessage(formattedAreas);
+            const { items } = await wixData.query("mapAreas").find();
+            $w("#htmlMap").postMessage(items);
         }
     });
 });

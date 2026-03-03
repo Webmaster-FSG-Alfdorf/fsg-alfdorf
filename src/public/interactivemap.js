@@ -95,7 +95,7 @@ function drawCMSContent(areasCMS) {
             this.div.style.lineHeight = '1.4';
             let content = `<strong>${this.name}</strong><br>${this.descr}`;
             if (this.images != null && this.images.length > 0) for (const image of this.images)
-                content += `<img src="https://static.wixstatic.com/media/${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+                content += `<img src="${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
             this.div.innerHTML = content;
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
@@ -136,8 +136,7 @@ function drawCMSContent(areasCMS) {
             }
         });
 
-        if (url != "")
-            poly.addListener("click", () => { window.open("https://webmaster98234.wixsite.com/fsg-a/" + url, "self"); });
+        if (url != "") poly.addListener("click", () => { window.open(url, "self"); });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
 
@@ -231,7 +230,16 @@ function drawCMSContent(areasCMS) {
     console.log("drawCMSContent", "drawing CMS content");
 
     areas.forEach(area => {
-        area.poly = drawPoly(map, bounds, area.category, area.name, area.descr, area.url, area.path, area.images);
+        area.poly = drawPoly(
+            map,
+            bounds,
+            area.category,
+            area.title ?? "",
+            area.description ?? "",
+            area.url,
+            area.path,
+            area.images.map((img => img.src))
+        )
     });
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
@@ -287,6 +295,7 @@ function drawCMSContent(areasCMS) {
     });
 }
 
+
 /*
 <!DOCTYPE html>
 <html>
@@ -300,15 +309,9 @@ function drawCMSContent(areasCMS) {
     </div>
 
     <script>
-        window.initMap = function() {
-            window.parent.postMessage("ready", "*");
-        };
-      
-        window.onmessage = (event) => {
-            if (event.data && Array.isArray(event.data)) drawCMSContent(event.data); 
-        };
+        window.initMap = function () { window.parent.postMessage("ready", "*"); };
+        window.onmessage = (event) => { if (event.data) drawCMSContent(event.data); };
     </script>
-
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCerYSObwqwjPepIBEwZUn4Q1Zgee-f7RI&callback=initMap" async defer></script>
     <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
 </body>
