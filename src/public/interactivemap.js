@@ -128,13 +128,8 @@ function drawCMSContent(areasCMS) {
         new google.maps.Marker({
             position: center,
             map: map,
-            icon: { scale: 0 },
-            label: {
-                text: title,
-                color: "#333",
-                fontSize: "11px",
-                fontWeight: "bold"
-            },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+            label: { text: title, color: "#333", fontSize: "11px", fontWeight: "bold" },
             clickable: false,
             optimized: true
         });
