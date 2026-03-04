@@ -66,10 +66,11 @@ function drawCMSContent(areasCMS) {
         }
 
         draw() {
+            if (!this.div) return;
             const pos = this.getProjection().fromLatLngToDivPixel(this.position);
-            this.div?.style?.left = `${pos.x}px`;
-            this.div?.style?.top = `${pos.y - 30}px`;
-            this.div?.style?.transform = 'translateX(-50%)';
+            this.div.style.left = `${pos.x}px`;
+            this.div.style.top = `${pos.y - 30}px`;
+            this.div.style.transform = 'translateX(-50%)';
         }
 
         onRemove() {
