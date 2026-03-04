@@ -7,7 +7,7 @@ const polyBorderWidth = 0.3;
 const categories = {
     sport: { color: "#ffcc00", legend: "Sportplätze", opacity: polyFillOpacity },
     infra: { color: "#2196f3", legend: "Infrastruktur", opacity: polyFillOpacity },
-    places: { color: "#ff0000", legend: "Wohnwagen-Plätze", opacity: 0.0 },
+    places: { color: "#4caf50", legend: "Wohnwagen-Plätze", opacity: 0.0 },
 };
 
 let map;
@@ -108,7 +108,6 @@ function drawCMSContent(areasCMS) {
             tooltip = null;
         });
 */
-
         poly.addListener("mouseover", () => { poly.setOptions({ fillOpacity: 0.7 }); });
         poly.addListener("mouseout", () => { poly.setOptions({ fillOpacity: categories[category].opacity }); });
 
@@ -129,6 +128,7 @@ function drawCMSContent(areasCMS) {
         new google.maps.Marker({
             position: center,
             map: map,
+            icon: { scale: 0 },
             label: {
                 text: title,
                 color: "#333",
