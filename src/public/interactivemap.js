@@ -124,9 +124,8 @@ function drawCMSContent(areasCMS) {
 
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
-        const center = polyBounds.getCenter();
         if (title) new google.maps.Marker({
-            position: center,
+            position: polyBounds.getCenter(),
             map: map,
             icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
             label: { text: title, color: "#333", fontSize: "11px", fontWeight: "bold" },
@@ -134,7 +133,7 @@ function drawCMSContent(areasCMS) {
             optimized: true
         });
 
-        poly.getPath().forEach(latlng => bounds.extend(latlng));
+        paths.forEach(p => bounds.extend(p));
 
         areasSearch.push({
             title: String(title ?? "").toLowerCase(),
