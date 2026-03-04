@@ -62,6 +62,20 @@ function drawCMSContent(areasCMS) {
                 window.open(`https://webmaster98234.wixstudio.com/fsg-a/sport/${this.url}`, "_blank");
             };
 
+            const stopEvents = (e) => {
+                e.stopPropagation();
+                // Bei Touch-Geräten verhindert das oft das "Geister-Klicken"
+                if (e.type === 'touchstart') {
+                    // e.preventDefault(); // Nur aktivieren, wenn Button-Klicks gar nicht gehen
+                }
+            };
+
+            this.div.addEventListener('click', stopEvents);
+            this.div.addEventListener('touchstart', stopEvents, { passive: true });
+            this.div.addEventListener('pointerdown', stopEvents);
+            this.div.addEventListener('mousedown', stopEvents);
+            this.div.addEventListener('dblclick', stopEvents);
+
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
 
@@ -124,7 +138,7 @@ function drawCMSContent(areasCMS) {
 
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
-        if (title) new google.maps.Marker({
+        if (title && category != "places") new google.maps.Marker({
             position: polyBounds.getCenter(),
             map: map,
             icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
