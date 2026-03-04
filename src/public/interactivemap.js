@@ -34,38 +34,51 @@ function drawCMSContent(areasCMS) {
             this.div.style.background = 'rgba(255, 255, 255, 0.9)';
             this.div.style.border = '1px solid #999';
             this.div.style.borderRadius = '8px';
-            this.div.style.padding = '8px 12px';
+            this.div.style.padding = '12px';
             this.div.style.fontSize = '14px';
             this.div.style.color = '#333';
-            this.div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-            this.div.style.pointerEvents = 'none';
+            this.div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            this.div.style.pointerEvents = 'auto';
             this.div.style.maxWidth = '220px';
             this.div.style.lineHeight = '1.4';
+            this.div.style.zIndex = '1000';
 
-            let content = `<strong>${this.name}</strong><br>${this.descr}`;
+            // X-Button zum Schließen
+            let content = `<div id="close-tooltip" style="position:absolute; top:5px; right:10px; cursor:pointer; font-weight:bold; font-size:18px; color:#999;">×</div>`;
+
+            content += `<div style="margin-right:15px;"><strong>${this.name}</strong><br><span style="font-size:13px; color:#666;">${this.descr}</span></div>`;
 
             if (this.images != null && this.images.length > 0) for (const image of this.images)
                 content += `<img src="${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
 
-            if (this.url) content += `<a href="${this.url}" target="_blank" style="display:block; margin-top:8px; color:#2196f3; text-decoration:none;">Mehr erfahren</a>`;           
+            if (this.url)
+                content += `<button id="tooltip-btn" style="margin-top:10px; width:100%; padding:6px; cursor:pointer; background:#2196f3; color:white; border:none; border-radius:4px;">Details</button>`;
 
             this.div.innerHTML = content;
+
+            this.div.querySelector('#close-tooltip').onclick = () => this.setMap(null);
+            if (this.url) this.div.querySelector('#tooltip-btn').onclick = (e) => {
+                e.stopPropagation();
+                window.open(this.url, "_blank");
+            };
+
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
 
         draw() {
-            if (this.div) {
-                const pos = this.getProjection().fromLatLngToDivPixel(this.position);
-                this.div.style.left = `${pos.x}px`;
-                this.div.style.top = `${pos.y - 30}px`;
-            }
+            const pos = this.getProjection().fromLatLngToDivPixel(this.position);
+            this.div?.style?.left = `${pos.x}px`;
+            this.div?.style?.top = `${pos.y - 30}px`;
+            this.div?.style?.transform = 'translateX(-50%)';
         }
 
         onRemove() {
-            if (this.div) this.div.remove();
+            this.div?.remove();
             this.div = null;
         }
     }
+
+    let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
 
     function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
 
@@ -74,8 +87,10 @@ function drawCMSContent(areasCMS) {
             map,
             fillColor: categories[category].color,
             fillOpacity: categories[category].opacity,
-            strokeWeight: polyBorderWidth
+            strokeWeight: polyBorderWidth,
+            cursor: "pointer"
         });
+        /*
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
@@ -85,6 +100,18 @@ function drawCMSContent(areasCMS) {
         poly.addListener("mouseout", () => {
             tooltip?.setMap(null);
             tooltip = null;
+        });
+*/
+
+        poly.addListener("click", (e) => {
+            activeTooltip?.setMap(null);
+            activeTooltip = new TooltipOverlay(e.latLng, title, description, images?.map(img => img.src) ?? [], url);
+            activeTooltip.setMap(map);
+        });
+
+        map.addListener("click", () => {
+            activeTooltip?.setMap(null);
+            activeTooltip = null;
         });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
