@@ -211,7 +211,7 @@ function drawCMSContent(areasCMS) {
     // actual start of drawCMSContent
     /////////////////////////////////
 
-    console.log("drawCMSContent", areasCMS);
+    console.log("drawCMSContent", areasCMS.length, "areas from CMS");
     areasSearch = [];
 
     mobile = window.innerWidth <= 768;
@@ -225,8 +225,6 @@ function drawCMSContent(areasCMS) {
     });
 
     bounds = new google.maps.LatLngBounds();
-
-    console.log("drawCMSContent", "drawing CMS content");
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
@@ -252,7 +250,6 @@ function drawCMSContent(areasCMS) {
 
     // areas with single place number and without any path are overrides
     const areaOverrides = areasCMS.filter(a => a.placeSequence.length == 1 && (!a.path || a.path.length == 0));
-    console.log("drawCMSContent", "areaOverrides", areaOverrides);
 
     areasCMS.forEach(area => {
         if (area.path && area.placeSequence.length > 0 && area.path && area.path.length == 2) {
