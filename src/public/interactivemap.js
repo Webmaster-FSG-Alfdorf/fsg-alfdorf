@@ -48,7 +48,7 @@ function drawCMSContent(areasCMS) {
 
             content += `<div style="margin-right:15px;"><strong>${this.name}</strong><br><span style="font-size:13px; color:#666;">${this.descr}</span></div>`;
 
-            if (this.images != null && this.images.length > 0) for (const image of this.images)
+            for (const image of this.images)
                 content += `<img src="${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
 
             if (this.url)
@@ -81,6 +81,17 @@ function drawCMSContent(areasCMS) {
 
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
 
+    function getWixUrl(wixUrl) {
+        if (!wixUrl) return null;
+        if (wixUrl.startsWith('wix:image://')) {
+            const parts = wixUrl.split('/');
+            const hash = parts[3];
+            const filename = parts[4];
+            return `https://static.wixstatic.com/media/${hash}/${filename}`;
+        }
+        return wixUrl;
+    }
+
     function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
 
         const poly = new google.maps.Polygon({
@@ -91,6 +102,7 @@ function drawCMSContent(areasCMS) {
             strokeWeight: polyBorderWidth,
             cursor: "pointer"
         });
+        poly.setOptions({ title: title });
         /*
         // handle a tooltip when moving mouse over the place
         let tooltip;
@@ -104,15 +116,37 @@ function drawCMSContent(areasCMS) {
         });
 */
 
+        poly.addListener("mouseover", () => { poly.setOptions({ fillOpacity: 0.7 }); });
+        poly.addListener("mouseout", () => { poly.setOptions({ fillOpacity: categories[category].opacity }); });
+
         poly.addListener("click", (e) => {
             activeTooltip?.setMap(null);
-            activeTooltip = new TooltipOverlay(e.latLng, title, description, images?.map(img => img.src) ?? [], url);
+            activeTooltip = new TooltipOverlay(e.latLng, title, description, images?.map(img => getWixUrl(img.src || img)) ?? [], url);
             activeTooltip.setMap(map);
         });
 
         map.addListener("click", () => {
             activeTooltip?.setMap(null);
             activeTooltip = null;
+        });
+
+        const polyBounds = new google.maps.LatLngBounds();
+        paths.forEach(p => polyBounds.extend(p));
+        const center = polyBounds.getCenter();
+        new google.maps.Marker({
+            position: center,
+            map: map,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 0
+            },
+            label: {
+                text: title,
+                color: "#333",
+                fontSize: "11px",
+                fontWeight: "bold"
+            },
+            clickable: false
         });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
