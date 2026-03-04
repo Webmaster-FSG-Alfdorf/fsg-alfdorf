@@ -82,14 +82,7 @@ function drawCMSContent(areasCMS) {
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
 
     function getWixUrl(wixUrl) {
-        if (!wixUrl) return null;
-        if (wixUrl.startsWith('wix:image://')) {
-            const parts = wixUrl.split('/');
-            const hash = parts[3];
-            const filename = parts[4];
-            return `https://static.wixstatic.com/media/${hash}/${filename}`;
-        }
-        return wixUrl;
+        return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
     }
 
     function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
@@ -136,17 +129,14 @@ function drawCMSContent(areasCMS) {
         new google.maps.Marker({
             position: center,
             map: map,
-            icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 0
-            },
             label: {
                 text: title,
                 color: "#333",
                 fontSize: "11px",
                 fontWeight: "bold"
             },
-            clickable: false
+            clickable: false,
+            optimized: true
         });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
