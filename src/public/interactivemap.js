@@ -94,18 +94,11 @@ function drawCMSContent(areasCMS) {
     }
 
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
+    let hoverLabel = null;
 
     function getWixUrl(wixUrl) {
         return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
     }
-
-    const hoverLabel = new google.maps.Marker({
-        map: map,
-        visible: false,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-        label: { text: "", color: "#333", fontSize: "12px", fontWeight: "bold" },
-        clickable: false
-    });
 
     function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
 
@@ -249,6 +242,14 @@ function drawCMSContent(areasCMS) {
     });
 
     bounds = new google.maps.LatLngBounds();
+
+    hoverLabel = new google.maps.Marker({
+        map: map,
+        visible: false,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+        label: { text: "", color: "#333", fontSize: "12px", fontWeight: "bold" },
+        clickable: false
+    });
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
