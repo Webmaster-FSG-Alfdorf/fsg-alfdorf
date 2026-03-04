@@ -18,12 +18,13 @@ let areasSearch = [];
 function drawCMSContent(areasCMS) {
 
     class TooltipOverlay extends google.maps.OverlayView {
-        constructor(position, name, descr, images) {
+        constructor(position, name, descr, images, url) {
             super();
             this.position = position;
             this.name = name;
             this.descr = descr;
             this.images = images;
+            this.url = url;
             this.div = null;
         }
 
@@ -40,9 +41,14 @@ function drawCMSContent(areasCMS) {
             this.div.style.pointerEvents = 'none';
             this.div.style.maxWidth = '220px';
             this.div.style.lineHeight = '1.4';
+
             let content = `<strong>${this.name}</strong><br>${this.descr}`;
+
             if (this.images != null && this.images.length > 0) for (const image of this.images)
                 content += `<img src="${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+
+            if (this.url) content += `<a href="${this.url}" target="_blank" style="display:block; margin-top:8px; color:#2196f3; text-decoration:none;">Mehr erfahren</a>`;           
+
             this.div.innerHTML = content;
             this.getPanes().overlayMouseTarget.appendChild(this.div);
         }
@@ -68,22 +74,18 @@ function drawCMSContent(areasCMS) {
             map,
             fillColor: categories[category].color,
             fillOpacity: categories[category].opacity,
-            strokeWeight: polyBorderWidth,
+            strokeWeight: polyBorderWidth
         });
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, title, description, images?.map((img => img.src)) ?? []);
+            tooltip = new TooltipOverlay(e.latLng, title, description, images?.map((img => img.src)) ?? [], url);
             tooltip.setMap(map);
         });
         poly.addListener("mouseout", () => {
-            if (tooltip) {
-                tooltip.setMap(null);
-                tooltip = null;
-            }
+            tooltip?.setMap(null);
+            tooltip = null;
         });
-
-        if (url) poly.addListener("click", () => { window.open(url, "self"); });
 
         poly.getPath().forEach(latlng => bounds.extend(latlng));
 
@@ -169,35 +171,54 @@ function drawCMSContent(areasCMS) {
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
 
-    // areas with single place number and no placesCount override the default distribution of places
-    const areaOverrides = areasCMS.filter(a => a.placeNumber > 0 && !(a.placesCount > 0));
+    // placeNumber can be a sequence like 1,2,3,4 or 1..4 or combinations like 1a,1b,2..10
+    areasCMS.forEach(area => {
+        area.placeSequence = [];
+        if (area.placeNumber) {
+            String(area.placeNumber).split(",").forEach(place => {
+                if (place.includes("..")) {
+                    const [start, end] = place.split("..");
+                    const startNum = Number(start.trim());
+                    const endNum = Number(end.trim());
+                    if (isNaN(startNum) || isNaN(endNum) || startNum > endNum)
+                        area.placeSequence.push(place.trim());
+                    else
+                        for (let i = startNum; i <= endNum; ++i) area.placeSequence.push(String(i));
+                } else if (place.trim().length > 0)
+                    area.placeSequence.push(place.trim());
+            });
+        }
+    });
+
+    // areas with single place number and without any path are overrides
+    const areaOverrides = areasCMS.filter(a => a.placeSequence.length == 1 && (!a.path || a.path.length == 0));
     console.log("drawCMSContent", "areaOverrides", areaOverrides);
 
     areasCMS.forEach(area => {
-        if (area.path && area.placeNumber > 0 && area.placesCount > 0 && area.path.length == 2) {
+        if (area.path && area.placeSequence.length > 0 && area.path && area.path.length == 2) {
             const lat0 = area.path[0].lat;
             const lng0 = area.path[0].lng;
             const latN = area.path[1].lat;
             const lngN = area.path[1].lng;
-            const cntBetween = area.placesCount - 1; // number of places between
+            const realCount = area.placeSequence.length;
+            const cntBetween = realCount - 1;
             const latDiff = latN - lat0;
             const lngDiff = lngN - lng0;
             // check in which direction we want to distribute our places (in none, if we only have one)
             const distributeLng = lngDiff > latDiff && cntBetween > 0;
             const distributeLat = lngDiff < latDiff && cntBetween > 0;
-            for (let i = 0; i <= cntBetween; ++i) {
-                const nr = area.placeNumber + i;
+            area.placeSequence.forEach((currentName, i) => {
                 const latC = cntBetween == 0 ? lat0 : lat0 + latDiff / cntBetween * i;
                 const lngC = cntBetween == 0 ? lng0 : lng0 + lngDiff / cntBetween * i;
                 const latS = distributeLat ? latDiff / cntBetween : defWidthLat; // latitude size of the rectangle
                 const lngS = distributeLng ? lngDiff / cntBetween : defWidthLng; // longitude size of the rectangle
-                const haveOverride = areaOverrides.find(a => a.placeNumber == nr);
+                const haveOverride = areaOverrides.find(a => a.placeSequence[0] == currentName);
                 const base = haveOverride ?? area;
                 drawPoly(
                     map,
                     bounds,
                     base.category,
-                    base.title ?? nr,
+                    base.title ?? currentName,
                     base.description ?? "Stellplatz",
                     base.url,
                     haveOverride?.path ?? [
@@ -208,9 +229,9 @@ function drawCMSContent(areasCMS) {
                     ],
                     base.images
                 );
-            }
-        } else if (area.path && !area.placeNumber)
-            drawPoly(map, bounds, area.category, area.title, area.description, area.url, area.path, area.images,);
+            });
+        } else if (area.path)
+            drawPoly(map, bounds, area.category, area.title, area.description, area.url, area.path, area.images);
     });
 
     map.fitBounds(bounds);
