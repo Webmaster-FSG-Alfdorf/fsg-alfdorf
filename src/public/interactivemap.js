@@ -59,7 +59,7 @@ function drawCMSContent(areasCMS) {
             this.div.querySelector('#close-tooltip').onclick = () => this.setMap(null);
             if (this.url) this.div.querySelector('#tooltip-btn').onclick = (e) => {
                 e.stopPropagation();
-                window.open(this.url, "_blank");
+                window.open(`https://webmaster98234.wixstudio.com/fsg-a/sport/${this.url}`, "_blank");
             };
 
             this.getPanes().overlayMouseTarget.appendChild(this.div);
