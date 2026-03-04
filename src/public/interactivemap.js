@@ -73,7 +73,7 @@ function drawCMSContent(areasCMS) {
         // handle a tooltip when moving mouse over the place
         let tooltip;
         poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, title, description, images);
+            tooltip = new TooltipOverlay(e.latLng, title, description, images?.map((img => img.src)) ?? []);
             tooltip.setMap(map);
         });
         poly.addListener("mouseout", () => {
@@ -169,51 +169,48 @@ function drawCMSContent(areasCMS) {
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
 
+    // areas with single place number and no placesCount override the default distribution of places
+    const areaOverrides = areasCMS.filter(a => a.placeNumber > 0 && !(a.placesCount > 0));
+    console.log("drawCMSContent", "areaOverrides", areaOverrides);
+
     areasCMS.forEach(area => {
-        if (area.path && area.placesCount && area.placesCount > 0 && area.path.length == 2) {
+        if (area.path && area.placeNumber > 0 && area.placesCount > 0 && area.path.length == 2) {
             const lat0 = area.path[0].lat;
             const lng0 = area.path[0].lng;
             const latN = area.path[1].lat;
             const lngN = area.path[1].lng;
-            const cnt = area.placesCount - 1; // number of places between
+            const cntBetween = area.placesCount - 1; // number of places between
             const latDiff = latN - lat0;
             const lngDiff = lngN - lng0;
             // check in which direction we want to distribute our places (in none, if we only have one)
-            const distributeLng = lngDiff > latDiff && cnt > 0;
-            const distributeLat = lngDiff < latDiff && cnt > 0;
-            for (let i = 0; i <= cnt; ++i) {
-                const latC = cnt == 0 ? lat0 : lat0 + latDiff / cnt * i;
-                const lngC = cnt == 0 ? lng0 : lng0 + lngDiff / cnt * i;
-                const latS = distributeLat ? latDiff / cnt : defWidthLat; // latitude size of the rectangle
-                const lngS = distributeLng ? lngDiff / cnt : defWidthLng; // longitude size of the rectangle
-                const haveOverride = areasCMS.find(a => a.category == area.category && a.placeNumber == area.placeNumber + i && !a.placesCount);
+            const distributeLng = lngDiff > latDiff && cntBetween > 0;
+            const distributeLat = lngDiff < latDiff && cntBetween > 0;
+            for (let i = 0; i <= cntBetween; ++i) {
+                const nr = area.placeNumber + i;
+                const latC = cntBetween == 0 ? lat0 : lat0 + latDiff / cntBetween * i;
+                const lngC = cntBetween == 0 ? lng0 : lng0 + lngDiff / cntBetween * i;
+                const latS = distributeLat ? latDiff / cntBetween : defWidthLat; // latitude size of the rectangle
+                const lngS = distributeLng ? lngDiff / cntBetween : defWidthLng; // longitude size of the rectangle
+                const haveOverride = areaOverrides.find(a => a.placeNumber == nr);
+                const base = haveOverride ?? area;
                 drawPoly(
                     map,
                     bounds,
-                    haveOverride?.category ?? area.category,
-                    String(haveOverride?.title ?? area.placeNumber + i),
-                    String(haveOverride?.description ?? "Stellplatz"),
-                    haveOverride?.url,
+                    base.category,
+                    base.title ?? nr,
+                    base.description ?? "Stellplatz",
+                    base.url,
                     haveOverride?.path ?? [
                         { lat: latC - latS / 2, lng: lngC - lngS / 2 },
                         { lat: latC + latS / 2, lng: lngC - lngS / 2 },
                         { lat: latC + latS / 2, lng: lngC + lngS / 2 },
                         { lat: latC - latS / 2, lng: lngC + lngS / 2 },
                     ],
-                    haveOverride?.images ? haveOverride.images.map((img => img.src)) : []
+                    base.images
                 );
             }
-        } else if (area.path)
-            drawPoly(
-                map,
-                bounds,
-                area.category,
-                area.title ?? "",
-                area.description ?? "",
-                area.url,
-                area.path,
-                area.images ? area.images.map((img => img.src)) : [],
-            );
+        } else if (area.path && !area.placeNumber)
+            drawPoly(map, bounds, area.category, area.title, area.description, area.url, area.path, area.images,);
     });
 
     map.fitBounds(bounds);
