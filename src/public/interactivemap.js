@@ -125,7 +125,7 @@ function drawCMSContent(areasCMS) {
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
         const center = polyBounds.getCenter();
-        new google.maps.Marker({
+        if (title) new google.maps.Marker({
             position: center,
             map: map,
             icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
