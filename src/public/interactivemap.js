@@ -99,6 +99,14 @@ function drawCMSContent(areasCMS) {
         return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
     }
 
+    const hoverLabel = new google.maps.Marker({
+        map: map,
+        visible: false,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+        label: { text: "", color: "#333", fontSize: "12px", fontWeight: "bold" },
+        clickable: false
+    });
+
     function drawPoly(map, bounds, category, title, description, url, paths, images = null) {
 
         const poly = new google.maps.Polygon({
@@ -109,7 +117,7 @@ function drawCMSContent(areasCMS) {
             strokeWeight: polyBorderWidth,
             cursor: "pointer"
         });
-        poly.setOptions({ title: title });
+
         /*
         // handle a tooltip when moving mouse over the place
         let tooltip;
@@ -122,8 +130,24 @@ function drawCMSContent(areasCMS) {
             tooltip = null;
         });
 */
-        poly.addListener("mouseover", () => { poly.setOptions({ fillOpacity: 0.7 }); });
-        poly.addListener("mouseout", () => { poly.setOptions({ fillOpacity: categories[category].opacity }); });
+
+        poly.addListener("mouseover", (e) => {
+            poly.setOptions({ fillOpacity: 0.7 });
+            if (title) {
+                hoverLabel.setLabel({ text: title, color: "#000", fontSize: "14px", fontWeight: "bold" });
+                hoverLabel.setPosition(e.latLng);
+                hoverLabel.setVisible(true);
+            }
+        });
+
+        poly.addListener("mousemove", (e) => {
+            hoverLabel.setPosition(e.latLng);
+        });
+
+        poly.addListener("mouseout", () => {
+            poly.setOptions({ fillOpacity: categories[category].opacity });
+            hoverLabel.setVisible(false);
+        });
 
         poly.addListener("click", (e) => {
             activeTooltip?.setMap(null);
@@ -142,7 +166,7 @@ function drawCMSContent(areasCMS) {
             position: polyBounds.getCenter(),
             map: map,
             icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-            label: { text: title, color: "#333", fontSize: "11px", fontWeight: "bold" },
+            label: { text: title, color: "#333", fontSize: "12px", fontWeight: "bold" },
             clickable: false,
             optimized: true
         });
