@@ -134,7 +134,7 @@ function drawCMSContent(areasCMS) {
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
             if (title) {
-                hoverLabel.setLabel({ text: title, color: "#000", fontSize: "14px", fontWeight: "bold" });
+                hoverLabel.setLabel({ text: title, color: "#333", fontSize: "12px", fontWeight: "bold" });
                 hoverLabel.setPosition(e.latLng);
                 hoverLabel.setVisible(true);
             }
@@ -146,7 +146,7 @@ function drawCMSContent(areasCMS) {
 
         poly.addListener("mouseout", () => {
             poly.setOptions({ fillOpacity: categories[category].opacity });
-            hoverLabel.setVisible(false);
+            //hoverLabel.setVisible(false);
         });
 
         poly.addListener("click", (e) => {
