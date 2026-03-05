@@ -168,6 +168,7 @@ function drawCMSContent(areasCMS) {
 
         areasSearch.push({
             title: String(title ?? "").toLowerCase(),
+            isNumber: !isNaN(parseInt(title)),
             description: String(description ?? "").toLowerCase(),
             category,
             poly
@@ -191,39 +192,20 @@ function drawCMSContent(areasCMS) {
     }
 
     function startSearch(map) {
-        const bounds = new google.maps.LatLngBounds();
+        let bounds = null;
         let s = document.getElementById("search").value.trim().toLowerCase();
-        let found = false
-        if (s) {
-            if (s.startsWith("nr ")) s = s.substring(3).trim();
-            if (s.startsWith("platz ")) s = s.substring(6).trim();
-            if (s.startsWith("place ")) s = s.substring(6).trim();
-            areasSearch.forEach(area => {
-                if (area.title.includes(s) || area.description.includes(s)) {
-                    found = true;
-                    flashPoly(bounds, area.poly, area.category);
-                }
-                if (area.category == "places" && area.title.startsWith(s) && !(area.title.length > s.length && area.title[s.length] >= '0' && area.title[s.length] <= '9')) {
-                    found = true;
-                    flashPoly(bounds, area.poly, area.category);
-                }
-            });
-        }
-        if (found) map.fitBounds(bounds);
+        ["nr ", "platz ", "place "].forEach(p => { if (s.startsWith(p)) s = s.substring(p.length).trim(); });
+        if (s) areasSearch.forEach(area => {
+            const match = (area.isNumber ? area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) : area.title.includes(s)) || area.description.includes(s);
+            if (match) {
+                const org = categories[area.category].opacity;
+                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, flashDelay * i);
+                if (!bounds) bounds = new google.maps.LatLngBounds();
+                area.poly.getPath().forEach(latlng => bounds.extend(latlng));
+            }
+        });
+        if (bounds) map.fitBounds(bounds);
     }
-
-    function flashPoly(bounds, poly, cat) {
-        const optFlash = { fillOpacity: 1 };
-        const optOrg = { fillOpacity: categories[cat].opacity };
-        poly.setOptions(optFlash);
-        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay);
-        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 2);
-        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 3);
-        setTimeout(() => { poly.setOptions(optFlash); }, flashDelay * 4);
-        setTimeout(() => { poly.setOptions(optOrg); }, flashDelay * 5);
-        poly.getPath().forEach(latlng => bounds.extend(latlng));
-    }
-
 
     // actual start of drawCMSContent
     /////////////////////////////////
@@ -290,27 +272,19 @@ function drawCMSContent(areasCMS) {
             const distributeLng = lngDiff > latDiff && cntBetween > 0;
             const distributeLat = lngDiff < latDiff && cntBetween > 0;
             area.placeSequence.forEach((currentName, i) => {
+                const haveOverride = areaOverrides.find(a => a.placeSequence[0] == currentName);
+                const base = haveOverride ?? area;
                 const latC = cntBetween == 0 ? lat0 : lat0 + latDiff / cntBetween * i;
                 const lngC = cntBetween == 0 ? lng0 : lng0 + lngDiff / cntBetween * i;
                 const latS = distributeLat ? latDiff / cntBetween : defWidthLat; // latitude size of the rectangle
                 const lngS = distributeLng ? lngDiff / cntBetween : defWidthLng; // longitude size of the rectangle
-                const haveOverride = areaOverrides.find(a => a.placeSequence[0] == currentName);
-                const base = haveOverride ?? area;
-                drawPoly(
-                    map,
-                    bounds,
-                    base.category,
-                    base.title ?? currentName,
-                    base.description ?? "Stellplatz",
-                    base.url,
-                    haveOverride?.path ?? [
-                        { lat: latC - latS / 2, lng: lngC - lngS / 2 },
-                        { lat: latC + latS / 2, lng: lngC - lngS / 2 },
-                        { lat: latC + latS / 2, lng: lngC + lngS / 2 },
-                        { lat: latC - latS / 2, lng: lngC + lngS / 2 },
-                    ],
-                    base.images
-                );
+                const path = haveOverride?.path ?? [
+                    { lat: latC - latS / 2, lng: lngC - lngS / 2 },
+                    { lat: latC + latS / 2, lng: lngC - lngS / 2 },
+                    { lat: latC + latS / 2, lng: lngC + lngS / 2 },
+                    { lat: latC - latS / 2, lng: lngC + lngS / 2 },
+                ];
+                drawPoly(map, bounds, base.category, base.title ?? currentName, base.description ?? "Stellplatz", base.url, path, base.images);
             });
         } else if (area.path)
             drawPoly(map, bounds, area.category, area.title, area.description, area.url, area.path, area.images);
