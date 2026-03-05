@@ -127,7 +127,7 @@ function drawCMSContent(areasCMS) {
 
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
-            if (title) {
+            if (title && category == "places") {
                 hoverLabel.setLabel({ ...hoverLabel.getLabel(), text: title });
                 hoverLabel.setPosition(e.latLng);
                 hoverLabel.setVisible(true);
