@@ -2,12 +2,12 @@
 
 const flashDelay = 500;
 const polyFillOpacity = 0.3;
-const polyBorderWidth = 0.3;
+const polyBorderWidth = 0.0; // no border
 
 const categories = {
     sport: { color: "#ffcc00", legend: "Sportplätze", opacity: polyFillOpacity },
     infra: { color: "#2196f3", legend: "Infrastruktur", opacity: polyFillOpacity },
-    places: { color: "#4caf50", legend: "Wohnwagen-Plätze", opacity: 0.0 },
+    places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
 let map;
@@ -140,7 +140,7 @@ function drawCMSContent(areasCMS) {
 
         poly.addListener("mouseout", () => {
             poly.setOptions({ fillOpacity: categories[category].opacity });
-            //hoverLabel.setVisible(false);
+            hoverLabel.setVisible(false);
         });
 
         poly.addListener("click", (e) => {
