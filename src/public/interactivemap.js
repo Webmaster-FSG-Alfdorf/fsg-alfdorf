@@ -10,6 +10,9 @@ const categories = {
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
+const labelStyle = { text: "", color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" };
+const iconStyle = { path: google.maps.SymbolPath.CIRCLE, scale: 0 }; // invisible icon, we only want the label
+
 let map;
 let bounds;
 let mobile = false;
@@ -156,13 +159,8 @@ function drawCMSContent(areasCMS) {
 
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
-        if (title && category != "places") staticMarkers.push(new google.maps.Marker({
-            position: polyBounds.getCenter(),
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-            label: { text: title, color: "#333", fontSize: "12px", fontWeight: "bold" },
-            clickable: false,
-            optimized: true
-        }));
+        if (title && category != "places")
+            staticMarkers.push(new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: labelStyle, clickable: false, optimized: true }));
 
         paths.forEach(p => bounds.extend(p));
 
@@ -225,13 +223,7 @@ function drawCMSContent(areasCMS) {
 
     bounds = new google.maps.LatLngBounds();
 
-    hoverLabel = new google.maps.Marker({
-        map: map,
-        visible: false,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-        label: { text: "", color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" },
-        clickable: false
-    });
+    hoverLabel = new google.maps.Marker({ map: map, visible: false, icon: iconStyle, label: labelStyle, clickable: false });
 
     const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
