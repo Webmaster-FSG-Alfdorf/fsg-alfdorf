@@ -95,6 +95,7 @@ function drawCMSContent(areasCMS) {
 
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
     let hoverLabel = null;
+    let staticMarkers = [];
 
     function getWixUrl(wixUrl) {
         return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
@@ -127,7 +128,7 @@ function drawCMSContent(areasCMS) {
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
             if (title) {
-                hoverLabel.setLabel({ text: title, color: "#333", fontSize: "12px", fontWeight: "bold" });
+                hoverLabel.setLabel({ ...hoverLabel.getLabel(), text: title });
                 hoverLabel.setPosition(e.latLng);
                 hoverLabel.setVisible(true);
             }
@@ -155,14 +156,13 @@ function drawCMSContent(areasCMS) {
 
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
-        if (title && category != "places") new google.maps.Marker({
+        if (title && category != "places") staticMarkers.push(new google.maps.Marker({
             position: polyBounds.getCenter(),
-            map: map,
             icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
             label: { text: title, color: "#333", fontSize: "12px", fontWeight: "bold" },
             clickable: false,
             optimized: true
-        });
+        }));
 
         paths.forEach(p => bounds.extend(p));
 
@@ -247,7 +247,7 @@ function drawCMSContent(areasCMS) {
         map: map,
         visible: false,
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-        label: { text: "", color: "#333", fontSize: "12px", fontWeight: "bold" },
+        label: { text: "", color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" },
         clickable: false
     });
 
@@ -317,6 +317,11 @@ function drawCMSContent(areasCMS) {
     });
 
     map.fitBounds(bounds);
+
+    map.addListener("zoom_changed", () => {
+        const show = map.getZoom() >= 18;
+        staticMarkers.forEach(m => m.setMap(show ? map : null));
+    });
 
     if (mobile) {
         document.getElementById("legend").hidden = true;

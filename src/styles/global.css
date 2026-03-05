@@ -34,3 +34,8 @@ a:hover,
 .wixui-rich-text__text a:hover {
   color: #E85A2A !important;
 }
+
+.hover-label-style {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 1), -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  pointer-events: none;
+}
