@@ -270,14 +270,25 @@ function drawCMSContent(areasCMS) {
                     const fract = cntBetween == 0 ? 0 : i / cntBetween;
                     const latC = p0.lat + dLat * fract;
                     const lngC = p0.lng + dLng * fract;
-                    const stepLat = cntBetween == 0 ? 0 : dLat / cntBetween * 0.49; // keep a small gap between polygons
-                    const stepLng = cntBetween == 0 ? 0 : dLng / cntBetween * 0.49; // keep a small gap between polygons
-                    path = [
-                        { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
-                        { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
-                        { lat: latC + normSideLat + stepLat, lng: lngC + normSideLng + stepLng },
-                        { lat: latC - normSideLat + stepLat, lng: lngC - normSideLng + stepLng }
-                    ];
+                    if (Math.sqrt(dLat * dLat + dLng * dLng) < 0.000001) {
+                        // if the path is just a single place, create a square polygon around it
+                        path = [
+                            { lat: latC - defWidthLat / 2, lng: lngC - defWidthLng / 2 },
+                            { lat: latC + defWidthLat / 2, lng: lngC - defWidthLng / 2 },
+                            { lat: latC + defWidthLat / 2, lng: lngC + defWidthLng / 2 },
+                            { lat: latC - defWidthLat / 2, lng: lngC + defWidthLng / 2 }
+                        ];
+                    } else {
+                        // keep a small gap between polygons
+                        const stepLat = cntBetween == 0 ? 0.5 : dLat / cntBetween * 0.49;
+                        const stepLng = cntBetween == 0 ? 0.5 : dLng / cntBetween * 0.49;
+                        path = [
+                            { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
+                            { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
+                            { lat: latC + normSideLat + stepLat, lng: lngC + normSideLng + stepLng },
+                            { lat: latC - normSideLat + stepLat, lng: lngC - normSideLng + stepLng }
+                        ];
+                    }
                 }
 
                 const base = haveOverride ?? area;
