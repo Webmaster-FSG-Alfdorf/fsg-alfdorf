@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8374; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8375; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLAS_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -317,9 +317,13 @@ function drawCMSContent(areasCMS) {
 <link rel="stylesheet" href="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.css">
 <body>
     <div id="map" style="width:100%; height:100vh"></div>
-    <input style="position:absolute; top:60px; left:10px; z-index: 999" type="text" autocomplete="off" id="search" placeholder="Suchen (Person/Platz/...)">
+    <input style="position:absolute; top:60px; left:16px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); border: 0px; outline:none; font-family:sans-serif; font-size:14px;" 
+       type="text" 
+       autocomplete="off" 
+       id="search" 
+       placeholder="Suchen (Person/Platz/...)">
     <div id="legend"
-        style="position:absolute; top:100px; left:10px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif; font-size:14px;">
+        style="position:absolute; top:110px; left:16px; z-index: 999; background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif; font-size:14px;">
         <strong>Legende</strong>
     </div>
 
