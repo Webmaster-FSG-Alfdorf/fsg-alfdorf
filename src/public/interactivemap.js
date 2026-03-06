@@ -262,33 +262,30 @@ function drawCMSContent(areasCMS) {
             const normSideLng = (vSideLng / len) * (defWidthLng / 2);
 
             area.placeSequence.forEach((currentName, i) => {
-                const fraction = cntBetween === 0 ? 0 : i / cntBetween;
 
-                // Mittelpunkt des aktuellen Platzes auf der Linie
-                const latC = p0.lat + dLat * fraction;
-                const lngC = p0.lng + dLng * fraction;
+                const haveOverride = areaOverrides.find(a => a.placeSequence[0] == currentName);
 
-                // Die 4 Ecken relativ zur Linienrichtung berechnen
-                // Wir nehmen an, dass die Linie durch die MITTE der Plätze verläuft
-                const path = [
-                    { lat: latC - normSideLat, lng: lngC - normSideLng },
-                    { lat: latC + normSideLat, lng: lngC + normSideLng },
-                    { lat: (latC + dLat / realCount / 2) + normSideLat, lng: (lngC + dLng / realCount / 2) + normSideLng }, // Optional: Länge anpassen
-                    { lat: (latC + dLat / realCount / 2) - normSideLat, lng: (lngC + dLng / realCount / 2) - normSideLng }
-                ];
+                let path = haveOverride?.path && haveOverride.path.length > 0 ? haveOverride.path : null;
+                if (path == null) {
+                // Ansonsten: Berechne rotiertes Rechteck auf der Linie
+                    const fraction = cntBetween === 0 ? 0 : i / cntBetween;
+                    const latC = p0.lat + dLat * fraction;
+                    const lngC = p0.lng + dLng * fraction;
 
-                // Einfachere Variante für exakte Ausrichtung am Linienwinkel:
-                const stepLat = cntBetween === 0 ? 0 : dLat / cntBetween * 0.4; // 40% der Länge als Box
-                const stepLng = cntBetween === 0 ? 0 : dLng / cntBetween * 0.4;
+                    // Wir nehmen 40% der Segmentlänge als Box-Tiefe, um Lücken zu lassen
+                    const stepLat = cntBetween === 0 ? 0 : (dLat / cntBetween) * 0.4;
+                    const stepLng = cntBetween === 0 ? 0 : (dLng / cntBetween) * 0.4;
 
-                const rotatedPath = [
-                    { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
-                    { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
-                    { lat: latC + normSideLat + stepLat, lng: lngC + normSideLng + stepLng },
-                    { lat: latC - normSideLat + stepLat, lng: lngC - normSideLng + stepLng }
-                ];
+                    path = [
+                        { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
+                        { lat: latC + normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
+                        { lat: latC + normSideLat + stepLat, lng: lngC + normSideLng + stepLng },
+                        { lat: latC - normSideLat + stepLat, lng: lngC - normSideLng + stepLng }
+                    ];
+                }
 
-                drawPoly(map, bounds, area.category, area.title ?? currentName, area.description ?? "Stellplatz", area.url, rotatedPath, area.images);
+                const base = haveOverride ?? area;
+                drawPoly(map, bounds, base.category, base.title ?? currentName, base.description ?? "Stellplatz", base.url, path, base.images);
             });
         } else if (area.path)
             drawPoly(map, bounds, area.category, area.title, area.description, area.url, area.path, area.images);
