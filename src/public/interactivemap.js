@@ -1,5 +1,7 @@
 /* global google */
 
+const VERSION = "1.0.0"; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLAS_DELAY = 500; // ms delay for flashing the polygons on search results
 const POLY_FILL_OPACITY = 0.3; // default opacity for polygons (except places which are 0 because they use the hover label instead)
@@ -72,7 +74,7 @@ function drawCMSContent(areasCMS) {
             const stopEvents = (e) => {
                 e.stopPropagation();
                 // Bei Touch-Geräten verhindert das oft das "Geister-Klicken"
-                if (e.type === 'touchstart') {
+                if (e.type == 'touchstart') {
                     // e.preventDefault(); // Nur aktivieren, wenn Button-Klicks gar nicht gehen
                 }
             };
@@ -171,8 +173,10 @@ function drawCMSContent(areasCMS) {
             item.innerHTML = `<span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>${category.legend}`;
             legend.appendChild(item);
         }
+        // print version very small below
         const item = document.createElement("div");
-        item.innerHTML = `Version: ${new Date(document.lastModified).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}`;
+        item.style.fontSize = "8px";
+        item.innerHTML = `Version: ${VERSION}`;
         legend.appendChild(item);
     }
 
@@ -238,7 +242,7 @@ function drawCMSContent(areasCMS) {
     const areaOverrides = areasCMS.filter(a => a.placeSequence.length == 1 && (!a.path || a.path.length == 0));
 
     areasCMS.forEach(area => {
-        if (area.path && area.placeSequence.length > 0 && area.path.length === 2) {
+        if (area.path && area.placeSequence.length > 0 && area.path.length == 2) {
             const p0 = area.path[0];
             const p1 = area.path[1];
 
@@ -263,11 +267,11 @@ function drawCMSContent(areasCMS) {
                 let path = haveOverride?.path && haveOverride.path.length > 0 ? haveOverride.path : null;
                 if (path == null) {
                     // use rotated vector to create a polygon around the center point of the segment
-                    const fract = cntBetween === 0 ? 0 : i / cntBetween;
+                    const fract = cntBetween == 0 ? 0 : i / cntBetween;
                     const latC = p0.lat + dLat * fract;
                     const lngC = p0.lng + dLng * fract;
-                    const stepLat = cntBetween === 0 ? 0 : dLat / cntBetween * 0.45;
-                    const stepLng = cntBetween === 0 ? 0 : dLng / cntBetween * 0.45;
+                    const stepLat = cntBetween == 0 ? 0 : dLat / cntBetween * 0.49; // keep a small gap between polygons
+                    const stepLng = cntBetween == 0 ? 0 : dLng / cntBetween * 0.49; // keep a small gap between polygons
                     path = [
                         { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
                         { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
@@ -298,7 +302,7 @@ function drawCMSContent(areasCMS) {
     }
 
     document.getElementById("search").addEventListener("keydown", function (event) {
-        if (event.key === "Enter") {
+        if (event.key == "Enter") {
             event.preventDefault();
             startSearch(map);
             this.select();
@@ -334,7 +338,7 @@ import wixData from 'wix-data';
 
 $w.onReady(async function () {
     $w("#htmlMap").onMessage(async (event) => {
-        if (event.data === "ready") {
+        if (event.data == "ready") {
             const { items } = await wixData.query("mapAreas").limit(1000).find();
             $w("#htmlMap").postMessage(items);
         }
