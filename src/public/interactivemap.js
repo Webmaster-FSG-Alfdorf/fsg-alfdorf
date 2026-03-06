@@ -205,7 +205,7 @@ function drawCMSContent(areasCMS) {
     mobile = window.innerWidth <= 768;
     map = new google.maps.Map(document.getElementById("map"), {
         zoom: mobile ? DEF_ZOOM_LEVEL_MOBILE : DEF_ZOOM_LEVEL_DESKTOP,
-        center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
+        //center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
         mapTypeId: "satellite",
         mapTypeControl: false,
         streetViewControl: false,
