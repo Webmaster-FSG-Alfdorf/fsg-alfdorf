@@ -175,7 +175,7 @@ function drawCMSContent(areasCMS) {
         }
         // print version very small below
         const item = document.createElement("div");
-        item.style.fontSize = "8px";
+        item.style.fontSize = "10px";
         item.innerHTML = `Version: ${VERSION}`;
         legend.appendChild(item);
     }
