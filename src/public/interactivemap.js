@@ -270,11 +270,11 @@ function drawCMSContent(areasCMS) {
                     const fract = cntBetween === 0 ? 0 : i / cntBetween;
                     const latC = p0.lat + dLat * fract;
                     const lngC = p0.lng + dLng * fract;
-                    const stepLat = cntBetween === 0 ? 0 : (dLat / cntBetween) / 2;
-                    const stepLng = cntBetween === 0 ? 0 : (dLng / cntBetween) / 2;
+                    const stepLat = cntBetween === 0 ? 0 : dLat / cntBetween * 0.45;
+                    const stepLng = cntBetween === 0 ? 0 : dLng / cntBetween * 0.45;
                     path = [
                         { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
-                        { lat: latC + normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
+                        { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
                         { lat: latC + normSideLat + stepLat, lng: lngC + normSideLng + stepLng },
                         { lat: latC - normSideLat + stepLat, lng: lngC - normSideLng + stepLng }
                     ];
