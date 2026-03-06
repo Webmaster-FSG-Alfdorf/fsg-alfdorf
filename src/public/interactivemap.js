@@ -168,16 +168,12 @@ function drawCMSContent(areasCMS) {
         const legend = document.getElementById("legend");
         for (const category of Object.values(categories)) {
             const item = document.createElement("div");
-            item.innerHTML = `
-              <span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>
-              ${capitalize(category.legend)}
-            `;
+            item.innerHTML = `<span style="display:inline-block; width:14px; height:14px; background:${category.color}; margin-right:8px; vertical-align:middle; border:1px solid #ccc;"></span>${category.legend}`;
             legend.appendChild(item);
         }
-    }
-
-    function capitalize(str) {
-        return str.charAt(0).toUpperCase() + str.slice(1);
+        const item = document.createElement("div");
+        item.innerHTML = `Version: ${new Date(document.lastModified).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}`;
+        legend.appendChild(item);
     }
 
     function startSearch(map) {
