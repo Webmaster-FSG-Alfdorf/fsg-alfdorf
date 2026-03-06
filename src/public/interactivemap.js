@@ -11,7 +11,7 @@ const categories = {
 };
 
 const labelStyle = { text: "", color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" };
-const iconStyle = { path: google.maps.SymbolPath.CIRCLE, scale: 0 }; // invisible icon, we only want the label
+const iconStyle = { path: 0, scale: 0 }; // path: 0 == google.maps.SymbolPath.CIRCLE; scale: 0 == invisible icon
 
 let map;
 let bounds;
