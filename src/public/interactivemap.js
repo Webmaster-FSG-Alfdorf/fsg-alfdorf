@@ -1,12 +1,16 @@
 /* global google */
 
-const flashDelay = 500;
-const polyFillOpacity = 0.3;
-const polyBorderWidth = 0.0; // no border
+const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
+const FLAS_DELAY = 500; // ms delay for flashing the polygons on search results
+const POLY_FILL_OPACITY = 0.3; // default opacity for polygons (except places which are 0 because they use the hover label instead)
+const POLY_BORDER_WIDTH = 0.0; // width of the polygon borders, set to 0 for no borders
+const MIN_MARKER_ZOOM_LEVEL = 18; // minimum zoom level to show the static markers for area labels (only used for areas with category != "places")
+const DEF_ZOOM_LEVEL_DESKTOP = 18; // default zoom level for desktop
+const DEF_ZOOM_LEVEL_MOBILE = 17; // default zoom level for mobile
 
 const categories = {
-    sport: { color: "#ffcc00", legend: "Sportplätze", opacity: polyFillOpacity },
-    infra: { color: "#2196f3", legend: "Infrastruktur", opacity: polyFillOpacity },
+    sport: { color: "#ffcc00", legend: "Sportplätze", opacity: POLY_FILL_OPACITY },
+    infra: { color: "#2196f3", legend: "Infrastruktur", opacity: POLY_FILL_OPACITY },
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
@@ -111,7 +115,7 @@ function drawCMSContent(areasCMS) {
             map,
             fillColor: categories[category].color,
             fillOpacity: categories[category].opacity,
-            strokeWeight: polyBorderWidth,
+            strokeWeight: POLY_BORDER_WIDTH,
             cursor: "pointer"
         });
 
@@ -184,7 +188,7 @@ function drawCMSContent(areasCMS) {
             const match = (area.isNumber ? area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) : area.title.includes(s)) || area.description.includes(s);
             if (match) {
                 const org = categories[area.category].opacity;
-                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, flashDelay * i);
+                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, FLAS_DELAY * i);
                 if (!bounds) bounds = new google.maps.LatLngBounds();
                 area.poly.getPath().forEach(latlng => bounds.extend(latlng));
             }
@@ -200,7 +204,7 @@ function drawCMSContent(areasCMS) {
 
     mobile = window.innerWidth <= 768;
     map = new google.maps.Map(document.getElementById("map"), {
-        zoom: mobile ? 17 : 18,
+        zoom: mobile ? DEF_ZOOM_LEVEL_MOBILE : DEF_ZOOM_LEVEL_DESKTOP,
         center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
         mapTypeId: "satellite",
         mapTypeControl: false,
@@ -212,8 +216,8 @@ function drawCMSContent(areasCMS) {
 
     hoverLabel = new google.maps.Marker({ map: map, visible: false, icon: iconStyle, label: labelStyle, clickable: false });
 
-    const defWidthLat = 9.0 / 111320; // width of the stripe in case of latitude: 9m
-    const defWidthLng = 9.0 / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
+    const defWidthLat = DEF_PLACE_SIZE / 111320; // width of the stripe in case of latitude: 9m
+    const defWidthLng = DEF_PLACE_SIZE / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
 
     // placeNumber can be a sequence like 1,2,3,4 or 1..4 or combinations like 1a,1b,2..10
     areasCMS.forEach(area => {
@@ -237,8 +241,6 @@ function drawCMSContent(areasCMS) {
     // areas with single place number and without any path are overrides
     const areaOverrides = areasCMS.filter(a => a.placeSequence.length == 1 && (!a.path || a.path.length == 0));
 
-    // ... innerhalb von drawCMSContent ...
-
     areasCMS.forEach(area => {
         if (area.path && area.placeSequence.length > 0 && area.path.length === 2) {
             const p0 = area.path[0];
@@ -247,16 +249,13 @@ function drawCMSContent(areasCMS) {
             const realCount = area.placeSequence.length;
             const cntBetween = realCount - 1;
 
-            // Richtungsvektor der Reihe
+            // running vector of the stripe
             const dLat = p1.lat - p0.lat;
             const dLng = p1.lng - p0.lng;
 
-            // Senkrechter Vektor für die Breite (90 Grad Rotation)
-            // Wir nutzen defWidthLat/Lng als Basis für die "Dicke" des Polygons
+            // normalizing width to DEF_PLACE_SIZE m (oriented in the right direction independent of the original vector length)
             const vSideLat = -dLng * (defWidthLat / defWidthLng);
             const vSideLng = dLat * (defWidthLng / defWidthLat);
-
-            // Normierung der Breite auf ca. 9m
             const len = Math.sqrt(vSideLat * vSideLat + vSideLng * vSideLng);
             const normSideLat = (vSideLat / len) * (defWidthLat / 2);
             const normSideLng = (vSideLng / len) * (defWidthLng / 2);
@@ -267,15 +266,12 @@ function drawCMSContent(areasCMS) {
 
                 let path = haveOverride?.path && haveOverride.path.length > 0 ? haveOverride.path : null;
                 if (path == null) {
-                // Ansonsten: Berechne rotiertes Rechteck auf der Linie
-                    const fraction = cntBetween === 0 ? 0 : i / cntBetween;
-                    const latC = p0.lat + dLat * fraction;
-                    const lngC = p0.lng + dLng * fraction;
-
-                    // Wir nehmen 40% der Segmentlänge als Box-Tiefe, um Lücken zu lassen
-                    const stepLat = cntBetween === 0 ? 0 : (dLat / cntBetween) * 0.4;
-                    const stepLng = cntBetween === 0 ? 0 : (dLng / cntBetween) * 0.4;
-
+                    // use rotated vector to create a polygon around the center point of the segment
+                    const fract = cntBetween === 0 ? 0 : i / cntBetween;
+                    const latC = p0.lat + dLat * fract;
+                    const lngC = p0.lng + dLng * fract;
+                    const stepLat = cntBetween === 0 ? 0 : (dLat / cntBetween) / 2;
+                    const stepLng = cntBetween === 0 ? 0 : (dLng / cntBetween) / 2;
                     path = [
                         { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
                         { lat: latC + normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
@@ -294,7 +290,7 @@ function drawCMSContent(areasCMS) {
     map.fitBounds(bounds);
 
     map.addListener("zoom_changed", () => {
-        const show = map.getZoom() >= 18;
+        const show = map.getZoom() >= MIN_MARKER_ZOOM_LEVEL;
         staticMarkers.forEach(m => m.setMap(show ? map : null));
     });
 
@@ -308,8 +304,8 @@ function drawCMSContent(areasCMS) {
     document.getElementById("search").addEventListener("keydown", function (event) {
         if (event.key === "Enter") {
             event.preventDefault();
-            this.blur();
             startSearch(map);
+            this.select();
         }
     });
 }
