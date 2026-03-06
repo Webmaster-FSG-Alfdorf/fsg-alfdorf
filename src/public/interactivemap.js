@@ -1,9 +1,9 @@
 /* global google */
 
-const VERSION = 8377; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8378; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
-const FLAS_DELAY = 500; // ms delay for flashing the polygons on search results
+const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
 const POLY_FILL_OPACITY = 0.3; // default opacity for polygons (except places which are 0 because they use the hover label instead)
 const POLY_BORDER_WIDTH = 0.0; // width of the polygon borders, set to 0 for no borders
 const MIN_MARKER_ZOOM_LEVEL = 18; // minimum zoom level to show the static markers for area labels (only used for areas with category != "places")
@@ -23,6 +23,7 @@ let map;
 let bounds;
 let mobile = false;
 let areasSearch = [];
+let showAllPlaces = false; // if true, all places are shown on the map independent of the search term
 
 function drawCMSContent(areasCMS) {
 
@@ -181,17 +182,23 @@ function drawCMSContent(areasCMS) {
     }
 
     function startSearch(map) {
-        let bounds = null;
         let s = document.getElementById("search").value.trim().toLowerCase();
+        if (s == "stellplätze" || s == "stellplatz" || s == "places" || s == "place") showAllPlaces = true; else if (s == "") showAllPlaces = false;
         ["nr ", "platz ", "place "].forEach(p => { if (s.startsWith(p)) s = s.substring(p.length).trim(); });
-        if (s) areasSearch.forEach(area => {
-            const match = (area.isNumber ? area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) : area.title.includes(s)) || area.description.includes(s);
+
+        let bounds = null;
+        areasSearch.forEach(area => {
+            const showThisPlace = showAllPlaces && area.category == "places";
+            const match = s != "" && ((area.isNumber ? area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) : area.title.includes(s)) || area.description.includes(s));
             if (match) {
-                const org = categories[area.category].opacity;
-                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, FLAS_DELAY * i);
+                const org = showThisPlace ? POLY_FILL_OPACITY : categories[area.category].opacity;
+                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, FLASH_DELAY * i);
                 if (!bounds) bounds = new google.maps.LatLngBounds();
                 area.poly.getPath().forEach(latlng => bounds.extend(latlng));
-            }
+            } else if (showThisPlace) { // not part of match but showAllPlaces is active
+                area.poly.setOptions({ fillOpacity: POLY_FILL_OPACITY });
+            } else // reset all to default opacity 
+                area.poly.setOptions({ fillOpacity: categories[area.category].opacity });
         });
         if (bounds) map.fitBounds(bounds);
     }
@@ -280,8 +287,8 @@ function drawCMSContent(areasCMS) {
                         ];
                     } else {
                         // keep a small gap between polygons
-                        const stepLat = cntBetween == 0 ? 0.5 : dLat / cntBetween * 0.49;
-                        const stepLng = cntBetween == 0 ? 0.5 : dLng / cntBetween * 0.49;
+                        const stepLat = dLat / cntBetween * 0.49;
+                        const stepLng = dLng / cntBetween * 0.49;
                         path = [
                             { lat: latC - normSideLat - stepLat, lng: lngC - normSideLng - stepLng },
                             { lat: latC + normSideLat - stepLat, lng: lngC + normSideLng - stepLng },
