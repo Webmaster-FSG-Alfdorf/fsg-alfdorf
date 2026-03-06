@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8376; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8377; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLAS_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -316,7 +316,7 @@ function drawCMSContent(areasCMS) {
         if (event.key == "Enter") {
             event.preventDefault();
             startSearch(map);
-            this.select();
+            if (mobile) this.blur(); else this.select();
         }
     });
 }
