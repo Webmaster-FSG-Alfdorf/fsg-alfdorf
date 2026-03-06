@@ -10,7 +10,7 @@ const categories = {
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
-const labelStyle = { text: "", color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" };
+const labelStyle = { color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" };
 const iconStyle = { path: 0, scale: 0 }; // path: 0 == google.maps.SymbolPath.CIRCLE; scale: 0 == invisible icon
 
 let map;
@@ -118,7 +118,7 @@ function drawCMSContent(areasCMS) {
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
             if (title && category == "places") {
-                hoverLabel.setLabel({ ...hoverLabel.getLabel(), text: title });
+                hoverLabel.setLabel({ ...labelStyle, text: title });
                 hoverLabel.setPosition(e.latLng);
                 hoverLabel.setVisible(true);
             }
