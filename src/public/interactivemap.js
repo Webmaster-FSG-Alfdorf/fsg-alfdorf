@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8379; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8380; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
