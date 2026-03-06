@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8380; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8381; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -16,7 +16,7 @@ const categories = {
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
-const labelStyle = { color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style" };
+const labelStyle = { color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style", text: "" };
 const iconStyle = { path: 0, scale: 0 }; // path: 0 == google.maps.SymbolPath.CIRCLE; scale: 0 == invisible icon
 
 let map;
