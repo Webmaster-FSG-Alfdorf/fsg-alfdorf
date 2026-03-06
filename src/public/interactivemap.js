@@ -115,19 +115,6 @@ function drawCMSContent(areasCMS) {
             cursor: "pointer"
         });
 
-        /*
-        // handle a tooltip when moving mouse over the place
-        let tooltip;
-        poly.addListener("mouseover", (e) => {
-            tooltip = new TooltipOverlay(e.latLng, title, description, images?.map((img => img.src)) ?? [], url);
-            tooltip.setMap(map);
-        });
-        poly.addListener("mouseout", () => {
-            tooltip?.setMap(null);
-            tooltip = null;
-        });
-*/
-
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
             if (title && category == "places") {
@@ -160,7 +147,7 @@ function drawCMSContent(areasCMS) {
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
         if (title && category != "places")
-            staticMarkers.push(new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: labelStyle, clickable: false, optimized: true }));
+            staticMarkers.push(new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true }));
 
         paths.forEach(p => bounds.extend(p));
 
