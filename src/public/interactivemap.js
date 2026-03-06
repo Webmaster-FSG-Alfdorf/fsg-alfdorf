@@ -154,13 +154,18 @@ function drawCMSContent(areasCMS) {
         paths.forEach(p => polyBounds.extend(p));
         paths.forEach(p => bounds.extend(p));
 
+        const content = document.createElement('div');
+        content.className = 'hover-label-style';
+        content.textContent = title;
+
         areasSearch.push({
             title: String(title ?? "").toLowerCase(),
             isNumber: !isNaN(parseInt(title)),
             description: String(description ?? "").toLowerCase(),
             category,
             poly,
-            marker: new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true })
+            //marker: new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true }),
+            marker: new google.maps.marker.AdvancedMarkerElement({ position: polyBounds.getCenter(), content }),
         });
     }
 
@@ -231,6 +236,7 @@ function drawCMSContent(areasCMS) {
         zoom: mobile ? DEF_ZOOM_LEVEL_MOBILE : DEF_ZOOM_LEVEL_DESKTOP,
         //center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
         mapTypeId: "satellite",
+        mapId: "DEMO_MAP_ID",
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false
@@ -363,7 +369,7 @@ function drawCMSContent(areasCMS) {
         window.initMap = function () { window.parent.postMessage("ready", "*"); };
         window.onmessage = (event) => { if (event.data) drawCMSContent(event.data); };
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCerYSObwqwjPepIBEwZUn4Q1Zgee-f7RI&callback=initMap" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCerYSObwqwjPepIBEwZUn4Q1Zgee-f7RI&libraries=marker&callback=initMap" async defer></script>
     <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
 </body>
 </html>

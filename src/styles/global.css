@@ -1,14 +1,13 @@
 /* CSS-Referenz: https://www.wix.com/velo/reference/$w/styling-elements-with-css */
- 
-/* Diese CSS Styles werden global auf jede Seite dieser Website angewendet. Schreiben dein CSS hier, z. B.: */ 
+/* Diese CSS Styles werden global auf jede Seite dieser Website angewendet. Schreiben dein CSS hier, z. B.: */
 
- /* Ändere die Hintergrundfarbe des Buttons zu Rot: */ 
- /* .button {
+/* Ändere die Hintergrundfarbe des Buttons zu Rot: */
+/* .button {
     background-color: red;
 } */
 
 .lightbox_map {
-    width: 100vw;
+  width: 100vw;
     height: 100vh;
 }
 
@@ -36,6 +35,13 @@ a:hover,
 }
 
 .hover-label-style {
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 1), -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  color: white;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
   pointer-events: none;
+  /* forward mouse events to the marker below */
+    will-change: transform;
+    /* optimize for performance since these labels will be moving with the map */
+    white-space: nowrap;
 }
