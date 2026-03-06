@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8381; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8382; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -157,6 +157,15 @@ function drawCMSContent(areasCMS) {
         const content = document.createElement('div');
         content.className = 'hover-label-style';
         content.textContent = title;
+        Object.assign(content.style, {
+            color: "#ffffff",
+            fontSize: "14px",
+            fontWeight: "bold",
+            textShadow: "1px 1px 3px rgba(0, 0, 0, 0.8)",
+            whiteSpace: "nowrap",
+            pointerEvents: "none", // Klicks gehen durch das Label auf das Polygon
+            willChange: "transform" // Wichtig für die Performance!
+        });
 
         areasSearch.push({
             title: String(title ?? "").toLowerCase(),

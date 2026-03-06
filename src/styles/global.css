@@ -35,11 +35,14 @@ a:hover,
 }
 
 .hover-label-style {
-  color: white;
-  font-size: 14px;
+    color: #ffffff;
+      font-family: sans-serif;
+      font-size: 14px;
     font-weight: bold;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-  white-space: nowrap;
-  pointer-events: none;
-  will-change: transform;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8), -1px -1px 3px rgba(0, 0, 0, 0.8);
+      pointer-events: none;
+      /* Wichtig: Klicks gehen durch das Label auf das Polygon */
+      white-space: nowrap;
+    will-change: transform;
+      /* Schaltet Hardware-Beschleunigung ein */
 }
