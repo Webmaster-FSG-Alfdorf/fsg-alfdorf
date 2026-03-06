@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8378; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8379; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -105,7 +105,6 @@ function drawCMSContent(areasCMS) {
 
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
     let hoverLabel = null;
-    let staticMarkers = [];
 
     function getWixUrl(wixUrl) {
         return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
@@ -136,7 +135,7 @@ function drawCMSContent(areasCMS) {
         });
 
         poly.addListener("mouseout", () => {
-            poly.setOptions({ fillOpacity: categories[category].opacity });
+            poly.setOptions({ fillOpacity: showAllPlaces && category == "places" ? POLY_FILL_OPACITY : categories[category].opacity });
             hoverLabel.setVisible(false);
         });
 
@@ -153,9 +152,6 @@ function drawCMSContent(areasCMS) {
 
         const polyBounds = new google.maps.LatLngBounds();
         paths.forEach(p => polyBounds.extend(p));
-        if (title && category != "places")
-            staticMarkers.push(new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true }));
-
         paths.forEach(p => bounds.extend(p));
 
         areasSearch.push({
@@ -163,7 +159,8 @@ function drawCMSContent(areasCMS) {
             isNumber: !isNaN(parseInt(title)),
             description: String(description ?? "").toLowerCase(),
             category,
-            poly
+            poly,
+            marker: new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true })
         });
     }
 
@@ -181,25 +178,45 @@ function drawCMSContent(areasCMS) {
         legend.appendChild(item);
     }
 
-    function startSearch(map) {
+    function updateVisibility() {
+        const showMarker = map.getZoom() >= MIN_MARKER_ZOOM_LEVEL;
         let s = document.getElementById("search").value.trim().toLowerCase();
         if (s == "stellplätze" || s == "stellplatz" || s == "places" || s == "place") showAllPlaces = true; else if (s == "") showAllPlaces = false;
-        ["nr ", "platz ", "place "].forEach(p => { if (s.startsWith(p)) s = s.substring(p.length).trim(); });
+        ["nr ", "platz ", "place "].forEach(p => { if (s.startsWith(p)) s = s.substring(p.length).trim() });
 
         let bounds = null;
         areasSearch.forEach(area => {
-            const showThisPlace = showAllPlaces && area.category == "places";
-            const match = s != "" && ((area.isNumber ? area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) : area.title.includes(s)) || area.description.includes(s));
+            const isPlace = area.category == "places";
+            const showThisPlace = showAllPlaces && isPlace;
+
+            const match = s != "" && (
+                (area.isNumber ?
+                    area.title.startsWith(s) && (area.title.length == s.length || isNaN(area.title[s.length])) :
+                    area.title.includes(s)
+                ) || area.description.includes(s)
+            );
+
+            area.marker?.setMap((match || showThisPlace || !isPlace) && showMarker ? map : null);
+
+            const org = showThisPlace ? POLY_FILL_OPACITY : categories[area.category].opacity;
             if (match) {
-                const org = showThisPlace ? POLY_FILL_OPACITY : categories[area.category].opacity;
-                for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 1 : org }) }, FLASH_DELAY * i);
                 if (!bounds) bounds = new google.maps.LatLngBounds();
                 area.poly.getPath().forEach(latlng => bounds.extend(latlng));
-            } else if (showThisPlace) { // not part of match but showAllPlaces is active
-                area.poly.setOptions({ fillOpacity: POLY_FILL_OPACITY });
-            } else // reset all to default opacity 
-                area.poly.setOptions({ fillOpacity: categories[area.category].opacity });
+                if (area.isBlinking != s) {
+                    area.isBlinking = s;
+                    for (let i = 0; i < 6; i++) setTimeout(() => { area.poly.setOptions({ fillOpacity: i % 2 == 0 ? 0.8 : org }) }, FLASH_DELAY * i);
+                }
+            } else {
+                area.isBlinking = null;
+                area.poly.setOptions({ fillOpacity: org });
+            }
         });
+
+        return bounds;
+    }
+
+    function startSearch(map) {
+        const bounds = updateVisibility();
         if (bounds) map.fitBounds(bounds);
     }
 
@@ -307,10 +324,7 @@ function drawCMSContent(areasCMS) {
 
     map.fitBounds(bounds);
 
-    map.addListener("zoom_changed", () => {
-        const show = map.getZoom() >= MIN_MARKER_ZOOM_LEVEL;
-        staticMarkers.forEach(m => m.setMap(show ? map : null));
-    });
+    map.addListener("zoom_changed", updateVisibility);
 
     if (mobile) {
         document.getElementById("legend").hidden = true;
