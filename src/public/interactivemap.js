@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8383; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8384; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -16,8 +16,18 @@ const categories = {
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
-const labelStyle = { color: "#ffffff", fontSize: "14px", fontWeight: "bold", className: "hover-label-style", text: "" };
-const iconStyle = { path: 0, scale: 0 }; // path: 0 == google.maps.SymbolPath.CIRCLE; scale: 0 == invisible icon
+const labelStyle = {
+    fontSize: "14px",
+    fontWeight: "bold",
+    color: "#ffffff",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    textShadow: "2px 2px 3px rgba(0, 0, 0, 1)",
+    padding: "2px 5px",
+    borderRadius: "4px",
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+    willChange: "transform",
+};
 
 let map;
 let bounds;
@@ -158,15 +168,7 @@ function drawCMSContent(areasCMS) {
         const content = document.createElement('div');
         content.className = 'hover-label-style';
         content.textContent = title;
-        Object.assign(content.style, {
-            color: "#ffffff",
-            fontSize: "14px",
-            fontWeight: "bold",
-            textShadow: "1px 1px 3px rgba(0, 0, 0, 0.8)",
-            whiteSpace: "nowrap",
-            pointerEvents: "none", // Klicks gehen durch das Label auf das Polygon
-            willChange: "transform" // Wichtig für die Performance!
-        });
+        Object.assign(content.style, labelStyle);
 
         areasSearch.push({
             title: String(title ?? "").toLowerCase(),
@@ -257,17 +259,7 @@ function drawCMSContent(areasCMS) {
     hoverLabelContent = document.createElement('div');
     hoverLabelContent.className = 'hover-label-style';
     hoverLabelContent.textContent = "...";
-    Object.assign(hoverLabelContent.style, {
-        color: "#ffffff",
-        fontSize: "14px",
-        fontWeight: "bold",
-        textShadow: "2px 2px 3px rgba(0, 0, 0, 1)",
-        whiteSpace: "nowrap",
-        pointerEvents: "none",
-        padding: "2px 5px",
-        borderRadius: "4px",
-        backgroundColor: "rgba(0,0,0,0.3)",
-    });
+    Object.assign(hoverLabelContent.style, labelStyle);
     hoverLabelContent.style.display = 'none'; // initially hidden, only show on mouseover
     hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, position: polyBounds.getCenter(), zIndex: 9999, content: hoverLabelContent });
 
