@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8385; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8387; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -10,23 +10,45 @@ const MIN_MARKER_ZOOM_LEVEL = 18; // minimum zoom level to show the static marke
 const DEF_ZOOM_LEVEL_DESKTOP = 18; // default zoom level for desktop
 const DEF_ZOOM_LEVEL_MOBILE = 17; // default zoom level for mobile
 
+const Z_INDEX_MARKER = 100; // z-index for the static markers with area labels
+const Z_INDEX_HOVER = 200; // z-index for the hover label
+const Z_INDEX_TOOLTIP = 300; // z-index for the tooltip
+
 const categories = {
     sport: { color: "#ffcc00", legend: "Sportplätze", opacity: POLY_FILL_OPACITY },
     infra: { color: "#2196f3", legend: "Infrastruktur", opacity: POLY_FILL_OPACITY },
     places: { color: "#4caf50", legend: "Stellplätze", opacity: 0.0 },
 };
 
-const labelStyle = {
+const baseLabelStyle = {
     fontSize: "14px",
+    fontFamily: "sans-serif",
     fontWeight: "bold",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    padding: "2px 5px",
+    willChange: "transform",
+};
+
+const labelStyle = {
+    ...baseLabelStyle,
     color: "#ffffff",
     backgroundColor: "rgba(0,0,0,0.3)",
     textShadow: "2px 2px 3px rgba(0, 0, 0, 1)",
-    padding: "2px 5px",
-    borderRadius: "4px",
     whiteSpace: "nowrap",
     pointerEvents: "none",
-    willChange: "transform",
+};
+
+const tooltipStyle = {
+    ...baseLabelStyle,
+    color: '#333',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    border: '1px solid #999',
+    position: 'absolute',
+    maxWidth: '220px',
+    lineHeight: '1.4',
+    zIndex: Z_INDEX_TOOLTIP,
+    pointerEvents: "auto",
 };
 
 let map;
@@ -50,20 +72,8 @@ function drawCMSContent(areasCMS) {
 
         onAdd() {
             this.div = document.createElement('div');
-            this.div.style.position = 'absolute';
-            this.div.style.background = 'rgba(255, 255, 255, 0.9)';
-            this.div.style.border = '1px solid #999';
-            this.div.style.borderRadius = '8px';
-            this.div.style.padding = '12px';
-            this.div.style.fontSize = '14px';
-            this.div.style.color = '#333';
-            this.div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-            this.div.style.pointerEvents = 'auto';
-            this.div.style.maxWidth = '220px';
-            this.div.style.lineHeight = '1.4';
-            this.div.style.zIndex = '1000';
+            Object.assign(this.div.style, tooltipStyle);
 
-            // X-Button zum Schließen
             let content = `<div id="close-tooltip" style="position:absolute; top:5px; right:10px; cursor:pointer; font-weight:bold; font-size:18px; color:#999;">×</div>`;
 
             content += `<div style="margin-right:15px;"><strong>${this.name}</strong><br><span style="font-size:13px; color:#666;">${this.descr}</span></div>`;
@@ -82,21 +92,14 @@ function drawCMSContent(areasCMS) {
                 window.open(`https://webmaster98234.wixstudio.com/fsg-a/sport/${this.url}`, "_blank");
             };
 
-            const stopEvents = (e) => {
-                e.stopPropagation();
-                // Bei Touch-Geräten verhindert das oft das "Geister-Klicken"
-                if (e.type == 'touchstart') {
-                    // e.preventDefault(); // Nur aktivieren, wenn Button-Klicks gar nicht gehen
-                }
-            };
-
+            const stopEvents = (e) => { e.stopPropagation(); };
             this.div.addEventListener('click', stopEvents);
             this.div.addEventListener('touchstart', stopEvents, { passive: true });
             this.div.addEventListener('pointerdown', stopEvents);
             this.div.addEventListener('mousedown', stopEvents);
             this.div.addEventListener('dblclick', stopEvents);
 
-            this.getPanes().overlayMouseTarget.appendChild(this.div);
+            this.getPanes().floatPane.appendChild(this.div);
         }
 
         draw() {
@@ -166,7 +169,6 @@ function drawCMSContent(areasCMS) {
         paths.forEach(p => bounds.extend(p));
 
         const content = document.createElement('div');
-        content.className = 'hover-label-style';
         content.textContent = title;
         Object.assign(content.style, labelStyle);
 
@@ -176,7 +178,7 @@ function drawCMSContent(areasCMS) {
             description: String(description ?? "").toLowerCase(),
             category,
             poly,
-            marker: new google.maps.marker.AdvancedMarkerElement({ position: polyBounds.getCenter(), content }),
+            marker: new google.maps.marker.AdvancedMarkerElement({ position: polyBounds.getCenter(), content, zIndex: Z_INDEX_MARKER }),
         });
     }
 
@@ -257,11 +259,10 @@ function drawCMSContent(areasCMS) {
     bounds = new google.maps.LatLngBounds();
 
     hoverLabelContent = document.createElement('div');
-    hoverLabelContent.className = 'hover-label-style';
     hoverLabelContent.textContent = "...";
     Object.assign(hoverLabelContent.style, labelStyle);
     hoverLabelContent.style.display = 'none'; // initially hidden, only show on mouseover
-    hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, zIndex: 9999, content: hoverLabelContent });
+    hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, zIndex: Z_INDEX_HOVER, content: hoverLabelContent });
 
     const defWidthLat = DEF_PLACE_SIZE / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = DEF_PLACE_SIZE / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
