@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8384; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8385; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -261,7 +261,7 @@ function drawCMSContent(areasCMS) {
     hoverLabelContent.textContent = "...";
     Object.assign(hoverLabelContent.style, labelStyle);
     hoverLabelContent.style.display = 'none'; // initially hidden, only show on mouseover
-    hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, position: polyBounds.getCenter(), zIndex: 9999, content: hoverLabelContent });
+    hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, zIndex: 9999, content: hoverLabelContent });
 
     const defWidthLat = DEF_PLACE_SIZE / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = DEF_PLACE_SIZE / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
