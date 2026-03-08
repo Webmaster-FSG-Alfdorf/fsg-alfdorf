@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8382; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8383; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -105,6 +105,7 @@ function drawCMSContent(areasCMS) {
 
     let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
     let hoverLabel = null;
+    let hoverLabelContent = null;
 
     function getWixUrl(wixUrl) {
         return wixUrl?.startsWith('wix:image://') ? `https://static.wixstatic.com/media/${wixUrl.split('/')[3]}` : wixUrl;
@@ -124,19 +125,19 @@ function drawCMSContent(areasCMS) {
         poly.addListener("mouseover", (e) => {
             poly.setOptions({ fillOpacity: 0.7 });
             if (title && category == "places") {
-                hoverLabel.setLabel({ ...labelStyle, text: title });
-                hoverLabel.setPosition(e.latLng);
-                hoverLabel.setVisible(true);
+                hoverLabelContent.textContent = title;
+                hoverLabelContent.style.display = 'block';
+                hoverLabel.position = e.latLng;
             }
         });
 
         poly.addListener("mousemove", (e) => {
-            hoverLabel.setPosition(e.latLng);
+            if (hoverLabelContent.style.display === 'block') hoverLabel.position = e.latLng;
         });
 
         poly.addListener("mouseout", () => {
             poly.setOptions({ fillOpacity: showAllPlaces && category == "places" ? POLY_FILL_OPACITY : categories[category].opacity });
-            hoverLabel.setVisible(false);
+            hoverLabelContent.style.display = 'none';
         });
 
         poly.addListener("click", (e) => {
@@ -173,7 +174,6 @@ function drawCMSContent(areasCMS) {
             description: String(description ?? "").toLowerCase(),
             category,
             poly,
-            //marker: new google.maps.Marker({ position: polyBounds.getCenter(), icon: iconStyle, label: { ...labelStyle, text: title }, clickable: false, optimized: true }),
             marker: new google.maps.marker.AdvancedMarkerElement({ position: polyBounds.getCenter(), content }),
         });
     }
@@ -246,6 +246,7 @@ function drawCMSContent(areasCMS) {
         //center: mobile ? { lat: 48.832, lng: 9.77395 } : { lat: 48.8357, lng: 9.768 },
         mapTypeId: "satellite",
         mapId: "DEMO_MAP_ID",
+        collisionBehavior: google.maps.CollisionBehavior.REQUIRED_AND_HIDES_OPTIONAL,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false
@@ -253,7 +254,22 @@ function drawCMSContent(areasCMS) {
 
     bounds = new google.maps.LatLngBounds();
 
-    hoverLabel = new google.maps.Marker({ map: map, visible: false, icon: iconStyle, label: labelStyle, clickable: false });
+    hoverLabelContent = document.createElement('div');
+    hoverLabelContent.className = 'hover-label-style';
+    hoverLabelContent.textContent = "...";
+    Object.assign(hoverLabelContent.style, {
+        color: "#ffffff",
+        fontSize: "14px",
+        fontWeight: "bold",
+        textShadow: "2px 2px 3px rgba(0, 0, 0, 1)",
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+        padding: "2px 5px",
+        borderRadius: "4px",
+        backgroundColor: "rgba(0,0,0,0.3)",
+    });
+    hoverLabelContent.style.display = 'none'; // initially hidden, only show on mouseover
+    hoverLabel = new google.maps.marker.AdvancedMarkerElement({ map: map, position: polyBounds.getCenter(), zIndex: 9999, content: hoverLabelContent });
 
     const defWidthLat = DEF_PLACE_SIZE / 111320; // width of the stripe in case of latitude: 9m
     const defWidthLng = DEF_PLACE_SIZE / (111320 * Math.cos(48.84 * Math.PI / 180)); // width of the stripe in case of longitude: 9m at ~49°
