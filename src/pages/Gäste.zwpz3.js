@@ -29,32 +29,15 @@ $w.onReady(function () {
 
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
-
         for (const lodging of results.items) {
-            // 1. Hauptunterkunft hinzufügen (z.B. "Haus A")
-            options.push({
-                label: lodging.title,
-                value: `${lodging.lodgingID}|0`
-            });
-
-            // 2. Direkt danach alle zugehörigen Sub-Lodgings (z.B. "Haus A - Zimmer 1", etc.)
-            if (lodging.capacity > 1) {
-                for (let index = 1; index <= lodging.capacity; index++) {
-                    const subLabel = await generateLodgingName({
-                        lodging: lodging.lodgingID,
-                        capacityPrefix: lodging.capacityPrefix,
-                        lodgingSub: index
-                    });
-
-                    options.push({
-                        label: subLabel,
-                        value: `${lodging.lodgingID}|${index}`
-                    });
-                }
+            options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
+            if (lodging.capacity > 1) for (let index = 1; index <= lodging.capacity; index++) {
+                options.push({
+                    label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
+                    value: `${lodging.lodgingID}|${index}`
+                });
             }
         }
-
-        // Erst wenn alle Haupt- und Sub-Lodgings fertig generiert sind, die UI aktualisieren
         $w("#inputLodging").options = options;
     });
 
