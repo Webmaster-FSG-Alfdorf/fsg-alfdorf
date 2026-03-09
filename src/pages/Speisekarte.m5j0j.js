@@ -1,12 +1,6 @@
-import wixData from 'wix-data';
-
 $w.onReady(function () {
-    $w("#datasetFood").onReady(() => {
-        wixData.query("Speisen").descending("date").find().then((results) => {
-            $w("#tableFood").rows = results.items.map(item => {
-                item.price = `${item.price.toFixed(2)} €`;
-                return item;
-            });
-        });
+    $w("#datasetFoods").onReady(async () => {
+        const result = await $w("#datasetFoods").getItems(0, $w("#datasetFoods").getPageSize());
+        $w("#tableFood").rows = result.items.map(item => ({ ...item, price: item.price ? `${item.price.toFixed(2)} €` : "" }));
     });
 });

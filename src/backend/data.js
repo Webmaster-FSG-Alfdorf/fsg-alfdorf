@@ -79,7 +79,7 @@ async function buildSearchField(item) {
         item.email,
         item.phoneNumber,
         item.address?.formatted ?? "",
-        dateRangeToString({ start: item.dateFrom, end: item.dateTo }),
+        dateRangeToString(item.dateFrom, item.dateTo),
         item.lodging,
         item.lodgingSub, // must be directly after item.lodging
         await generateLodgingName(item),

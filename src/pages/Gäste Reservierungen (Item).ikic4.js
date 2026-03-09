@@ -200,7 +200,7 @@ function updateAllInputs() {
 
     if (item) {
         $w("#inputLodging").value = `${item.lodging}|${item.lodgingSub ?? 0}`;
-        $w("#inputDate").value = dateRangeToString({ start: item.dateFrom, end: item.dateTo }, { hour: null, minute: null });
+        $w("#inputDate").value = dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null });
         $w("#inputArrivalTime").value = toLocal(item.dateFrom).getHours().toString();
         $w("#inputDepartureTime").value = toLocal(item.dateTo).getHours().toString();
     } else {
@@ -258,7 +258,7 @@ async function updateDateKeepingHours(utcDateRange) {
     await $w("#datasetGuestReservations").setFieldValue("dateTo", dtTo);
 
     console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
-    $w("#inputDate").value = dateRangeToString({ start: dtFrom, end: dtTo }, { hour: null, minute: null });
+    $w("#inputDate").value = dateRangeToString(dtFrom, dtTo, { hour: null, minute: null });
 }
 
 function updateCostsTable() {
@@ -431,7 +431,7 @@ function updateTitle() {
 
 function generateTitle(item) {
     if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging))
-        return `${dateRangeToString({ start: item.dateFrom }, { hour: null, minute: null })} +${nightsBetween(item.dateFrom, item.dateTo)}N ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
+        return `${dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null })} +${nightsBetween(item.dateFrom, item.dateTo)}N ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
     else
         return "(Neue Reservierung)";
 }
@@ -465,8 +465,8 @@ async function save(onSuccess = () => { }) {
         diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
 
         diffField("Datum",
-            dateRangeToString({ start: originalItem.dateFrom, end: originalItem.dateTo }, { hour: null, minute: null }),
-            dateRangeToString({ start: item.dateFrom, end: item.dateTo }, { hour: null, minute: null })
+            dateRangeToString(originalItem.dateFrom, originalItem.dateTo, { hour: null, minute: null }),
+            dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null })
         );
 
         const av0 = toLocal(originalItem.dateFrom).getHours().toString();

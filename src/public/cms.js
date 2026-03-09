@@ -19,7 +19,7 @@ export async function printEventSummary(id, trg) {
         html += `<li>👤 ${event.responsible}`
 
     if (event.registration)
-        html += `<li>📝 Vornameldung bis ${dateRangeToString({ start: new Date(event.registration) })}`;
+        html += `<li>📝 Vornameldung bis ${dateRangeToString(event.registration)}`;
 
     if (event.dates && event.dates.length > 0) {
         html += "<li>📅";
@@ -74,13 +74,57 @@ export function printDataSetSummary(sorted, nameSingularWPrefix, namePlural, fil
     })();
 }
 
+export const FormatTypesMonth = {
+    narrow: 'narrow',
+    short: 'short',
+    long: 'long',
+    numeric: 'numeric',
+    twoDigit: '2-digit',
+    none: null
+};
+
+export const FormatTypesWeekday = {
+    narrow: 'narrow',
+    short: 'short',
+    long: 'long',
+    none: null
+};
+
+export const FormatTypesNumeric = {
+    numeric: 'numeric',
+    twoDigit: '2-digit',
+    none: null
+};
+
 /**
- * @param {object} dateRange — a date-range with {start, [end]}
+ * @param {object} start start date, shall be a Dat object or a string parseable to a Date
+ * @param {object} end optional end date to print a range instead of a single date
+ * @param {object} options options for the date formatting
+ * @param {string|string[]} options.locales the locale(s) to use for formatting, defaults to "de-DE"
+ * @param {FormatTypesWeekday} options.weekday the format of the weekday, defaults to "short"
+ * @param {FormatTypesNumeric} options.day the format of the day, defaults to "2-digit"
+ * @param {FormatTypesMonth} options.month the format of the month, defaults to "short"
+ * @param {FormatTypesNumeric} options.year the format of the year, defaults to "numeric"
+ * @param {FormatTypesNumeric} options.hour the format of the hour, defaults to "2-digit"
+ * @param {FormatTypesNumeric} options.minute the format of the minute, defaults to "2-digit"
+ * @param {FormatTypesNumeric} options.second the format of the second, defaults to "none"
  * @returns {string} — human readable string of the range
  */
-export function dateRangeToString(dateRange, { locales = "de-DE", weekday = "short", day = "2-digit", month = "short", year = "numeric", hour = "2-digit", minute = "2-digit" } = {}) {
+export function dateRangeToString(
+    start,
+    end = null,
+    {
+        locales = "de-DE",
+        weekday = FormatTypesWeekday.short,
+        day = FormatTypesNumeric.twoDigit,
+        month = FormatTypesMonth.short,
+        year = FormatTypesNumeric.numeric,
+        hour = FormatTypesNumeric.twoDigit,
+        minute = FormatTypesNumeric.twoDigit,
+        second = FormatTypesNumeric.none
+    } = {}) {
     let res = "";
-    if (dateRange.start) {
+    if (start) {
         let df = { timeZone: "Europe/Berlin" };
         if (weekday != null) df.weekday = weekday;
         if (day != null) df.day = day;
@@ -88,15 +132,20 @@ export function dateRangeToString(dateRange, { locales = "de-DE", weekday = "sho
         if (year != null) df.year = year;
         if (hour != null) df.hour = hour;
         if (minute != null) df.minute = minute;
-        const dStart = toLocal(dateRange.start);
+        if (second != null) df.second = second;
+        const dStart = toLocal(start);
         res += dStart.toLocaleString(locales, df);
-        if (dateRange.end) {
-            res += " - ";
-            const dEnd = toLocal(dateRange.end);
-            if (dStart.getDate() === dEnd.getDate() && dStart.getMonth() === dEnd.getMonth() && dStart.getFullYear() === dEnd.getFullYear())
-                res += dEnd.toLocaleString(locales, { timeZone: "Europe/Berlin", hour, minute });
-            else
-                res += dEnd.toLocaleString(locales, df);
+        if (end) {
+            const dEnd = toLocal(end);
+            const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
+            const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
+            const showDay = weekday != null || day != null || month != null || year != null;
+            const showTime = hour != null || minute != null || second != null;
+            if ((showDay && !sameDay) || (showTime && !sameTime)) {
+                res += " - ";
+                if (sameDay) res += dEnd.toLocaleString(locales, Object.fromEntries(Object.entries(df).filter(([k]) => !['weekday', 'day', 'month', 'year'].includes(k))));
+                else res += dEnd.toLocaleString(locales, df);
+            }
         }
     }
     return res;
@@ -181,7 +230,7 @@ export function listAllRanges(eventDate) {
 export function printRanges(eventDate) {
     let ranges = listAllRanges(eventDate);
     if (ranges.length == 0) return ""; // no date at all
-    if (ranges.length == 1) return dateRangeToString(ranges[0]); // no iteration at all
+    if (ranges.length == 1) return dateRangeToString(ranges[0].start, ranges[0].end); // no iteration at all
 
     let rct = eventDate.recurrenceType;
     let n = rct == "weekly" ? "" : "n"; // to correctly gender "Tag" and "Monat"
@@ -193,7 +242,7 @@ export function printRanges(eventDate) {
     let sameYear = rStart && rEnd && rStart.year == rEnd.year;
     let sameMonth = sameYear && rStart.month == rEnd.month;
 
-    res += dateRangeToString(ranges[0], { year: sameYear ? null : "numeric", month: sameMonth ? null : "short" });
+    res += dateRangeToString(ranges[0].start, ranges[0].end, { year: sameYear ? null : "numeric", month: sameMonth ? null : "short" });
     res += ` jede${n} `;
     switch (eventDate.recurrenceInterval) {
         case 0:
@@ -226,7 +275,7 @@ export function printRanges(eventDate) {
         eventDate.recurrenceDays.forEach((wd, i) => { res += `${i == 0 ? " " : " , "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
     }
     res += " bis ";
-    res += dateRangeToString(ranges[ranges.length - 1]);
+    res += dateRangeToString(ranges[ranges.length - 1].start, ranges[ranges.length - 1].end);
     return res;
 }
 
@@ -370,7 +419,7 @@ export function toUTC(localDate) {
 }
 
 /**
- * @param {Date}   utcDate
+ * @param {object} utcDate shall be a Date object or a string parseable to a Date
  * @returns {Date}
  */
 export function toLocal(utcDate) {
@@ -397,4 +446,39 @@ export function nightsBetween(dateFrom, dateTo) {
         d2.setHours(0, 0, 0, 0);
         return Math.max(0, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
     } else return 0;
+}
+
+function testDateTimeToString() {
+    const testDate = new Date(2026, 3, 9, 8, 15);
+    const testDateSameDay = new Date(2026, 3, 9, 14, 30);
+    const testDateSameTime = new Date(2026, 4, 12, 8, 15);
+    const testDateOther = new Date(2026, 4, 12, 14, 30);
+    const optOnlyTime = { year: null, weekday: null, month: null, day: null };
+    const optOnlyDay = { hour: null, minute: null, second: null };
+    const optDayAndTime = { year: null, weekday: null };
+    const optDayAndTimeShort = { year: FormatTypesNumeric.numeric, weekday: FormatTypesWeekday.narrow, month: FormatTypesMonth.numeric, day: FormatTypesNumeric.numeric, hour: FormatTypesNumeric.numeric, minute: FormatTypesNumeric.numeric };
+
+    console.log("One day", dateRangeToString(testDate));
+    console.log("One day only day", dateRangeToString(testDate, null, optOnlyDay));
+    console.log("One day only time", dateRangeToString(testDate, null, optOnlyTime));
+    console.log("One day day+time", dateRangeToString(testDate, null, optDayAndTime));
+    console.log("One day day+time short", dateRangeToString(testDate, null, optDayAndTimeShort));
+
+    console.log("Same date", dateRangeToString(testDate, testDate));
+    console.log("Same date only day", dateRangeToString(testDate, testDate, optOnlyDay));
+    console.log("Same date only time", dateRangeToString(testDate, testDate, optOnlyTime));
+    console.log("Same date day+time", dateRangeToString(testDate, testDate, optDayAndTime));
+    console.log("Same date day+time short", dateRangeToString(testDate, testDate, optDayAndTimeShort));
+
+    console.log("Same day", dateRangeToString(testDate, testDateSameDay));
+    console.log("Same day only day", dateRangeToString(testDate, testDateSameDay, optOnlyDay));
+    console.log("Same day only time", dateRangeToString(testDate, testDateSameDay, optOnlyTime));
+    console.log("Same day day+time", dateRangeToString(testDate, testDateSameDay, optDayAndTime));
+    console.log("Same day day+time short", dateRangeToString(testDate, testDateSameDay, optDayAndTimeShort));
+
+    console.log("Same time", dateRangeToString(testDate, testDateSameTime));
+    console.log("Same time only day", dateRangeToString(testDate, testDateSameTime, optOnlyDay));
+    console.log("Same time only time", dateRangeToString(testDate, testDateSameTime, optOnlyTime));
+    console.log("Same time day+time", dateRangeToString(testDate, testDateSameTime, optDayAndTime));
+    console.log("Same time day+time short", dateRangeToString(testDate, testDateSameTime, optDayAndTimeShort));
 }

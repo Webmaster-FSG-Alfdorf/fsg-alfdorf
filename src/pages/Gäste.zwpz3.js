@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
-import { dateRangeToString, stringToDateRange, toUTC, toLocal, incUTCDate } from 'public/cms.js';
+import { dateRangeToString, FormatTypesMonth, FormatTypesWeekday, FormatTypesNumeric, stringToDateRange, toUTC, toLocal, incUTCDate } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDate = [new Date(), new Date()];
@@ -10,53 +10,52 @@ let occupationsFrom = new Date();
 let occupationsTo = new Date();
 
 $w.onReady(function () {
-    $w("#datasetVisitorPrices").onReady(() => {
-        wixData.query("pricesVisitor").isEmpty("depositName").ascending("order").find().then((results) => {
-            $w("#tableVisitorPrices").rows = results.items.map(item => {
-                let range = "";
-                if (item.perDay) {
-                    if (range.length > 0) range += "/";
-                    range += "Tag";
-                }
-                if (item.perNight) {
-                    if (range.length > 0) range += "/";
-                    range += "Nacht";
-                }
-                if (item.perAdult) {
-                    if (range.length > 0) range += "/";
-                    range += "Erwachsene(r)";
-                }
-                if (item.perReservation) {
-                    if (range.length > 0) range += "/";
-                    range += "Reservierung";
-                }
-                if (range.length > 0) range = " pro " + range;
-                item.price = `${item.price.toFixed(2)} €${range}`;
-
-                item.dateRange = item.start ? dateRangeToString({ start: new Date(item.start), end: new Date(item.end) }, { year: null, weekday: null, hour: null, minute: null }) : "";
-
-                return item;
-            });
+    $w("#datasetVisitorPrices").onReady(async () => {
+        const result = await $w("#datasetVisitorPrices").getItems(0, $w("#datasetVisitorPrices").getPageSize());
+        $w("#tableVisitorPrices").rows = result.items.map(item => {
+            const parts = [];
+            if (item.perDay) parts.push("Tag");
+            if (item.perNight) parts.push("Nacht");
+            if (item.perAdult) parts.push("Erwachsene(r)");
+            if (item.perReservation) parts.push("Reservierung");
+            const rangeStr = parts.length > 0 ? ` pro ${parts.join("/")}` : "";
+            return {
+                ...item,
+                price: item.price ? `${item.price.toFixed(2)} €${rangeStr}` : rangeStr,
+                dateRange: item.start ? dateRangeToString(item.start, item.end, { year: null, weekday: null, hour: null, minute: null }) : ""
+            };
         });
     });
 
-    wixData.query("lodgings").ascending("order").find().then((results) => {
+    wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
-        // main lodgings go first
-        results.items.forEach((lodging) => {
-            options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
-        });
-        $w("#inputLodging").options = options;
-        // then all sub lodgings
-        results.items.forEach(async (lodging) => {
+
+        for (const lodging of results.items) {
+            // 1. Hauptunterkunft hinzufügen (z.B. "Haus A")
+            options.push({
+                label: lodging.title,
+                value: `${lodging.lodgingID}|0`
+            });
+
+            // 2. Direkt danach alle zugehörigen Sub-Lodgings (z.B. "Haus A - Zimmer 1", etc.)
             if (lodging.capacity > 1) {
-                for (let index = 1; index <= lodging.capacity; index++) options.push({
-                    label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
-                    value: `${lodging.lodgingID}|${index}`
-                });
-                $w("#inputLodging").options = options;
+                for (let index = 1; index <= lodging.capacity; index++) {
+                    const subLabel = await generateLodgingName({
+                        lodging: lodging.lodgingID,
+                        capacityPrefix: lodging.capacityPrefix,
+                        lodgingSub: index
+                    });
+
+                    options.push({
+                        label: subLabel,
+                        value: `${lodging.lodgingID}|${index}`
+                    });
+                }
             }
-        });
+        }
+
+        // Erst wenn alle Haupt- und Sub-Lodgings fertig generiert sind, die UI aktualisieren
+        $w("#inputLodging").options = options;
     });
 
     $w("#datasetGuestReservations").onReady(() => {
@@ -150,7 +149,7 @@ function updateForm(updateFields) {
         ]).then(html => $w("#textReservationPrice").html = html);
     });
 
-    $w("#inputDate").value = dateRangeToString({ start: currentDate[0], end: currentDate[1] }, { hour: null, minute: null });
+    $w("#inputDate").value = dateRangeToString(currentDate[0], currentDate[1], { hour: null, minute: null });
 
     if (updateFields) {
         $w("#datasetGuestReservations").setFieldValue("dateFrom", currentDate[0]);

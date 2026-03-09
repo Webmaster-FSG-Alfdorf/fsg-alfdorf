@@ -24,7 +24,7 @@ $w.onReady(function () {
         html = insertContact(html, item.responsible, item.responsibleMail, item.responsiblePhone);
 
         if (item.registration) //TODO what to use as link? calendar entry as reminder, or contact mail/phone ?
-            html += `<li><div>📝 Voranmeldung bis ${dateRangeToString({ start: new Date(item.registration) })}</div>`;
+            html += `<li><div>📝 Voranmeldung bis ${dateRangeToString(item.registration)}</div>`;
 
         let allDates = new Map();
         (item.dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
@@ -34,7 +34,7 @@ $w.onReady(function () {
         // combine all found date-ranges of each event-date but ignore duplicates, then print them in ascending order
         Array.from(allDates.values()).sort((dr0, dr1) => dr0.start - dr1.start).forEach((dr, i) => {
             if (allDates.size > 1) html += "<li>";
-            html += `${dateRangeToString(dr)}`;
+            html += `${dateRangeToString(dr.start, dr.end)}`;
             html += `&nbsp;<a href="https://calendar.google.com/calendar/render?` +
                 `action=TEMPLATE&` +
                 `text=${encodeURIComponent(item.eventName)}&` +

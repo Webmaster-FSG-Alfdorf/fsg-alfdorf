@@ -1,30 +1,20 @@
-import wixData from 'wix-data';
-
 $w.onReady(function () {
-    $w("#datasetMemberPrices").onReady(() => {
-        wixData.query("pricesMembers").descending("price").find().then((results) => {
-            $w("#tableMemberPrices").rows = results.items.map(item => {
-                const range = (() => {
-                    switch (item.range) {
-                    case "perYear":
-                        return " pro Jahr";
-                    case "firstYear":
-                        return " für 1 Jahr";
-                    default:
-                        return "";
-                    }
-                })();
-                item.price = `${item.price.toFixed(2)} €${range}`;
-                return item;
-            });
-        });
+    const ranges = {
+        "perYear": " pro Jahr",
+        "firstYear": " für 1 Jahr",
+        "": ""
+    };
+    $w("#datasetMemberPrices").onReady(async () => {
+        const result = await $w("#datasetMemberPrices").getItems(0, $w("#datasetMemberPrices").getPageSize());
+        $w("#tableMemberPrices").rows = result.items.map(item => ({
+            ...item,
+            price: item.price ? `${item.price.toFixed(2)} €${ranges[item.range ?? ""]}` : "",
+        }));
     });
-    $w("#datasetLeasingPrices").onReady(() => {
-        wixData.query("pricesLeasing").ascending("price").find().then((results) => {
-            $w("#tableLeasingPrices").rows = results.items.map(item => {
-                item.price = `${item.price.toFixed(2)} €`;
-                return item;
-            });
-        });
+
+    $w("#datasetLeasingPrices").onReady(async () => {
+        const result = await $w("#datasetLeasingPrices").getItems(0, $w("#datasetLeasingPrices").getPageSize());
+        $w("#tableLeasingPrices").rows = result.items.map(item => ({ ...item, price: item.price ? `${item.price.toFixed(2)} €` : "" }));
     });
+
 });

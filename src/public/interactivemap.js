@@ -25,7 +25,7 @@ const baseLabelStyle = {
     fontFamily: "sans-serif",
     fontWeight: "bold",
     borderRadius: "8px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
     padding: "2px 5px",
     willChange: "transform",
 };
@@ -33,7 +33,7 @@ const baseLabelStyle = {
 const labelStyle = {
     ...baseLabelStyle,
     color: "#ffffff",
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
     textShadow: "2px 2px 3px rgba(0, 0, 0, 1)",
     whiteSpace: "nowrap",
     pointerEvents: "none",
