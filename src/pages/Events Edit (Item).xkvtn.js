@@ -45,6 +45,20 @@ $w.onReady(function () {
 
         refreshDatesUI();
     });
+
+    $w("#eventsDataset").onAfterSave(() => {
+        $w("#textResponse").html = `<p style="color: #2ECC71; font-size: 16px; text-align: center;">✔ Erfolgreich gespeichert!</p>`;
+        $w("#textResponse").expand();
+    });
+
+    $w("#eventsDataset").onError((error) => {
+        let msg = "✖ Fehler beim Speichern.";
+        if (error.code === "DS_VALIDATION_ERROR") msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
+        if (error.message.includes("is not a valid email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
+        $w("#textResponse").html = `<p style="color: #E74C3C; font-size: 16px; text-align: center;">${msg}</p>`;
+        $w("#textResponse").expand();
+    });
+
 });
 
 // Funktion: Neuen leeren Termin hinzufügen
@@ -89,8 +103,8 @@ function updateDatesArray(index, field, value, timeValue = null) {
 
     if (timeValue != null) {
         let finalDate = new Date(value);
-        const [hours, minutes] = timeValue.split(':');
-        finalDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        const [hours, minutes] = (timeValue || "00:00").split(':');
+        finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
         dates[index][field] = finalDate;
     } else {
         dates[index][field] = value;
