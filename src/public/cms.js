@@ -265,7 +265,7 @@ export function printRanges(eventDate) {
     res += dateRangeToString(first.start, first.end, {
         year: sameYear ? FormatTypesNumeric.none : FormatTypesNumeric.numeric,
         month: sameMonth ? FormatTypesMonth.none : FormatTypesMonth.long,
-        weekday: rct == "weekly" ? null : FormatTypesWeekday.long,
+        weekday: rct == "weekly" || (rct == "monthly" && mr == "weekday") ? null : FormatTypesWeekday.long,
         hour: null,
         minute: null
     });
