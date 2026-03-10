@@ -53,7 +53,7 @@ $w.onReady(function () {
 
     $w("#eventsDataset").onError((error) => {
         let msg = "✖ Fehler beim Speichern.";
-        if (error.code === "DS_VALIDATION_ERROR") msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
+        if (String(error.message).includes("elements validation failed")) msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
         if (String(error.message).includes("is not a valid email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
         $w("#textResponse").html = `<p style="color: #E74C3C; font-size: 16px; text-align: center;">${msg}</p>`;
         $w("#textResponse").expand();
