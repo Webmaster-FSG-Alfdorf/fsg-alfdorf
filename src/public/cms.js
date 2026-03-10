@@ -180,13 +180,16 @@ export function stringToDateRange(str) {
 export function listAllRanges(eventDate) {
     let res = [];
     if (!eventDate.start) return res;
-    let start = new Date(eventDate.start);
-    let end = new Date(eventDate.end || start);
-    let itv = parseInt(eventDate.recurrenceInterval, 10) || 1;
-    let rct = eventDate.recurrenceType;
+    const start = new Date(eventDate.start);
+    const end = new Date(eventDate.end || start);
+
+    const rct = eventDate.recurrenceType;
+    const itv = parseInt(eventDate.recurrenceInterval) || 1;
+    const mr = eventDate.monthlyRepetition || "weekday";
+    let weekdays = eventDate.recurrenceDays;
+    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[start.getDay()]]; // if no weekday specified, assume only the week day that the start date has
 
     let duration = end.getTime() - start.getTime();
-
     if (itv > 0) {
         // duration shall only contain the *time* difference between end and start
         let e = new Date(end);
@@ -200,7 +203,8 @@ export function listAllRanges(eventDate) {
     while (count < 1000) { // safety measure against dead loops
         ++count;
         if (cur > end) return res; // end reached
-        if (rct != "weekly" || eventDate.recurrenceDays.length == 0 || eventDate.recurrenceDays.includes(WEAKDAY_NAMES[cur.getDay()]))
+        if ((rct != "weekly" || weekdays.includes(WEAKDAY_NAMES[cur.getDay()])) &&
+            (rct != "monthly" || (mr == "weekday" ? cur.getDay() == start.getDay() : cur.getDate() == start.getDate())))
             res.push({ start: new Date(cur), end: duration > 0 ? new Date(cur.getTime() + duration) : null });
         if (itv <= 0) return res; // no repetition, one-time event
         switch (rct) {
@@ -213,7 +217,22 @@ export function listAllRanges(eventDate) {
                 if (cur.getDay() === start.getDay()) cur.setDate(cur.getDate() + (itv - 1) * 7);
                 break;
             case "monthly":
-                cur.setMonth(cur.getMonth() + itv);
+                switch (mr) {
+                    case "weekday": { // like every second Monday of the month, based on the weekday of the start date
+                        cur.setMonth(cur.getMonth() + itv, 1);
+                        cur.setDate(1 + (start.getDay() - cur.getDay() + 7) % 7 + (Math.ceil(start.getDate() / 7) - 1) * 7);
+                        // if the calculated day does not exist in this month (like 5th Monday), it will be skipped during the next iteration
+                        if (cur.getMonth() != (start.getMonth() + count * itv) % 12) cur.setDate(0);
+                        break;
+                    }
+                    case "dayOfMonth": { // like every 15th of the month, based on the day of the month of the start date
+                        const targetDay = start.getDate();
+                        cur.setMonth(cur.getMonth() + itv, targetDay);
+                        // if the day does not exist in this month (like 30th in February), it will be skipped during the next iteration
+                        if (cur.getDate() != targetDay) cur.setDate(0);
+                        break;
+                    }
+                }
                 break;
             default:
                 return res; // no iteration at all
@@ -228,59 +247,72 @@ export function listAllRanges(eventDate) {
  * @returns {string} — human readable string describing the event-date as short as possible
  */
 export function printRanges(eventDate) {
-    let ranges = listAllRanges(eventDate);
+    const ranges = listAllRanges(eventDate);
     if (ranges.length == 0) return ""; // no date at all
-    if (ranges.length == 1) return dateRangeToString(ranges[0].start, ranges[0].end); // no iteration at all
+    const first = ranges[0];
+    if (ranges.length == 1) return dateRangeToString(first.start, first.end); // no iteration at all
+    const last = ranges[ranges.length - 1];
 
-    let rct = eventDate.recurrenceType;
-    let n = rct == "weekly" ? "" : "n"; // to correctly gender "Tag" and "Monat"
+    const rct = eventDate.recurrenceType;
+    const itv = parseInt(eventDate.recurrenceInterval) || 1;
+    const mr = eventDate.monthlyRepetition || "weekday";
+    let weekdays = eventDate.recurrenceDays;
+    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[first.start.getDay()]]; // if no weekday specified, assume only the week day that the start date has
     let res = "Ab ";
 
-    //FIXME or remove?
-    let rStart = ranges[0].start;
-    let rEnd = ranges[ranges.length - 1].end;
-    let sameYear = rStart && rEnd && rStart.year == rEnd.year;
-    let sameMonth = sameYear && rStart.month == rEnd.month;
+    let sameYear = first.start.getFullYear() == last.end.getFullYear();
+    let sameMonth = sameYear && first.start.getMonth() == last.end.getMonth();
+    res += dateRangeToString(first.start, first.end, {
+        year: sameYear ? FormatTypesNumeric.none : FormatTypesNumeric.numeric,
+        month: sameMonth ? FormatTypesMonth.none : FormatTypesMonth.long,
+        weekday: rct == "weekly" ? null : FormatTypesWeekday.long,
+        hour: null,
+        minute: null
+    });
 
-    res += dateRangeToString(ranges[0].start, ranges[0].end, { year: sameYear ? null : "numeric", month: sameMonth ? null : "short" });
-    res += ` jede${n} `;
-    switch (eventDate.recurrenceInterval) {
-        case 0:
-        case 1:
-            break;
-        case 2:
-            res += `zweite${n} `;
-            break;
-        case 3:
-            res += `dritte${n} `;
-            break;
-        case 4:
-            res += `vierte${n} `;
-            break;
-        default:
-            res += `${eventDate.recurrenceInterval}. `;
-    }
+    const occNames = ["ersten", "zweiten", "dritten", "vierten", "fünften"];
+    res += ` jeden `;
+
     switch (rct) {
         case "daily":
+            res += itv == 1 ? "" : `${occNames[itv - 1] || itv + "."} `;
             res += "Tag";
             break;
         case "weekly":
-            res += "Woche";
+            res += itv == 1 ? "" : `${occNames[itv - 1] || itv + "."} `;
+            weekdays.forEach((wd, i) => { res += `${i == 0 ? " " : i == weekdays.length - 1 ? " und " : ", "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
             break;
         case "monthly":
-            res += "Monat";
+            switch (mr) {
+                case "weekday": {
+                    res += occNames[Math.ceil(first.start.getDate() / 7) - 1];
+                    res += " ";
+                    res += WEAKDAY_NAMES_HR[first.start.getDay()];
+                    res += itv == 1 ? " im Monat" : ` in jedem ${occNames[itv - 1] || itv + "."} Monat`;
+                    break;
+                }
+                case "dayOfMonth": {
+                    res += first.start.getDate();
+                    res += ". ";
+                    res += itv == 1 ? "des Monats" : `jeden ${occNames[itv - 1] || itv + "."} Monats`;
+                    if (first.start.getDate() > 28) res += " (soweit vorhanden)";
+                    break;
+                }
+            }
             break;
     }
-    if (rct == "weekly" && eventDate.recurrenceDays.length != 7) {
-        eventDate.recurrenceDays.forEach((wd, i) => { res += `${i == 0 ? " " : " , "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
-    }
-    res += " bis ";
-    res += dateRangeToString(ranges[ranges.length - 1].start, ranges[ranges.length - 1].end);
+    res += " bis zum ";
+    res += dateRangeToString(last.start, last.end, {
+        year: FormatTypesNumeric.numeric,
+        month: FormatTypesMonth.long,
+        weekday: rct == "weekly" ? null : FormatTypesWeekday.long,
+    });
+    res += " Uhr";
     return res;
 }
 
 const WEAKDAY_NAMES = ["su", "mo", "tu", "we", "th", "fr", "sa"];
-const WEAKDAY_NAMES_HR = ["Sonntags", "Montags", "Dienstags", "Mittwochs", "Donnerstags", "Freitags", "Samstags"];
+const WEAKDAY_NAMES_HR = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
 export function generateICS(events) {
     const pad = n => String(n).padStart(2, '0');

@@ -1,11 +1,13 @@
+import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
+
 $w.onReady(function () {
     $w("#eventsDataset").onReady(() => {
 
-        // REPEATER LOGIK: Felder und Lösch-Button verknüpfen
         $w("#datesRepeater").onItemReady(($item, itemData, index) => {
             const togglePickers = () => {
                 if ($item("#dropdownDatesType").value === "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
-                if (parseInt($item("#dropdownDatesInterval").value, 10) != 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
+                if (parseInt($item("#dropdownDatesInterval").value) != 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
+                if ($item("#dropdownDatesType").value === "monthly") $item("#dropdownMonthlyRepetition").expand(); else $item("#dropdownMonthlyRepetition").collapse();
             };
 
             const setDateTime = (pickerDate, pickerTime, date) => {
@@ -17,6 +19,7 @@ $w.onReady(function () {
             $item("#dropdownDatesType").value = itemData.recurrenceType || "daily";
             $item("#dropdownDatesInterval").value = itemData.recurrenceInterval || 0;
             $item("#checkboxDatesWeekdays").value = itemData.recurrenceDays || [];
+            $item("#dropdownMonthlyRepetition").value = itemData.monthlyRepetition || "weekday";
 
             $item("#pickerDatesStart").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
             $item("#pickerDatesEnd").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
@@ -31,6 +34,7 @@ $w.onReady(function () {
                 updateDatesArray(index, 'recurrenceInterval', $item("#dropdownDatesInterval").value);
             });
             $item("#checkboxDatesWeekdays").onChange(() => updateDatesArray(index, 'recurrenceDays', $item("#checkboxDatesWeekdays").value));
+            $item("#dropdownMonthlyRepetition").onChange(() => updateDatesArray(index, 'monthlyRepetition', $item("#dropdownMonthlyRepetition").value));
 
             $item("#btnDateRemove").onClick(() => { removeDate(index); });
 
@@ -75,6 +79,7 @@ function refreshDatesUI() {
     const dates = item.dates || [];
     // Wir mappen die Daten neu, damit der index im onItemReady immer korrekt ist
     $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
+    refreshDateRangeText();
 }
 
 // Hilfsfunktion: Einzelne Feldänderungen ins Dataset schreiben
@@ -92,4 +97,19 @@ function updateDatesArray(index, field, value, timeValue = null) {
     }
 
     $w("#eventsDataset").setFieldValue("dates", dates);
+    refreshDateRangeText();
+}
+
+function refreshDateRangeText() {
+    let item = $w("#eventsDataset").getCurrentItem();
+    let dates = item.dates;
+    let allDates = new Map();
+    (dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+    let html = "Übersicht:<ul>";
+    (dates || []).forEach(ed => { html += "<li>" + printRanges(ed); });
+    html += `</ul><br><br>Detailierte Ausgabe:<ul>`;
+    Array.from(allDates.values()).sort((dr0, dr1) => dr0.start - dr1.start).forEach(dr => {
+        html += "<li>" + `${dateRangeToString(dr.start, dr.end)}`;
+    });
+    $w("#textDateRange").html = html + "</ul>";
 }
