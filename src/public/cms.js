@@ -289,6 +289,7 @@ export function printRanges(eventDate) {
                     res += " ";
                     res += WEAKDAY_NAMES_HR[first.start.getDay()];
                     res += itv == 1 ? " im Monat" : ` in jedem ${occNames[itv - 1] || itv + "."} Monat`;
+                    if (Math.ceil(first.start.getDate() / 7) >= 5) res += " (soweit vorhanden)";
                     break;
                 }
                 case "dayOfMonth": {
