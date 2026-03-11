@@ -75,7 +75,7 @@ $w.onReady(function () {
         showResponseMessage(msg, true);
     });
 
-    $w("#btnRemove").onClick(() => {
+    $w("#buttonRemove").onClick(() => {
         $w("#textResponse").collapse();
         $w("#eventsDataset").remove().then(() => {
             console.log("item removed");
@@ -92,7 +92,7 @@ $w.onReady(function () {
         });
     });
 
-    $w("#btnRevert").onClick(() => {
+    $w("#buttonRevert").onClick(() => {
         $w("#textResponse").collapse();
         $w("#eventsDataset").revert().then(() => {
             console.log("item reverted");
@@ -101,7 +101,7 @@ $w.onReady(function () {
         });
     });
 
-    $w("#btnSave").onClick(() => {
+    $w("#buttonSave").onClick(() => {
         $w("#textResponse").collapse();
         $w("#eventsDataset").save().then(() => {
             console.log("item saved");
@@ -110,7 +110,7 @@ $w.onReady(function () {
         });
     });
 
-    $w("#btnNew").onClick(() => {
+    $w("#buttonNew").onClick(() => {
         $w("#textResponse").collapse();
         $w("#eventsDataset").save().then(() => {
             console.log("item saved before creating new item");
