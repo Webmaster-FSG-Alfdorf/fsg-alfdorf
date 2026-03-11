@@ -2,11 +2,10 @@ import wixData from 'wix-data';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
 $w.onReady(function () {
-    updateSelectorList();
     $w("#itemSelector").onChange(() => {
         const val = $w("#itemSelector").value;
-        if (val == "new_event") $w("#eventsDataset").new()
-        else $w("#eventsDataset").setFilter(wixData.filter().eq("_id", val));
+        if (val == "new_event") $w("#eventsDataset").new().then(() => { refreshDatesUI(); });
+        else $w("#eventsDataset").setFilter(wixData.filter().eq("_id", val)).then(() => { refreshDatesUI(); });
     });
 
     $w("#eventsDataset").onReady(() => {
@@ -50,6 +49,7 @@ $w.onReady(function () {
 
         $w("#btnDateAdd").onClick(() => { addDate(); });
 
+        updateSelectorList();
         refreshDatesUI();
     });
 
@@ -57,6 +57,7 @@ $w.onReady(function () {
         $w("#textResponse").html = `<p style="color: #2ECC71; font-size: 16px; text-align: center;">✔ Erfolgreich gespeichert!</p>`;
         $w("#textResponse").expand();
         updateSelectorList();
+        refreshDatesUI();
     });
 
     $w("#eventsDataset").onError((error) => {
