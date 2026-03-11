@@ -89,6 +89,8 @@ function updateSelectorList() {
             { label: "➕ Neuer Event", value: "new_event" },
             ...result.items.map(item => ({ label: item.title, value: item._id }))
         ];
+        const currentItem = $w("#eventsDataset").getCurrentItem();
+        if (currentItem) $w("#itemSelector").value = currentItem._id;
     });
 }
 
