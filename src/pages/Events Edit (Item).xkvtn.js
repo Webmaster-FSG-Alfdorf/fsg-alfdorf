@@ -74,7 +74,7 @@ $w.onReady(function () {
         refreshDatesUI();
     });
 
-    $w("#eventsDataset").onItemRemoved(() => {
+    $w("#eventsDataset").onAfterDelete(() => {
         console.log("item removed");
         wixData.query("events").ascending("title").limit(1).find().then((results) => {
             console.log("query after deletion:", results);
