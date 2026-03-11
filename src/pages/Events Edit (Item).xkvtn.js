@@ -15,7 +15,12 @@ $w.onReady(function () {
             wixData.query("events").eq("_id", val).find().then((results) => {
                 if (results.items.length > 0) {
                     const dynamicUrl = results.items[0]['link-events-1-edit-title'];
-                    if (dynamicUrl) wixLocation.to(dynamicUrl);
+                    console.log("URL aus DB:", dynamicUrl);
+                    console.log("Aktuelle URL:", wixLocation.url);
+                    if (dynamicUrl && wixLocation.url.includes(dynamicUrl))
+                        wixLocation.to(wixLocation.url);
+                    else if (dynamicUrl)
+                        wixLocation.to(dynamicUrl);
                 }
             });
     });
