@@ -7,6 +7,10 @@ export class CmsEditor {
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
         this.linkField = config.linkField || `link-${config.cmsName}-title`;
         this.refreshUI = config.refreshUI || (() => { });
+        this.onBeforeSave = config.onBeforeSave || (async () => true);
+        this.onAfterSave = config.onAfterSave || (() => { });
+        this.onAfterReverted = config.onAfterReverted || (() => { });
+        this.onAfterDelete = config.onAfterDelete || (() => { });
     }
 
     init() {
@@ -14,19 +18,9 @@ export class CmsEditor {
 
         const ds = $w(`#${this.dataSetName}`);
 
-        ds.onReady(() => { this.updateSelectorList() });
+        ds.onReady(() => { this.updateSelectorList(); });
 
-        ds.onError((error) => {
-            const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
-            console.error("Error saving item:", errStr);
-
-            let msg = "Fehler beim Speichern.";
-            if (errStr.includes("validation")) msg = "Bitte fülle alle Pflichtfelder korrekt aus.";
-            else if (errStr.includes("email")) msg = "Die E-Mail-Adresse ist ungültig.";
-            else if (errStr.includes("not allowed during save")) msg = "Speichervorgang noch nicht abgeschlossen.";
-
-            this.showMessage(msg, true);
-        });
+        ds.onError((error) => { this.showError(error); });
 
         if ($w("#itemSelector").length) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
@@ -42,11 +36,13 @@ export class CmsEditor {
             }
         });
 
-        if ($w("#buttonSave").length) $w("#buttonSave").onClick(() => {
+        if ($w("#buttonSave").length) $w("#buttonSave").onClick(async () => {
             $w("#textResponse").collapse();
+            this.beforeSafeResult = await this.onBeforeSave();
             ds.save().then(() => {
                 console.log("item saved");
                 this.updateSelectorList();
+                this.onAfterSave(this.beforeSafeResult);
                 this.showMessage("Erfolgreich gespeichert.");
             });
         });
@@ -56,6 +52,7 @@ export class CmsEditor {
             ds.revert().then(() => {
                 console.log("item reverted");
                 this.updateSelectorList();
+                this.onAfterReverted();
                 this.showMessage("Änderungen verworfen.");
             });
         });
@@ -74,9 +71,11 @@ export class CmsEditor {
 
         if ($w("#buttonRemove").length) $w("#buttonRemove").onClick(() => {
             $w("#textResponse").collapse();
+            const itemToDelete = ds.getCurrentItem();
             ds.remove().then(() => {
                 console.log("item removed");
                 this.updateSelectorList();
+                this.onAfterDelete(itemToDelete);
 
                 wixData.query(this.cmsName).ascending("title").limit(1).find().then((results) => {
                     console.log("query after deletion:", results);
@@ -118,7 +117,7 @@ export class CmsEditor {
                 { label: "➕ Neuer Eintrag", value: "--new--" },
                 ...result.items.map(item => ({ label: item.title, value: item._id }))
             ];
-            if (currentItem) $w("#itemSelector").value = currentItem._id;
+            $w("#itemSelector").value = currentItem?._id ?? undefined;
 
             this.refreshUI();
         });
@@ -130,5 +129,17 @@ export class CmsEditor {
         $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
         $w("#textResponse").expand();
         setTimeout(() => { $w("#textResponse").collapse(); }, 20000);
+    }
+
+    showError(error) {
+        const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
+        console.error("Error saving item:", errStr);
+
+        let msg = "Fehler beim Speichern.";
+        if (errStr.includes("validation")) msg = "Bitte fülle alle Pflichtfelder korrekt aus.";
+        else if (errStr.includes("email")) msg = "Die E-Mail-Adresse ist ungültig.";
+        else if (errStr.includes("not allowed during save")) msg = "Speichervorgang noch nicht abgeschlossen.";
+
+        this.showMessage(msg, true);
     }
 }

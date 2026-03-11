@@ -1,8 +1,10 @@
 import { CmsEditor } from 'public/cms_edit.js';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
+let editor;
+
 $w.onReady(function () {
-    const editor = new CmsEditor({
+    editor = new CmsEditor({
         cmsName: "events",
         linkField: "link-events-1-edit-title",
         refreshUI: refreshDatesUI

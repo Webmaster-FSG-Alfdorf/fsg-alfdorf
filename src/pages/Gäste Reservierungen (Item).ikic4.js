@@ -2,14 +2,55 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
+import { CmsEditor } from 'public/cms_edit.js';
 import { dateRangeToString, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
 let originalItem = null;
+let editor;
 
 $w.onReady(function () {
+    editor = new CmsEditor({
+        cmsName: "guestReservations",
+        dataSetName: "datasetGuestReservations",
+        refreshUI: updateAll,
+
+        onBeforeSave: async () => { return prepareSave(); },
+
+        onAfterSave: (diffData) => {
+            const item = $w("#datasetGuestReservations").getCurrentItem();
+
+            if (diffData && diffData.diff.length > 0) {
+                wixWindow.openLightbox("CMSSuccessLightbox", {
+                    msg: "Änderungen wurden gespeichert",
+                    item,
+                    diff: diffData.diff,
+                    diffUser: diffData.diffUser,
+                    customMessage: diffData.customMessage
+                });
+            }
+            cloneItem(item);
+        },
+
+        onAfterReverted: () => {
+            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
+            cloneItem($w("#datasetGuestReservations").getCurrentItem());
+        },
+
+        onAfterDelete: (deletedItem) => {
+            wixWindow.openLightbox("CMSSuccessLightbox", {
+                msg: "Reservierung wurde gelöscht",
+                item: deletedItem,
+                customMessage: "Ihre Reservierungsanfrage wurde storniert."
+            });
+            cloneItem(null);
+        }
+    });
+
+    editor.init();
+
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
         // main lodgings go first
@@ -144,16 +185,6 @@ $w.onReady(function () {
 
         $w("#dropdownFilterResultsMore").onChange(() => { setCurrentFilter($w("#dropdownFilterResultsMore").value); });
 
-        $w("#buttonSave").onClick(() => save());
-        $w("#buttonRevert").onClick(() => revert());
-        $w("#buttonRemove").onClick(() => remove());
-        $w("#buttonNew").onClick(() => save(() => {
-            console.log("#buttonNew onClick add()");
-            $w("#datasetGuestReservations").add().then(() => {
-                console.log("#buttonNew onClick add() then");
-                updateAll();
-            });
-        }));
         $w("#buttonPrev").onClick(() => {
             console.log("#buttonPrev onClick");
             const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
@@ -167,7 +198,7 @@ $w.onReady(function () {
             if (i != -1 && i < sortedResults.length - 1) setCurrentFilter(sortedResults[i + 1]);
         });
 
-        cloneItem(null); //TODO or current Item? TODO missing some cloneItem calls
+        cloneItem($w("#datasetGuestReservations").getCurrentItem());
 
         // end special block
     });
@@ -379,15 +410,15 @@ function setCurrentFilter(itemId) {
     if (loadingID == itemId) return;
     loadingID = itemId;
     console.log("setCurrentFilter save", itemId);
-    save(() => {
+    $w("#datasetGuestReservations").save().then(() => {
         console.log("setCurrentFilter setFilter", itemId);
         $w("#datasetGuestReservations").setFilter(wixData.filter().eq('_id', itemId)).then(async () => {
             loadingID = "";
             console.log("setCurrentFilter update", itemId);
             updateFilterSelection();
             await updateAll();
-        }).catch((err) => showError(err));
-    });
+        }).catch((err) => editor.showError(err));
+    }).catch((err) => editor.showError(err));
 }
 let loadingID = "";
 
@@ -441,7 +472,7 @@ function cloneItem(item) {
     console.log("originalItem now is", originalItem);
 }
 
-async function save(onSuccess = () => { }) {
+async function prepareSave() {
     const item = $w("#datasetGuestReservations").getCurrentItem();
 
     let diff = [];
@@ -510,49 +541,5 @@ async function save(onSuccess = () => { }) {
 
     console.log("save", item?._id, "diff:", diff);
 
-    $w("#datasetGuestReservations").save().then(() => {
-        console.log("save then");
-        if (diff.length > 0)
-            wixWindow.openLightbox("CMSSuccessLightbox", {
-                msg: "Änderungen wurden gespeichert",
-                item,
-                diff,
-                diffUser,
-                customMessage
-            });
-        cloneItem(item);
-        onSuccess();
-    }).catch(err => { showError(err) });
-}
-
-function revert(onSuccess = () => { }) {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
-    console.log("revert", item?._id);
-    $w("#datasetGuestReservations").revert().then(async () => {
-        console.log("revert then");
-        wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-        await updateAll();
-        onSuccess();
-    }).catch(err => { showError(err) });
-}
-
-function remove(onSuccess = () => { }) {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
-    console.log("remove", item?._id);
-    $w("#datasetGuestReservations").remove().then(async () => {
-        console.log("remove then");
-        wixWindow.openLightbox("CMSSuccessLightbox", {
-            msg: "Reservierung wurde gelöscht",
-            item,
-            customMessage: "Ihre Reservierungsanfrage wurde storniert."
-        });
-        cloneItem(null);
-        await updateAll();
-        onSuccess();
-    }).catch(err => { showError(err) });
-}
-
-function showError(err) {
-    console.log("showError", err);
-    wixWindow.openLightbox("CMSErrorLightbox", { msg: err });
+    return { diff, diffUser, customMessage };
 }
