@@ -5,18 +5,14 @@ import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 $w.onReady(function () {
     $w("#itemSelector").onChange(() => {
         const val = $w("#itemSelector").value;
-        console.log("Selected value:", val);
+        console.log("selected value:", val);
         if (val == "new_event")
-            $w("#eventsDataset").new().then(() => {
-                $w("#itemSelector").value = undefined;
-                refreshDatesUI();
-            });
+            $w("#eventsDataset").new().then(() => { refreshDatesUI(); });
         else
             wixData.query("events").eq("_id", val).find().then((results) => {
                 if (results.items.length > 0) {
                     const dynamicUrl = results.items[0]['link-events-1-edit-title'];
-                    console.log("URL aus DB:", dynamicUrl);
-                    console.log("Aktuelle URL:", wixLocation.url);
+                    console.log("going to:", dynamicUrl, "from:", wixLocation.url);
                     if (dynamicUrl && wixLocation.url.includes(dynamicUrl))
                         wixLocation.to(wixLocation.url);
                     else if (dynamicUrl)
@@ -71,6 +67,7 @@ $w.onReady(function () {
     });
 
     $w("#eventsDataset").onAfterSave(() => {
+        console.log("item saved");
         $w("#textResponse").html = `<p style="color: #2ECC71; font-size: 16px; text-align: center;">✔ Erfolgreich gespeichert!</p>`;
         $w("#textResponse").expand();
         updateSelectorList();
@@ -78,21 +75,24 @@ $w.onReady(function () {
     });
 
     $w("#eventsDataset").onItemRemoved(() => {
-        updateSelectorList();
+        console.log("item removed");
         wixData.query("events").ascending("title").limit(1).find().then((results) => {
+            console.log("query after deletion:", results);
             if (results.items.length > 0) {
                 const nextUrl = results.items[0]['link-events-1-edit-title'];
+                console.log("going to:", nextUrl);
                 if (nextUrl) wixLocation.to(nextUrl);
             } else $w("#eventsDataset").new().then(() => {
-                $w("#itemSelector").value = undefined;
+                updateSelectorList();
                 refreshDatesUI();
             });
         });
     });
 
     $w("#eventsDataset").onError((error) => {
-        let msg = "✖ Fehler beim Speichern.";
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
+        console.error("Error saving item:", errStr);
+        let msg = "✖ Fehler beim Speichern.";
         if (errStr.includes("validation")) msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
         else if (errStr.includes("email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
         else if (errStr.includes("not allowed during save")) msg = "✖ Speichervorgang noch nicht abgeschlossen.";
@@ -103,17 +103,20 @@ $w.onReady(function () {
 });
 
 function updateSelectorList() {
+    console.log("Updating item selector list");
     wixData.query("events").ascending("title").limit(1000).find().then((result) => {
+        const currentItem = $w("#eventsDataset").getCurrentItem();
+        console.log("current item:", currentItem._id, "query results:\n", result.map(i => `${i._id}: ${i.title}`).join("\n"));
         $w("#itemSelector").options = [
             { label: "➕ Neuer Event", value: "new_event" },
             ...result.items.map(item => ({ label: item.title, value: item._id }))
         ];
-        const currentItem = $w("#eventsDataset").getCurrentItem();
         if (currentItem) $w("#itemSelector").value = currentItem._id;
     });
 }
 
 function addDate() {
+    console.log("Adding new date to event");
     let dates = $w("#eventsDataset").getCurrentItem().dates || [];
     dates.push({
         start: new Date(),
@@ -127,6 +130,7 @@ function addDate() {
 }
 
 function removeDate(index) {
+    console.log("Removing date from event");
     let dates = $w("#eventsDataset").getCurrentItem().dates;
     dates.splice(index, 1);
     $w("#eventsDataset").setFieldValue("dates", dates);
