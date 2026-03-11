@@ -1,8 +1,15 @@
+import wixData from 'wix-data';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
 $w.onReady(function () {
-    $w("#eventsDataset").onReady(() => {
+    updateSelectorList();
+    $w("#itemSelector").onChange(() => {
+        const val = $w("#itemSelector").value;
+        if (val == "new_event") $w("#eventsDataset").new()
+        else $w("#eventsDataset").setFilter(wixData.filter().eq("_id", val));
+    });
 
+    $w("#eventsDataset").onReady(() => {
         $w("#datesRepeater").onItemReady(($item, itemData, index) => {
             const togglePickers = () => {
                 if ($item("#dropdownDatesType").value === "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
@@ -21,10 +28,10 @@ $w.onReady(function () {
             $item("#checkboxDatesWeekdays").value = itemData.recurrenceDays || [];
             $item("#dropdownMonthlyRepetition").value = itemData.monthlyRepetition || "weekday";
 
-            $item("#pickerDatesStart").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
-            $item("#pickerDatesEnd").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
-            $item("#pickerDatesStartTime").onChange(() => updateDatesArray(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
-            $item("#pickerDatesEndTime").onChange(() => updateDatesArray(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
+            $item("#pickerDatesStart").onChange(() => updateDatesArrayTime(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
+            $item("#pickerDatesEnd").onChange(() => updateDatesArrayTime(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
+            $item("#pickerDatesStartTime").onChange(() => updateDatesArrayTime(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
+            $item("#pickerDatesEndTime").onChange(() => updateDatesArrayTime(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
             $item("#dropdownDatesType").onChange(() => {
                 togglePickers();
                 updateDatesArray(index, 'recurrenceType', $item("#dropdownDatesType").value);
@@ -49,23 +56,32 @@ $w.onReady(function () {
     $w("#eventsDataset").onAfterSave(() => {
         $w("#textResponse").html = `<p style="color: #2ECC71; font-size: 16px; text-align: center;">✔ Erfolgreich gespeichert!</p>`;
         $w("#textResponse").expand();
+        updateSelectorList();
     });
 
     $w("#eventsDataset").onError((error) => {
         let msg = "✖ Fehler beim Speichern.";
-        if (String(error.message).includes("elements validation failed")) msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
-        if (String(error.message).includes("is not a valid email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
+        const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
+        if (errStr.includes("validation")) msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
+        else if (errStr.includes("email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
+        else if (errStr.includes("not allowed during save")) msg = "✖ Speichervorgang noch nicht abgeschlossen.";
         $w("#textResponse").html = `<p style="color: #E74C3C; font-size: 16px; text-align: center;">${msg}</p>`;
         $w("#textResponse").expand();
     });
 
 });
 
-// Funktion: Neuen leeren Termin hinzufügen
-function addDate() {
-    let item = $w("#eventsDataset").getCurrentItem();
-    let dates = item.dates || [];
+function updateSelectorList() {
+    wixData.query("events").ascending("title").limit(1000).find().then((result) => {
+        $w("#itemSelector").options = [
+            { label: "➕ Neuer Event", value: "new_event" },
+            ...result.items.map(item => ({ label: item.title, value: item._id }))
+        ];
+    });
+}
 
+function addDate() {
+    let dates = $w("#eventsDataset").getCurrentItem().dates || [];
     dates.push({
         start: new Date(),
         end: new Date(),
@@ -73,43 +89,36 @@ function addDate() {
         recurrenceInterval: 1,
         recurrenceDays: []
     });
-
     $w("#eventsDataset").setFieldValue("dates", dates);
     refreshDatesUI();
 }
 
-// Funktion: Spezifischen Termin anhand des Index löschen
 function removeDate(index) {
-    let item = $w("#eventsDataset").getCurrentItem();
-    let dates = item.dates;
+    let dates = $w("#eventsDataset").getCurrentItem().dates;
     dates.splice(index, 1);
     $w("#eventsDataset").setFieldValue("dates", dates);
     refreshDatesUI();
 }
 
-// Funktion: UI-Refresh (sortiert die IDs neu, damit der Repeater stabil bleibt)
 function refreshDatesUI() {
-    const item = $w("#eventsDataset").getCurrentItem();
-    const dates = item.dates || [];
-    // Wir mappen die Daten neu, damit der index im onItemReady immer korrekt ist
+    let dates = $w("#eventsDataset").getCurrentItem().dates || [];
     $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
     refreshDateRangeText();
 }
 
-// Hilfsfunktion: Einzelne Feldänderungen ins Dataset schreiben
 function updateDatesArray(index, field, value, timeValue = null) {
-    let item = $w("#eventsDataset").getCurrentItem();
-    let dates = item.dates;
+    let dates = $w("#eventsDataset").getCurrentItem().dates;
+    dates[index][field] = value;
+    $w("#eventsDataset").setFieldValue("dates", dates);
+    refreshDateRangeText();
+}
 
-    if (timeValue != null) {
-        let finalDate = new Date(value);
-        const [hours, minutes] = (timeValue || "00:00").split(':');
-        finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-        dates[index][field] = finalDate;
-    } else {
-        dates[index][field] = value;
-    }
-
+function updateDatesArrayTime(index, field, date, time) {
+    let dates = $w("#eventsDataset").getCurrentItem().dates;
+    let finalDate = new Date(date);
+    const [hours, minutes] = (time || "00:00").split(':');
+    finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
+    dates[index][field] = finalDate;
     $w("#eventsDataset").setFieldValue("dates", dates);
     refreshDateRangeText();
 }
