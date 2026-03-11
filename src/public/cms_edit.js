@@ -22,7 +22,7 @@ export class CmsEditor {
 
         ds.onError((error) => { this.showError(error); });
 
-        if ($w("#itemSelector").length) $w("#itemSelector").onChange(() => {
+        if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
             console.log("selected value:", val);
 
@@ -36,7 +36,7 @@ export class CmsEditor {
             }
         }); else console.warn("itemSelector not found in DOM");
 
-        if ($w("#buttonSave").length) $w("#buttonSave").onClick(async () => {
+        if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => {
             $w("#textResponse").collapse();
             this.beforeSafeResult = await this.onBeforeSave();
             ds.save().then(() => {
@@ -47,7 +47,7 @@ export class CmsEditor {
             });
         }); else console.warn("buttonSave not found in DOM");
 
-        if ($w("#buttonRevert").length) $w("#buttonRevert").onClick(() => {
+        if ($w("#buttonRevert").id) $w("#buttonRevert").onClick(() => {
             $w("#textResponse").collapse();
             ds.revert().then(() => {
                 console.log("item reverted");
@@ -57,7 +57,7 @@ export class CmsEditor {
             });
         }); else console.warn("buttonRevert not found in DOM");
 
-        if ($w("#buttonNew").length) $w("#buttonNew").onClick(() => {
+        if ($w("#buttonNew").id) $w("#buttonNew").onClick(() => {
             $w("#textResponse").collapse();
             ds.save().then(() => {
                 console.log("item saved before creating new item");
@@ -69,7 +69,7 @@ export class CmsEditor {
             });
         }); else console.warn("buttonNew not found in DOM");
 
-        if ($w("#buttonRemove").length) $w("#buttonRemove").onClick(() => {
+        if ($w("#buttonRemove").id) $w("#buttonRemove").onClick(() => {
             $w("#textResponse").collapse();
             const itemToDelete = ds.getCurrentItem();
             ds.remove().then(() => {
@@ -124,7 +124,7 @@ export class CmsEditor {
     }
 
     showMessage(message, isError = false) {
-        if (!$w("#textResponse").length) return;
+        if (!$w("#textResponse").id) return;
         const color = isError ? "#E74C3C" : "#2ECC71";
         $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
         $w("#textResponse").expand();
