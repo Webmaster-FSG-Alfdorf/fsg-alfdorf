@@ -167,7 +167,7 @@ function removeDate(index) {
 }
 
 function refreshDatesUI() {
-    let dates = $w("#eventsDataset").getCurrentItem().dates || [];
+    let dates = $w("#eventsDataset").getCurrentItem()?.dates || [];
     $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
     refreshDateRangeText();
 }
