@@ -34,7 +34,7 @@ export class CmsEditor {
             } else if (val) {
                 this.navigateTo(val);
             }
-        });
+        }); else console.warn("itemSelector not found in DOM");
 
         if ($w("#buttonSave").length) $w("#buttonSave").onClick(async () => {
             $w("#textResponse").collapse();
@@ -45,7 +45,7 @@ export class CmsEditor {
                 this.onAfterSave(this.beforeSafeResult);
                 this.showMessage("Erfolgreich gespeichert.");
             });
-        });
+        }); else console.warn("buttonSave not found in DOM");
 
         if ($w("#buttonRevert").length) $w("#buttonRevert").onClick(() => {
             $w("#textResponse").collapse();
@@ -55,7 +55,7 @@ export class CmsEditor {
                 this.onAfterReverted();
                 this.showMessage("Änderungen verworfen.");
             });
-        });
+        }); else console.warn("buttonRevert not found in DOM");
 
         if ($w("#buttonNew").length) $w("#buttonNew").onClick(() => {
             $w("#textResponse").collapse();
@@ -67,7 +67,7 @@ export class CmsEditor {
                     this.showMessage("Erfolgreich erstellt.");
                 });
             });
-        });
+        }); else console.warn("buttonNew not found in DOM");
 
         if ($w("#buttonRemove").length) $w("#buttonRemove").onClick(() => {
             $w("#textResponse").collapse();
@@ -90,7 +90,7 @@ export class CmsEditor {
                     }
                 });
             });
-        });
+        }); else console.warn("buttonRemove not found in DOM");
     }
 
     async navigateTo(id) {
