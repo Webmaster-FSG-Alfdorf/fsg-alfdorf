@@ -1,11 +1,17 @@
 import wixData from 'wix-data';
+import wixLocation from 'wix-location-frontend';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
 $w.onReady(function () {
     $w("#itemSelector").onChange(() => {
         const val = $w("#itemSelector").value;
         if (val == "new_event") $w("#eventsDataset").new().then(() => { refreshDatesUI(); });
-        else $w("#eventsDataset").setFilter(wixData.filter().eq("_id", val)).then(() => { refreshDatesUI(); });
+        else wixData.query("Events").eq("_id", val).find().then((results) => {
+            if (results.items.length > 0) {
+                const dynamicUrl = results.items[0]['link-events-1-edit-title'];
+                if (dynamicUrl) wixLocation.to(dynamicUrl);
+            }
+        });
     });
 
     $w("#eventsDataset").onReady(() => {
