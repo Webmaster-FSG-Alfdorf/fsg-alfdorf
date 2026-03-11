@@ -77,6 +77,19 @@ $w.onReady(function () {
         refreshDatesUI();
     });
 
+    $w("#eventsDataset").onItemRemoved(() => {
+        updateSelectorList();
+        wixData.query("events").ascending("title").limit(1).find().then((results) => {
+            if (results.items.length > 0) {
+                const nextUrl = results.items[0]['link-events-1-edit-title'];
+                if (nextUrl) wixLocation.to(nextUrl);
+            } else $w("#eventsDataset").new().then(() => {
+                $w("#itemSelector").value = undefined;
+                refreshDatesUI();
+            });
+        });
+    });
+
     $w("#eventsDataset").onError((error) => {
         let msg = "✖ Fehler beim Speichern.";
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
