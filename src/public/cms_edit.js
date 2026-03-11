@@ -10,6 +10,8 @@ export class CmsEditor {
     }
 
     init() {
+        console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
+
         const ds = $w(`#${this.dataSetName}`);
 
         ds.onReady(() => { this.updateSelectorList() });
@@ -112,7 +114,7 @@ export class CmsEditor {
         wixData.query(this.cmsName).ascending("title").limit(1000).find().then((result) => {
             const currentItem = $w(`#${this.dataSetName}`).getCurrentItem();
             console.log("current item:", currentItem?._id, "query results:\n", result.items.map(i => `${i._id}: ${i.title}`).join("\n"));
-            if ($w("#itemSelector").length) $w("#itemSelector").options = [
+            $w("#itemSelector").options = [
                 { label: "➕ Neuer Eintrag", value: "--new--" },
                 ...result.items.map(item => ({ label: item.title, value: item._id }))
             ];
