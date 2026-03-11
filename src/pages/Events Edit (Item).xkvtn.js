@@ -5,6 +5,7 @@ import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 $w.onReady(function () {
     $w("#itemSelector").onChange(() => {
         const val = $w("#itemSelector").value;
+        console.log("Selected value:", val);
         if (val == "new_event")
             $w("#eventsDataset").new().then(() => {
                 $w("#itemSelector").value = undefined;
