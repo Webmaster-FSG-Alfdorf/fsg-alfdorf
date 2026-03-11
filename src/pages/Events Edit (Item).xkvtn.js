@@ -73,7 +73,7 @@ $w.onReady(function () {
         updateSelectorList();
         refreshDatesUI();
     });
-
+/*
     $w("#eventsDataset").onAfterDelete(() => {
         console.log("item removed");
         wixData.query("events").ascending("title").limit(1).find().then((results) => {
@@ -88,7 +88,7 @@ $w.onReady(function () {
             });
         });
     });
-
+*/
     $w("#eventsDataset").onError((error) => {
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
         console.error("Error saving item:", errStr);
@@ -106,7 +106,7 @@ function updateSelectorList() {
     console.log("Updating item selector list");
     wixData.query("events").ascending("title").limit(1000).find().then((result) => {
         const currentItem = $w("#eventsDataset").getCurrentItem();
-        console.log("current item:", currentItem._id, "query results:\n", result.map(i => `${i._id}: ${i.title}`).join("\n"));
+        console.log("current item:", currentItem._id, "query results:\n", result.items.map(i => `${i._id}: ${i.title}`).join("\n"));
         $w("#itemSelector").options = [
             { label: "➕ Neuer Event", value: "new_event" },
             ...result.items.map(item => ({ label: item.title, value: item._id }))
