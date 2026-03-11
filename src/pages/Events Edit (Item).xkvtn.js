@@ -131,7 +131,6 @@ function showResponseMessage(message, isError = false) {
 }
 
 function updateSelectorList() {
-    refreshDatesUI();
     console.log("Updating item selector list");
     wixData.query("events").ascending("title").limit(1000).find().then((result) => {
         const currentItem = $w("#eventsDataset").getCurrentItem();
@@ -141,6 +140,7 @@ function updateSelectorList() {
             ...result.items.map(item => ({ label: item.title, value: item._id }))
         ];
         if (currentItem) $w("#itemSelector").value = currentItem._id;
+        refreshDatesUI();
     });
 }
 
@@ -167,7 +167,8 @@ function removeDate(index) {
 }
 
 function refreshDatesUI() {
-    let dates = $w("#eventsDataset").getCurrentItem()?.dates || [];
+    const item = $w("#eventsDataset").getCurrentItem();
+    const dates = (item && item.dates) ? item.dates : [];        
     $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
     refreshDateRangeText();
 }
@@ -190,8 +191,8 @@ function updateDatesArrayTime(index, field, date, time) {
 }
 
 function refreshDateRangeText() {
-    let item = $w("#eventsDataset").getCurrentItem();
-    let dates = item.dates;
+    const item = $w("#eventsDataset").getCurrentItem();
+    const dates = (item && item.dates) ? item.dates : [];        
     let allDates = new Map();
     (dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
     let html = "Übersicht:<ul>";
