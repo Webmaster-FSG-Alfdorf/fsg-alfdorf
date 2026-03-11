@@ -63,46 +63,75 @@ $w.onReady(function () {
         $w("#btnDateAdd").onClick(() => { addDate(); });
 
         updateSelectorList();
-        refreshDatesUI();
     });
 
-    $w("#eventsDataset").onAfterSave(() => {
-        console.log("item saved");
-        $w("#textResponse").html = `<p style="color: #2ECC71; font-size: 16px; text-align: center;">✔ Erfolgreich gespeichert!</p>`;
-        $w("#textResponse").expand();
-        updateSelectorList();
-        refreshDatesUI();
-    });
-/*
-    $w("#eventsDataset").onAfterDelete(() => {
-        console.log("item removed");
-        wixData.query("events").ascending("title").limit(1).find().then((results) => {
-            console.log("query after deletion:", results);
-            if (results.items.length > 0) {
-                const nextUrl = results.items[0]['link-events-1-edit-title'];
-                console.log("going to:", nextUrl);
-                if (nextUrl) wixLocation.to(nextUrl);
-            } else $w("#eventsDataset").new().then(() => {
-                updateSelectorList();
-                refreshDatesUI();
-            });
-        });
-    });
-*/
     $w("#eventsDataset").onError((error) => {
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
         console.error("Error saving item:", errStr);
-        let msg = "✖ Fehler beim Speichern.";
-        if (errStr.includes("validation")) msg = "✖ Bitte fülle alle Pflichtfelder korrekt aus.";
-        else if (errStr.includes("email")) msg = "✖ Die E-Mail-Adresse ist ungültig.";
-        else if (errStr.includes("not allowed during save")) msg = "✖ Speichervorgang noch nicht abgeschlossen.";
-        $w("#textResponse").html = `<p style="color: #E74C3C; font-size: 16px; text-align: center;">${msg}</p>`;
-        $w("#textResponse").expand();
+        let msg = "Fehler beim Speichern.";
+        if (errStr.includes("validation")) msg = "Bitte fülle alle Pflichtfelder korrekt aus.";
+        else if (errStr.includes("email")) msg = "Die E-Mail-Adresse ist ungültig.";
+        else if (errStr.includes("not allowed during save")) msg = "Speichervorgang noch nicht abgeschlossen.";
+        showResponseMessage(msg, true);
     });
 
+    $w("#btnRemove").onClick(() => {
+        $w("#textResponse").collapse();
+        $w("#eventsDataset").remove().then(() => {
+            console.log("item removed");
+            updateSelectorList();
+            wixData.query("events").ascending("title").limit(1).find().then((results) => {
+                console.log("query after deletion:", results);
+                showResponseMessage("Erfolgreich gelöscht.");
+                if (results.items.length > 0) {
+                    const nextUrl = results.items[0]['link-events-1-edit-title'];
+                    console.log("going to:", nextUrl);
+                    if (nextUrl) wixLocation.to(nextUrl);
+                } else $w("#eventsDataset").new().then(() => { updateSelectorList(); });
+            });
+        });
+    });
+
+    $w("#btnRevert").onClick(() => {
+        $w("#textResponse").collapse();
+        $w("#eventsDataset").revert().then(() => {
+            console.log("item reverted");
+            updateSelectorList();
+            showResponseMessage("Änderungen verworfen.");
+        });
+    });
+
+    $w("#btnSave").onClick(() => {
+        $w("#textResponse").collapse();
+        $w("#eventsDataset").save().then(() => {
+            console.log("item saved");
+            updateSelectorList();
+            showResponseMessage("Erfolgreich gespeichert.");
+        });
+    });
+
+    $w("#btnNew").onClick(() => {
+        $w("#textResponse").collapse();
+        $w("#eventsDataset").save().then(() => {
+            console.log("item saved before creating new item");
+            $w("#eventsDataset").new().then(() => {
+                console.log("item created");
+                updateSelectorList();
+                showResponseMessage("Erfolgreich erstellt.");
+            });
+        });
+    });
 });
 
+function showResponseMessage(message, isError = false) {
+    const color = isError ? "#E74C3C" : "#2ECC71";
+    $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
+    $w("#textResponse").expand();
+    setTimeout(() => { $w("#textResponse").collapse(); }, 20 * 1000);
+}
+
 function updateSelectorList() {
+    refreshDatesUI();
     console.log("Updating item selector list");
     wixData.query("events").ascending("title").limit(1000).find().then((result) => {
         const currentItem = $w("#eventsDataset").getCurrentItem();
