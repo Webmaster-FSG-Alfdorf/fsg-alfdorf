@@ -3,9 +3,8 @@ import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
 import { CmsEditor } from 'public/cms_edit.js';
-import { dateRangeToString, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
+import { dateRangeToString, FormatTypesMonth, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
-import { FormatTypesMonth } from '../public/cms';
 
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
@@ -464,8 +463,8 @@ function updateTitle() {
 function generateTitle(item) {
     if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
         const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
-        const nightsBetween = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
-        return `${startDate} ${nightsBetween} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
+        const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
+        return `${startDate} ${nights} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
     } else
         return "(Neue Reservierung)";
 }
