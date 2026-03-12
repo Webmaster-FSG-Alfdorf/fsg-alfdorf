@@ -11,6 +11,8 @@ export class CmsEditor {
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
         this.onAfterDelete = config.onAfterDelete || (() => { });
+        this.onQueryUpdate = config.onQueryUpdate || ((searchText) => { });
+        this.generateTitle = config.generateTitle || ((item) => item?.title || "(Unbenannt)");
 
         this.messageTimer = null;
     }
@@ -18,85 +20,118 @@ export class CmsEditor {
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
-        const ds = $w(`#${this.dataSetName}`);
+        $w(`#${this.dataSetName}`).onReady(() => { this.updateSelectorList(); });
+        $w(`#${this.dataSetName}`).onError((error) => { this.showError(error); });
 
-        ds.onReady(() => { this.updateSelectorList(); });
-
-        ds.onError((error) => { this.showError(error); });
+        if ($w("#filterSearch").id) {
+            $w("#filterSearch").onKeyPress((event) => { if (event.key == "Enter") this.updateSelectorList(); });
+            $w("#filterSearch").onBlur(() => { this.updateSelectorList() });
+        }
 
         if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
             console.log("selected value:", val);
-
-            if (val === "--new--") {
-                ds.new().then(() => {
-                    console.log("item created");
-                    this.refreshUI();
-                });
-            } else if (val) {
-                this.navigateTo(val);
-            }
+            if (val === "--new--") $w(`#${this.dataSetName}`).new().then(() => {
+                console.log("item created");
+                this.refreshUI();
+            });
+            else if (val) this.navigateTo(val);
         }); else console.warn("itemSelector not found in DOM");
 
-        if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => {
-            this.collapseResponse();
-            this.beforeSafeResult = await this.onBeforeSave();
-            ds.save().then(() => {
-                console.log("item saved");
+        if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => this.saveItem());
+        else console.warn("buttonSave not found in DOM");
+
+        if ($w("#buttonRevert").id) $w("#buttonRevert").onClick(() => this.revertItem());
+        else console.warn("buttonRevert not found in DOM");
+
+        if ($w("#buttonNew").id) $w("#buttonNew").onClick(() => this.newItem());
+        else console.warn("buttonNew not found in DOM");
+
+        if ($w("#buttonRemove").id) $w("#buttonRemove").onClick(() => this.removeItem());
+        else console.warn("buttonRemove not found in DOM");
+
+        if ($w("#buttonPrev").id) $w("#buttonPrev").onClick(() => this.navigateRelative(-1));
+        else console.warn("buttonPrev not found in DOM");
+
+        if ($w("#buttonNext").id) $w("#buttonNext").onClick(() => this.navigateRelative(1));
+        else console.warn("buttonNext not found in DOM");
+    }
+
+    navigateRelative(offset) {
+        const currentItem = this.ds.getCurrentItem();
+        if (!currentItem) return;
+        const currentId = this.ds.getCurrentItem()?._id;
+
+        const options = $w("#itemSelector").options;
+        const idx = options.findIndex(opt => opt.value == currentId);
+        const nextIdx = idx == -1 ? -1 : idx + offset;
+        const nextId = nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value;
+        if (nextId && nextId != "--new--")
+            this.navigateTo(nextId);
+        else
+            console.log("Navigation reached 'New Entry' placeholder.");
+    }
+
+    async saveItem() {
+        this.collapseResponse();
+        this.beforeSafeResult = await this.onBeforeSave();
+        $w(`#${this.dataSetName}`).save().then(() => {
+            console.log("item saved");
+            this.updateSelectorList();
+            this.onAfterSave(this.beforeSafeResult);
+            this.showMessage("Erfolgreich gespeichert.");
+        });
+    }
+
+    revertItem() {
+        this.collapseResponse();
+        $w(`#${this.dataSetName}`).revert().then(() => {
+            console.log("item reverted");
+            this.updateSelectorList();
+            this.onAfterReverted();
+            this.showMessage("Änderungen verworfen.");
+        });
+    }
+
+    newItem() {
+        const ds = $w(`#${this.dataSetName}`);
+        this.collapseResponse();
+        ds.save().then(() => {
+            console.log("item saved before creating new item");
+            ds.new().then(() => {
+                console.log("item created");
                 this.updateSelectorList();
-                this.onAfterSave(this.beforeSafeResult);
-                this.showMessage("Erfolgreich gespeichert.");
+                this.showMessage("Erfolgreich erstellt.");
             });
-        }); else console.warn("buttonSave not found in DOM");
+        });
+    }
 
-        if ($w("#buttonRevert").id) $w("#buttonRevert").onClick(() => {
-            this.collapseResponse();
-            ds.revert().then(() => {
-                console.log("item reverted");
-                this.updateSelectorList();
-                this.onAfterReverted();
-                this.showMessage("Änderungen verworfen.");
-            });
-        }); else console.warn("buttonRevert not found in DOM");
+    removeItem() {
+        const ds = $w(`#${this.dataSetName}`);
+        this.collapseResponse();
+        const itemToDelete = ds.getCurrentItem();
 
-        if ($w("#buttonNew").id) $w("#buttonNew").onClick(() => {
-            this.collapseResponse();
-            ds.save().then(() => {
-                console.log("item saved before creating new item");
-                ds.new().then(() => {
-                    console.log("item created");
-                    this.updateSelectorList();
-                    this.showMessage("Erfolgreich erstellt.");
-                });
-            });
-        }); else console.warn("buttonNew not found in DOM");
+        const options = $w("#itemSelector").options;
+        const idx = options.findIndex(opt => opt.value === itemToDelete._id);
+        const nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
 
-        if ($w("#buttonRemove").id) $w("#buttonRemove").onClick(() => {
-            this.collapseResponse();
-            const itemToDelete = ds.getCurrentItem();
-            ds.remove().then(() => {
-                console.log("item removed");
-                this.updateSelectorList();
-                this.onAfterDelete(itemToDelete);
-                this.showMessage("Erfolgreich gelöscht.");
+        ds.remove().then(() => {
+            console.log("item removed"); // Filtern (Name, Unterkunft, Datum, ...)
+            this.updateSelectorList();
+            this.onAfterDelete(itemToDelete);
+            this.showMessage("Erfolgreich gelöscht.");
 
-                wixData.query(this.cmsName).ascending("title").limit(1).find().then((results) => {
-                    console.log("query after deletion:", results);
-                    if (results.items.length > 0) {
-                        const nextUrl = results.items[0][this.linkField];
-                        console.log("going to:", nextUrl);
-                        if (nextUrl) wixLocation.to(nextUrl);
-                    } else {
-                        console.log("no more items left");
-                        ds.new().then(() => { this.updateSelectorList(); });
-                    }
-                });
-            });
-        }); else console.warn("buttonRemove not found in DOM");
+            if (nextId && nextId != "--new--") {
+                this.navigateTo(nextId);
+            } else {
+                console.log("No items left to navigate to, creating new.");
+                ds.new().then(() => { this.updateSelectorList(); });
+            }
+        });
     }
 
     async navigateTo(id) {
-        wixData.query(this.cmsName).eq("_id", id).find().then((results) => {
+        wixData.query(this.cmsName).eq("_id", id).limit(1).find().then((results) => {
             if (results.items.length > 0) {
                 const dynamicUrl = results.items[0][this.linkField];
                 console.log("going to:", dynamicUrl, "from:", wixLocation.url);
@@ -109,18 +144,22 @@ export class CmsEditor {
     }
 
     updateSelectorList() {
-        console.log("Updating item selector list");
-        wixData.query(this.cmsName).ascending("title").limit(1000).find().then((result) => {
+        const searchText = $w("#filterSearch").id ? $w("#filterSearch").value.trim() : "";
+        console.log("Updating item selector list based on search text:", searchText);
+
+        this.onQueryUpdate(searchText).then((items) => {
             const currentItem = $w(`#${this.dataSetName}`).getCurrentItem();
-            console.log("current item:", currentItem?._id, "query results:\n", result.items.map(i => `${i._id}: ${i.title}`).join("\n"));
+            console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
             $w("#itemSelector").options = [
                 { label: "➕ Neuer Eintrag", value: "--new--" },
-                ...result.items.map(item => ({ label: item.title, value: item._id }))
+                ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
             $w("#itemSelector").value = currentItem?._id ?? undefined;
 
             this.refreshUI();
         });
+
+        //wixData.query(this.cmsName).ascending("title").limit(1000).find().then((result) => {
     }
 
     showError(error) {

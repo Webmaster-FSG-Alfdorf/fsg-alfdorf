@@ -12,45 +12,6 @@ let originalItem = null;
 let editor;
 
 $w.onReady(function () {
-    editor = new CmsEditor({
-        cmsName: "guestReservations",
-        dataSetName: "datasetGuestReservations",
-        refreshUI: updateAll,
-
-        onBeforeSave: async () => { return prepareSave(); },
-
-        onAfterSave: (diffData) => {
-            const item = $w("#datasetGuestReservations").getCurrentItem();
-
-            if (diffData && diffData.diff.length > 0) {
-                wixWindow.openLightbox("CMSSuccessLightbox", {
-                    msg: "Änderungen wurden gespeichert",
-                    item,
-                    diff: diffData.diff,
-                    diffUser: diffData.diffUser,
-                    customMessage: diffData.customMessage
-                });
-            }
-            cloneItem(item);
-        },
-
-        onAfterReverted: () => {
-            wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-            cloneItem($w("#datasetGuestReservations").getCurrentItem());
-        },
-
-        onAfterDelete: (deletedItem) => {
-            wixWindow.openLightbox("CMSSuccessLightbox", {
-                msg: "Reservierung wurde gelöscht",
-                item: deletedItem,
-                customMessage: "Ihre Reservierungsanfrage wurde storniert."
-            });
-            cloneItem(null);
-        }
-    });
-
-    editor.init();
-
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
         // main lodgings go first
@@ -167,10 +128,51 @@ $w.onReady(function () {
 
         // special block below only for Management site -- all above shall be identical with Guest site
 
-        updateFilter();
-        $w("#filterSearch").onKeyPress((event) => { if (event.key == "Enter") updateFilter(); });
-        $w("#filterSearch").onBlur(() => { updateFilter() });
-        $w("#buttonFilter").onClick(() => { updateFilter() });
+        editor = new CmsEditor({
+            cmsName: "guestReservations",
+            dataSetName: "datasetGuestReservations",
+            refreshUI: updateAll,
+            generateTitle: generateTitle,
+
+            onBeforeSave: async () => { return prepareSave(); },
+
+            onAfterSave: (diffData) => {
+                const item = $w("#datasetGuestReservations").getCurrentItem();
+
+                if (diffData && diffData.diff.length > 0) {
+                    wixWindow.openLightbox("CMSSuccessLightbox", {
+                        msg: "Änderungen wurden gespeichert",
+                        item,
+                        diff: diffData.diff,
+                        diffUser: diffData.diffUser,
+                        customMessage: diffData.customMessage
+                    });
+                }
+                cloneItem(item);
+            },
+
+            onAfterReverted: () => {
+                wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
+                cloneItem($w("#datasetGuestReservations").getCurrentItem());
+            },
+
+            onAfterDelete: (deletedItem) => {
+                wixWindow.openLightbox("CMSSuccessLightbox", {
+                    msg: "Reservierung wurde gelöscht",
+                    item: deletedItem,
+                    customMessage: "Ihre Reservierungsanfrage wurde storniert."
+                });
+                cloneItem(null);
+            },
+
+            onQueryUpdate: doQueryUpdate
+        });
+
+        editor.init();
+
+        $w("#filterAlsoPast").onChange(() => editor.updateSelectorList());
+        $w("#filterStatus").onChange(() => editor.updateSelectorList());
+        $w("#filterLodging").onChange(() => editor.updateSelectorList());
 
         wixData.query("pricesVisitor").ascending("order").find().then((results) => {
             let options = [];
@@ -182,21 +184,6 @@ $w.onReady(function () {
         $w("#inputDeposit").onChange(() => updateCostsTable());
         $w("#inputPaidSum").onInput(() => updateCostsTable());
         $w("#inputPaidSum").onBlur(() => updateCostsTable());
-
-        $w("#dropdownFilterResultsMore").onChange(() => { setCurrentFilter($w("#dropdownFilterResultsMore").value); });
-
-        $w("#buttonPrev").onClick(() => {
-            console.log("#buttonPrev onClick");
-            const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
-            const i = curID ? sortedResults.indexOf(curID) : -1;
-            if (i > 0) setCurrentFilter(sortedResults[i - 1]);
-        });
-        $w("#buttonNext").onClick(() => {
-            console.log("#buttonNext onClick");
-            const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
-            const i = curID ? sortedResults.indexOf(curID) : -1;
-            if (i != -1 && i < sortedResults.length - 1) setCurrentFilter(sortedResults[i + 1]);
-        });
 
         cloneItem($w("#datasetGuestReservations").getCurrentItem());
 
@@ -219,9 +206,9 @@ $w.onReady(function () {
 async function updateAll() {
     updateDatePicker();
     updateAllInputs();
-    updateTitle();
+    editor.updateSelectorList();
     await updateOccupations();
-    await updateCostsTable();
+    updateCostsTable();
 }
 
 function updateAllInputs() {
@@ -354,112 +341,6 @@ async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO spli
 
 // special block below only for Management site -- all above shall be identical with Guest site
 
-function updateFilter() {
-    const cntShownDirectly = 6;
-
-    const searchText = $w("#filterSearch").value.trim();
-    const onlyFuture = $w('#filterOnlyFuture').checked ? incUTCDate(new Date(), 1) : null;
-    if (filterConditionST == searchText && filterConditionOF == onlyFuture) return;
-    filterConditionOF = onlyFuture;
-    filterConditionST = searchText
-    console.log("updateFilter for", searchText, "onlyFuture", onlyFuture != null);
-
-    const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    // ignore empty entries
-    let q = wixData.query("guestReservations").isNotEmpty("searchField").descending("_updatedDate").limit(1000);
-    if (onlyFuture) q = q.ge("dateTo", onlyFuture);
-
-    const s = normalize(searchText).trim();
-    if (s) {
-        const sn = Number(s);
-        if (s == sn.toString()) { // user entered a number
-            let qOr = wixData.query("guestReservations").eq("cntAdults", sn);
-            ["cntChildren", "paidSum", "lodgingSub"].forEach(f => { qOr = qOr.or(wixData.query("guestReservations").eq(f, sn)); });
-            q = q.and(qOr);
-        } else // user entered a string
-            q = q.contains("searchField", s);
-    }
-
-    q.find().then(async (res) => {
-        const sorted = res.items;//.sort((a, b) => { return b.dateFrom - a.dateFrom; });
-        sortedResults = sorted.map((i) => i._id);
-        console.log("updateFilter", res.items.length, "results:", sortedResults);
-        $w("#repeaterFilterResults").data = sorted.slice(0, cntShownDirectly);
-        if (sorted.length > cntShownDirectly)
-            $w("#dropdownFilterResultsMore").expand();
-        else
-            $w("#dropdownFilterResultsMore").collapse();
-        $w("#dropdownFilterResultsMore").label = `Weitere (Gesamt ${sorted.length})`;
-        $w("#dropdownFilterResultsMore").options = sorted.slice(cntShownDirectly).map(item => ({ label: generateTitle(item), value: item._id }));
-        setTimeout(() => {
-            $w("#repeaterFilterResults").forEachItem(($item, itemData) => {
-                const title = generateTitle(itemData);
-                $item("#textFilterResult").text = title;
-                $item("#textFilterResultActive").text = title;
-                $item("#textFilterResult").onClick(() => { setCurrentFilter(itemData._id) });
-            });
-            updateFilterSelection();
-        }, 0);
-    }).catch((err) => console.error(`Cannot filter and sort data set:`, err));
-}
-let filterConditionOF = null;
-let filterConditionST = null;
-let sortedResults = [];
-
-function setCurrentFilter(itemId) {
-    if (loadingID == itemId) return;
-    loadingID = itemId;
-    console.log("setCurrentFilter save", itemId);
-    $w("#datasetGuestReservations").save().then(() => {
-        console.log("setCurrentFilter setFilter", itemId);
-        $w("#datasetGuestReservations").setFilter(wixData.filter().eq('_id', itemId)).then(async () => {
-            loadingID = "";
-            console.log("setCurrentFilter update", itemId);
-            updateFilterSelection();
-            await updateAll();
-        }).catch((err) => editor.showError(err));
-    }).catch((err) => editor.showError(err));
-}
-let loadingID = "";
-
-/**
- * Updates the selection state of the filter results based on the currently displayed item
- */
-function updateFilterSelection() {
-    const curID = $w("#datasetGuestReservations").getCurrentItem()?._id;
-    console.log("updateFilterSelection", curID);
-    $w("#repeaterFilterResults").forEachItem(($item, itemData) => {
-        if (itemData._id == curID) {
-            $item("#textFilterResult").hide();
-            $item("#textFilterResultActive").show();
-        } else {
-            $item("#textFilterResult").show();
-            $item("#textFilterResultActive").hide();
-        }
-    });
-    $w("#dropdownFilterResultsMore").value = curID ?? "";
-}
-
-function updateTitle() {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
-    const newTitle = generateTitle(item);
-    $w("#textTitle").text = newTitle;
-    $w("#repeaterFilterResults").forEachItem(($item, itemData) => {
-        if (itemData._id == item?._id) {
-            $item("#textFilterResult").text = newTitle;
-            $item("#textFilterResultActive").text = newTitle;
-        }
-    });
-    const opt = $w("#dropdownFilterResultsMore").options;
-    for (const o of opt) {
-        if (o.value == item?._id) {
-            o.label = newTitle;
-            $w("#dropdownFilterResultsMore").options = opt;
-            break;
-        }
-    }
-}
-
 function generateTitle(item) {
     if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
         const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
@@ -472,6 +353,39 @@ function generateTitle(item) {
 function cloneItem(item) {
     originalItem = item ? structuredClone(item) : null;
     console.log("originalItem now is", originalItem);
+}
+
+async function doQueryUpdate(searchText) {
+    const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    // ignore empty entries
+    let q = wixData.query("guestReservations").isNotEmpty("searchField").descending("_updatedDate").limit(1000);
+
+    if (!$w('#filterAlsoPast').checked) q = q.ge("dateTo", incUTCDate(new Date(), 1));
+
+    const status = $w("#filterStatus").value;
+    if (status != "*") q = q.eq("state", status);
+
+    const lodging = $w("#filterLodging").value;
+    if (lodging) { const [l, ls] = lodging.split("|"); q = q.and(wixData.query("guestReservations").eq("lodging", l).eq("lodgingSub", Number(ls))); }
+
+    const s = normalize(searchText).trim();
+    if (s) {
+        const sn = Number(s);
+        if (s == sn.toString()) { // user entered a number
+            let qOr = wixData.query("guestReservations").eq("cntAdults", sn);
+            ["cntChildren", "paidSum", "lodgingSub"].forEach(f => { qOr = qOr.or(wixData.query("guestReservations").eq(f, sn)); });
+            q = q.and(qOr);
+        } else // user entered a string
+            q = q.contains("searchField", s);
+    }
+
+    try {
+        const res = await q.find();
+        return res.items;
+    } catch (err) {
+        console.error("Query failed", err);
+        return [];
+    }
 }
 
 async function prepareSave() {
@@ -532,9 +446,9 @@ async function prepareSave() {
 
         diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
 
-        diffField("Pfand/Kaution", originalItem.deposit?.toString(), item.deposit?.toString());
+        diffField("Pfand/Kaution", originalItem.deposit?.toString() ?? "", item.deposit?.toString() ?? "");
 
-        diffField("Bezahlt", `${originalItem.paidSum?.toFixed(2) ?? "--"} €`, `${item.paidSum?.toFixed(2) ?? "--"} €`);
+        diffField("Bezahlt", `${originalItem.paidSum?.toFixed(2) ?? "0.00"} €`, `${item.paidSum?.toFixed(2) ?? "0.00"} €`);
 
         diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
 
