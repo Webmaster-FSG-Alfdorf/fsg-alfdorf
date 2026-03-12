@@ -11,6 +11,8 @@ export class CmsEditor {
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
         this.onAfterDelete = config.onAfterDelete || (() => { });
+
+        this.messageTimer = null;
     }
 
     init() {
@@ -37,7 +39,7 @@ export class CmsEditor {
         }); else console.warn("itemSelector not found in DOM");
 
         if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => {
-            $w("#textResponse").collapse();
+            this.collapseResponse();
             this.beforeSafeResult = await this.onBeforeSave();
             ds.save().then(() => {
                 console.log("item saved");
@@ -48,7 +50,7 @@ export class CmsEditor {
         }); else console.warn("buttonSave not found in DOM");
 
         if ($w("#buttonRevert").id) $w("#buttonRevert").onClick(() => {
-            $w("#textResponse").collapse();
+            this.collapseResponse();
             ds.revert().then(() => {
                 console.log("item reverted");
                 this.updateSelectorList();
@@ -58,7 +60,7 @@ export class CmsEditor {
         }); else console.warn("buttonRevert not found in DOM");
 
         if ($w("#buttonNew").id) $w("#buttonNew").onClick(() => {
-            $w("#textResponse").collapse();
+            this.collapseResponse();
             ds.save().then(() => {
                 console.log("item saved before creating new item");
                 ds.new().then(() => {
@@ -70,22 +72,22 @@ export class CmsEditor {
         }); else console.warn("buttonNew not found in DOM");
 
         if ($w("#buttonRemove").id) $w("#buttonRemove").onClick(() => {
-            $w("#textResponse").collapse();
+            this.collapseResponse();
             const itemToDelete = ds.getCurrentItem();
             ds.remove().then(() => {
                 console.log("item removed");
                 this.updateSelectorList();
                 this.onAfterDelete(itemToDelete);
+                this.showMessage("Erfolgreich gelöscht.");
 
                 wixData.query(this.cmsName).ascending("title").limit(1).find().then((results) => {
                     console.log("query after deletion:", results);
-                    this.showMessage("Erfolgreich gelöscht.");
-
                     if (results.items.length > 0) {
                         const nextUrl = results.items[0][this.linkField];
                         console.log("going to:", nextUrl);
                         if (nextUrl) wixLocation.to(nextUrl);
                     } else {
+                        console.log("no more items left");
                         ds.new().then(() => { this.updateSelectorList(); });
                     }
                 });
@@ -98,12 +100,10 @@ export class CmsEditor {
             if (results.items.length > 0) {
                 const dynamicUrl = results.items[0][this.linkField];
                 console.log("going to:", dynamicUrl, "from:", wixLocation.url);
-
-                if (dynamicUrl && wixLocation.url.includes(dynamicUrl)) {
+                if (dynamicUrl && wixLocation.url.includes(dynamicUrl))
                     wixLocation.to(wixLocation.url);
-                } else if (dynamicUrl) {
+                else if (dynamicUrl)
                     wixLocation.to(dynamicUrl);
-                }
             }
         });
     }
@@ -123,14 +123,6 @@ export class CmsEditor {
         });
     }
 
-    showMessage(message, isError = false) {
-        if (!$w("#textResponse").id) return;
-        const color = isError ? "#E74C3C" : "#2ECC71";
-        $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
-        $w("#textResponse").expand();
-        setTimeout(() => { $w("#textResponse").collapse(); }, 20000);
-    }
-
     showError(error) {
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
         console.error("Error saving item:", errStr);
@@ -142,4 +134,23 @@ export class CmsEditor {
 
         this.showMessage(msg, true);
     }
+
+    showMessage(message, isError = false) {
+        if (!$w("#textResponse").id) return;
+        if (this.messageTimer) cearTimeout(this.messageTimer);
+        const color = isError ? "#E74C3C" : "#2ECC71";
+        $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
+        $w("#textResponse").expand();
+        this.messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
+    }
+
+    collapseResponse() {
+        if (!$w("#textResponse").id) return;
+        $w("#textResponse").collapse();
+        if (this.messageTimer) {
+            clearTimeout(this.messageTimer);
+            this.messageTimer = null;
+        }
+    }
+
 }
