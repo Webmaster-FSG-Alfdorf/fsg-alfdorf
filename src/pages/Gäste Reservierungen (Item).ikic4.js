@@ -532,7 +532,7 @@ async function prepareSave() {
 
         diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
 
-        diffField("Pfand/Kaution", originalItem.deposit.toString(), item.deposit.toString());
+        diffField("Pfand/Kaution", originalItem.deposit?.toString(), item.deposit?.toString());
 
         diffField("Bezahlt", `${originalItem.paidSum.toFixed(2)} €`, `${item.paidSum.toFixed(2)} €`);
 
