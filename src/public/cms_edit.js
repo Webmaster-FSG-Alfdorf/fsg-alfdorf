@@ -137,7 +137,7 @@ export class CmsEditor {
 
     showMessage(message, isError = false) {
         if (!$w("#textResponse").id) return;
-        if (this.messageTimer) cearTimeout(this.messageTimer);
+        if (this.messageTimer) clearTimeout(this.messageTimer);
         const color = isError ? "#E74C3C" : "#2ECC71";
         $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
         $w("#textResponse").expand();
