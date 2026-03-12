@@ -534,7 +534,7 @@ async function prepareSave() {
 
         diffField("Pfand/Kaution", originalItem.deposit?.toString(), item.deposit?.toString());
 
-        diffField("Bezahlt", `${originalItem.paidSum.toFixed(2)} €`, `${item.paidSum.toFixed(2)} €`);
+        diffField("Bezahlt", `${originalItem.paidSum?.toFixed(2) ?? "--"} €`, `${item.paidSum?.toFixed(2) ?? "--"} €`);
 
         diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
 
