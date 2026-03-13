@@ -142,7 +142,7 @@ export class CmsEditor {
 
     updateSelectorList() {
         const searchText = $w("#filterSearch").id ? $w("#filterSearch").value.trim() : "";
-        console.log("Updating item selector list based on search text:", searchText);
+        console.log("Updating itemSelector based on search text:", searchText);
 
         this.onQueryUpdate(searchText).then((items) => {
             const currentItem = this.ds.getCurrentItem();

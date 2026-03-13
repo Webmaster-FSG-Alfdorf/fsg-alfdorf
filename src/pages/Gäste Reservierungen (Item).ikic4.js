@@ -350,6 +350,7 @@ function cloneItem(item) {
 }
 
 async function doQueryUpdate(searchText) {
+    console.log(`doQueryUpdate ${searchText}`);
     const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     // ignore empty entries
     let q = wixData.query("guestReservations").isNotEmpty("searchField").descending("_updatedDate").limit(1000);
@@ -363,6 +364,7 @@ async function doQueryUpdate(searchText) {
     if (lodging) { const [l, ls] = lodging.split("|"); q = q.and(wixData.query("guestReservations").eq("lodging", l).eq("lodgingSub", Number(ls))); }
 
     const s = normalize(searchText).trim();
+    console.log(`doQueryUpdate ${q} ${s}`);
     if (s) {
         const sn = Number(s);
         if (s == sn.toString()) { // user entered a number
@@ -373,8 +375,10 @@ async function doQueryUpdate(searchText) {
             q = q.contains("searchField", s);
     }
 
+    console.log(`doQueryUpdate ${q}`);
     try {
         const res = await q.find();
+        console.log(`doQueryUpdate ${res}`);
         return res.items;
     } catch (err) {
         console.error("Query failed", err);
