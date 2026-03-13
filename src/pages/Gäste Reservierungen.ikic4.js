@@ -30,8 +30,8 @@ $w.onReady(function () {
         updateOccupations();
     });
 
-    $w("#datasetGuestReservations").onReady(async () => {
-        console.log("#datasetGuestReservations onReady");
+    $w("#datasetReservations").onReady(async () => {
+        console.log("#datasetReservations onReady");
         const dt = toUTC(new Date());
         dt.setUTCHours(0, 0, 0);
         const msg = { minDate: new Date(dt), maxDate: incUTCDate(dt, 365) };
@@ -41,7 +41,7 @@ $w.onReady(function () {
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
-            await $w("#datasetGuestReservations").setFieldValue("lodging", query.lodging);
+            await $w("#datasetReservations").setFieldValue("lodging", query.lodging);
             $w("#inputLodging").scrollTo()
         }
 
@@ -64,8 +64,8 @@ $w.onReady(function () {
         $w("#inputLodging").onChange(async () => {
             console.log("#inputLodging onChange");
             const lodging = $w("#inputLodging").value.split("|");
-            await $w("#datasetGuestReservations").setFieldValue("lodging", lodging[0]);
-            await $w("#datasetGuestReservations").setFieldValue("lodgingSub", Number(lodging[1]));
+            await $w("#datasetReservations").setFieldValue("lodging", lodging[0]);
+            await $w("#datasetReservations").setFieldValue("lodgingSub", Number(lodging[1]));
             updateOccupations();
             updateCostsTable();
         })
@@ -123,7 +123,7 @@ $w.onReady(function () {
 
         editor = new CmsEditor({
             cmsName: "guestReservations",
-            dataSetName: "datasetGuestReservations",
+            dataSetName: "datasetReservations",
 
             refreshUI: async () => {
                 editor.updateSelectorList();
@@ -138,7 +138,7 @@ $w.onReady(function () {
             onBeforeSave: async () => { return prepareSave(); },
 
             onAfterSave: (diffData) => {
-                const item = $w("#datasetGuestReservations").getCurrentItem();
+                const item = $w("#datasetReservations").getCurrentItem();
 
                 if (diffData && diffData.diff.length > 0) {
                     wixWindow.openLightbox("CMSSuccessLightbox", {
@@ -154,7 +154,7 @@ $w.onReady(function () {
 
             onAfterReverted: () => {
                 wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-                cloneItem($w("#datasetGuestReservations").getCurrentItem());
+                cloneItem($w("#datasetReservations").getCurrentItem());
             },
 
             onAfterDelete: (deletedItem) => {
@@ -186,7 +186,7 @@ $w.onReady(function () {
         $w("#inputPaidSum").onInput(() => updateCostsTable());
         $w("#inputPaidSum").onBlur(() => updateCostsTable());
 
-        cloneItem($w("#datasetGuestReservations").getCurrentItem());
+        cloneItem($w("#datasetReservations").getCurrentItem());
 
         // end special block
     });
@@ -206,7 +206,7 @@ $w.onReady(function () {
  */
 
 function updateAllInputs() {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
 
     console.log("updateAllInputs", item?._id, "lodging", item?.lodging, item?.lodgingSub, debugStr(item?.dateFrom), "to", debugStr(item?.dateTo));
 
@@ -239,7 +239,7 @@ function makeValidDate(d, defaultDate = new Date()) {
 }
 
 function updateDatePicker() {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
     const dateFrom = makeValidDate(item?.dateFrom);
     const dateTo = makeValidDate(item?.dateTo);
     const msg = { utcDates: [dateFrom, dateTo] };
@@ -248,33 +248,33 @@ function updateDatePicker() {
 }
 
 async function updateHoursKeepingDate(field, hours) {
-    const utcDate = $w("#datasetGuestReservations").getCurrentItem()[field];
+    const utcDate = $w("#datasetReservations").getCurrentItem()[field];
     let dt = new Date(utcDate);
     dt.setUTCHours(0, 0, 0, 0);
     dt = toLocal(dt);
     dt.setHours(hours, 0, 0, 0);
-    await $w("#datasetGuestReservations").setFieldValue(field, toUTC(dt));
+    await $w("#datasetReservations").setFieldValue(field, toUTC(dt));
 }
 
 async function updateDateKeepingHours(utcDateRange) {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
 
     const dtFrom = makeValidDate(utcDateRange[0], new Date(0));
     let hours = item ? new Date(item.dateFrom).getUTCHours() : 0;
     dtFrom.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await $w("#datasetGuestReservations").setFieldValue("dateFrom", dtFrom);
+    await $w("#datasetReservations").setFieldValue("dateFrom", dtFrom);
 
     const dtTo = makeValidDate(utcDateRange[1], new Date(0));
     hours = item ? new Date(item.dateTo).getUTCHours() : 0;
     dtTo.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await $w("#datasetGuestReservations").setFieldValue("dateTo", dtTo);
+    await $w("#datasetReservations").setFieldValue("dateTo", dtTo);
 
     console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
     $w("#inputDate").value = dateRangeToString(dtFrom, dtTo, { hour: null, minute: null });
 }
 
 function updateCostsTable() {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
     if (item)
         generateCostsTable(item).then(costs => {
             generateHTMLTable(costs, [
@@ -290,7 +290,7 @@ function updateCostsTable() {
 }
 
 async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO split into two functions?
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
 
     if (currentDateOccupiedUpdate) {
         if (item == null)
@@ -384,7 +384,7 @@ async function doQueryUpdate(searchText) {
 }
 
 async function prepareSave() {
-    const item = $w("#datasetGuestReservations").getCurrentItem();
+    const item = $w("#datasetReservations").getCurrentItem();
 
     let diff = [];
     let diffUser = [];
