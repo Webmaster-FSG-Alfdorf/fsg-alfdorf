@@ -2,8 +2,9 @@ export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
+        this.cmsSchema = config.cmsSchema || {};
         this.linkField = config.linkField;
-        this.refreshUI = config.refreshUI || (() => { });
+        this.onRefreshUI = config.onRefreshUI || (() => { });
         this.onBeforeSave = config.onBeforeSave || (async () => true);
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
@@ -18,7 +19,10 @@ export class CmsEditor {
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
-        this.ds.onReady(() => { this.refreshUI(); });
+        this.ds.onReady(() => {
+            this.refreshUI();
+            this._setupTwoWayBinding();
+        });
         this.ds.onError((error) => { this.showError(error); });
 
         if ($w("#filterSearch").id) {
@@ -53,6 +57,76 @@ export class CmsEditor {
 
         if ($w("#buttonNext").id) $w("#buttonNext").onClick(() => this.navigateRelative(1));
         else console.warn("buttonNext not found in DOM");
+    }
+
+    refreshUI() {
+        this.updateUiFromData();
+        this.updateSelectorList();
+        this.onRefreshUI();
+    }
+
+    _setupTwoWayBinding() {
+        Object.keys(this.cmsSchema).forEach(id => {
+            const cfg = this.cmsSchema[id];
+            const el = $w(id);
+            if (!el || !el.id) return;
+
+            // Automatische Wahl des Events
+            const event = (cfg.type === 'boolean' || cfg.type === 'address' || id.includes('State')) ? 'onChange' : 'onInput';
+
+            el[event]((e) => {
+                let val;
+                if (cfg.type === 'boolean') val = el.checked;
+                else if (cfg.type === 'address') val = el.value;
+                else if (cfg.type === 'number') val = Number(el.value || 0);
+                else val = el.value;
+
+                this.ds.setFieldValue(cfg.field, val);
+
+                // Falls im Schema eine zusätzliche Aktion definiert wurde (z.B. updateCostsTable)
+                if (cfg.onChange) cfg.onChange(val);
+            });
+        });
+    }
+
+    updateUiFromData() {
+        const item = this.ds.getCurrentItem();
+        Object.keys(this.cmsSchema).forEach(id => {
+            const cfg = this.cmsSchema[id];
+            const el = $w(id);
+            const val = item ? item[cfg.field] : null;
+
+            if (cfg.type === 'boolean') el.checked = !!val;
+            else if (cfg.type === 'address') el.value = val || {};
+            else if (cfg.type === 'number') el.value = (val ?? 0).toString();
+            else el.value = val || "";
+
+            if (el.resetValidityIndication) el.resetValidityIndication();
+        });
+    }
+
+    getDiff(originalItem) {
+        const current = this.ds.getCurrentItem();
+        let diff = [];
+
+        Object.keys(this.cmsSchema).forEach(id => {
+            const cfg = this.cmsSchema[id];
+            if (!cfg.label) return; // Nur Felder mit Label kommen in den Diff
+
+            let v1 = originalItem ? originalItem[cfg.field] : null;
+            let v2 = current ? current[cfg.field] : null;
+
+            // Formatierung für die Anzeige im Diff
+            if (cfg.type === 'number') {
+                v1 = Number(v1 || 0).toFixed(2);
+                v2 = Number(v2 || 0).toFixed(2);
+            }
+
+            if (v1 != v2) {
+                diff.push([cfg.label, v1, v2]);
+            }
+        });
+        return diff;
     }
 
     navigateRelative(offset) {

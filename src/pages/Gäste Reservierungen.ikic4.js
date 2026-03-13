@@ -127,9 +127,33 @@ $w.onReady(function () {
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
+            cmsSchema: {
+                // Basis-Informationen
+                "#inputFirstName": { field: "firstName", type: "string", label: "Vorname" },
+                "#inputLastName": { field: "lastName", type: "string", label: "Nachnachme" },
+                "#inputMail": { field: "email", type: "string", label: "E-Mail" },
+                "#inputPhone": { field: "phoneNumber", type: "string", label: "Telefonnummer" },
 
-            refreshUI: async () => {
-                editor.updateSelectorList();
+                // Buchungs-Details (Zahlen)
+                "#inputAdults": { field: "cntAdults", type: "number", label: "Erwachsene", onChange: () => updateCostsTable() },
+                "#inputChildren": { field: "cntChildren", type: "number", label: "Kinder", onChange: () => updateCostsTable() },
+
+                // Finanzen
+                "#inputPaidSum": { field: "paidSum", type: "number", label: "Bezahlt", onChange: () => updateCostsTable() },
+                "#inputPaidSumup": { field: "paidSumup", type: "string", label: "Sumup ID" },
+                "#inputDeposit": { field: "deposit", type: "string", label: "Pfand/Kaution", onChange: () => updateCostsTable() },
+
+                // Status & Admin
+                "#inputState": { field: "state", type: "string", label: "Status" },
+                "#inputComment": { field: "comment", type: "string", label: "Interner Kommentar" },
+                "#inputNotes": { field: "notes", type: "string", label: "Hinweise des Gastes" },
+
+                // Spezial-Eingaben
+                "#addressInput1": { field: "address", type: "address", label: "Adresse" },
+                "#inputPrivacyPolicy": { field: "privacyPolicy", type: "boolean", label: "Datenschutz akzeptiert" }
+            },
+
+            onRefreshUI: async () => {
                 updateDatePicker();
                 updateAllInputs();
                 await updateOccupations();
@@ -387,9 +411,20 @@ async function doQueryUpdate(searchText) {
 async function prepareSave() {
     const item = editor.ds.getCurrentItem();
 
+    let diffUser = editor.getDiff(originalItem);
+    let diff = [...diffUser];
+
+    let customMessage = "";
+    if (originalItem.state !== item.state) customMessage = {
+        "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
+        "Reserviert": "Ihre Anfrage wurde akzeptiert.",
+        "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
+        "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
+    }[item.state] || customMessage;
+/*
+
     let diff = [];
     let diffUser = [];
-    let customMessage = "";
     const diffField = (label, v1, v2, showUser = true) => {
         if (v1 != v2) {
             diff.push([label, v1, v2]);
@@ -399,12 +434,6 @@ async function prepareSave() {
 
     if (originalItem && item) {
         diffField("Status", originalItem.state, item.state);
-        if (originalItem.state !== item.state) customMessage = {
-            "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
-            "Reserviert": "Ihre Anfrage wurde akzeptiert.",
-            "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
-            "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
-        }[item.state] || customMessage;
         diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
 
         diffField("Datum",
@@ -450,6 +479,7 @@ async function prepareSave() {
 
         diffField("Interner Kommentar", originalItem.comment, item.comment, false);
     }
+    */
 
     console.log("save", item?._id, "diff:", diff);
 
