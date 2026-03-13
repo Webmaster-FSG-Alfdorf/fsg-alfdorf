@@ -95,9 +95,9 @@ export class CmsEditor {
 
     newItem() {
         this.collapseResponse();
-        ds.save().then(() => {
+        this.ds.save().then(() => {
             console.log("item saved before creating new item");
-            ds.new().then(() => {
+            this.ds.new().then(() => {
                 console.log("item created");
                 this.refreshUI();
                 this.showMessage("Erfolgreich erstellt.");
@@ -107,13 +107,13 @@ export class CmsEditor {
 
     removeItem() {
         this.collapseResponse();
-        const itemToDelete = ds.getCurrentItem();
+        const itemToDelete = this.ds.getCurrentItem();
 
         const options = $w("#itemSelector").options;
         const idx = options.findIndex(opt => opt.value === itemToDelete._id);
         const nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
 
-        ds.remove().then(() => {
+        this.ds.remove().then(() => {
             console.log("item removed"); // Filtern (Name, Unterkunft, Datum, ...)
             this.onAfterDelete(itemToDelete);
             this.showMessage("Erfolgreich gelöscht.");
@@ -122,7 +122,7 @@ export class CmsEditor {
                 this.navigateTo(nextId);
             } else {
                 console.log("No items left to navigate to, creating new.");
-                ds.new().then(() => { this.refreshUI(); });
+                this.ds.new().then(() => { this.refreshUI(); });
             }
         });
     }
