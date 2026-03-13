@@ -1,5 +1,3 @@
-import wixData from 'wix-data';
-
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;

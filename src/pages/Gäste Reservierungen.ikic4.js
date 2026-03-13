@@ -59,6 +59,9 @@ $w.onReady(function () {
                 ];
                 updateOccupations(false);
             }
+
+            const firstItem = $w("#datasetReservations").getCurrentItem();
+            if (firstItem) cloneItem(firstItem);
         });
 
         $w("#inputLodging").onChange(async () => {
@@ -138,7 +141,7 @@ $w.onReady(function () {
             onBeforeSave: async () => { return prepareSave(); },
 
             onAfterSave: (diffData) => {
-                const item = $w("#datasetReservations").getCurrentItem();
+                const item = editor.ds.getCurrentItem();
 
                 if (diffData && diffData.diff.length > 0) {
                     wixWindow.openLightbox("CMSSuccessLightbox", {
@@ -154,7 +157,7 @@ $w.onReady(function () {
 
             onAfterReverted: () => {
                 wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-                cloneItem($w("#datasetReservations").getCurrentItem());
+                cloneItem(editor.ds.getCurrentItem());
             },
 
             onAfterDelete: (deletedItem) => {
@@ -186,8 +189,6 @@ $w.onReady(function () {
         $w("#inputPaidSum").onInput(() => updateCostsTable());
         $w("#inputPaidSum").onBlur(() => updateCostsTable());
 
-        cloneItem($w("#datasetReservations").getCurrentItem());
-
         // end special block
     });
 });
@@ -206,7 +207,7 @@ $w.onReady(function () {
  */
 
 function updateAllInputs() {
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
 
     console.log("updateAllInputs", item?._id, "lodging", item?.lodging, item?.lodgingSub, debugStr(item?.dateFrom), "to", debugStr(item?.dateTo));
 
@@ -239,7 +240,7 @@ function makeValidDate(d, defaultDate = new Date()) {
 }
 
 function updateDatePicker() {
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
     const dateFrom = makeValidDate(item?.dateFrom);
     const dateTo = makeValidDate(item?.dateTo);
     const msg = { utcDates: [dateFrom, dateTo] };
@@ -248,33 +249,33 @@ function updateDatePicker() {
 }
 
 async function updateHoursKeepingDate(field, hours) {
-    const utcDate = $w("#datasetReservations").getCurrentItem()[field];
+    const utcDate = editor.ds.getCurrentItem()[field];
     let dt = new Date(utcDate);
     dt.setUTCHours(0, 0, 0, 0);
     dt = toLocal(dt);
     dt.setHours(hours, 0, 0, 0);
-    await $w("#datasetReservations").setFieldValue(field, toUTC(dt));
+    await editor.ds.setFieldValue(field, toUTC(dt));
 }
 
 async function updateDateKeepingHours(utcDateRange) {
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
 
     const dtFrom = makeValidDate(utcDateRange[0], new Date(0));
     let hours = item ? new Date(item.dateFrom).getUTCHours() : 0;
     dtFrom.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await $w("#datasetReservations").setFieldValue("dateFrom", dtFrom);
+    await editor.ds.setFieldValue("dateFrom", dtFrom);
 
     const dtTo = makeValidDate(utcDateRange[1], new Date(0));
     hours = item ? new Date(item.dateTo).getUTCHours() : 0;
     dtTo.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await $w("#datasetReservations").setFieldValue("dateTo", dtTo);
+    await editor.ds.setFieldValue("dateTo", dtTo);
 
     console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
     $w("#inputDate").value = dateRangeToString(dtFrom, dtTo, { hour: null, minute: null });
 }
 
 function updateCostsTable() {
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
     if (item)
         generateCostsTable(item).then(costs => {
             generateHTMLTable(costs, [
@@ -290,7 +291,7 @@ function updateCostsTable() {
 }
 
 async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO split into two functions?
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
 
     if (currentDateOccupiedUpdate) {
         if (item == null)
@@ -384,7 +385,7 @@ async function doQueryUpdate(searchText) {
 }
 
 async function prepareSave() {
-    const item = $w("#datasetReservations").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
 
     let diff = [];
     let diffUser = [];
