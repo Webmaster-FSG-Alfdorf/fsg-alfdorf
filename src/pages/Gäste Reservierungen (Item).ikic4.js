@@ -358,13 +358,15 @@ async function doQueryUpdate(searchText) {
     if (!$w('#filterAlsoPast').checked) q = q.ge("dateTo", incUTCDate(new Date(), 1));
 
     const status = $w("#filterStatus").value;
+    console.log(`doQueryUpdate status ${status}`);
     if (status != "*") q = q.eq("state", status);
 
     const lodging = $w("#filterLodging").value;
+    console.log(`doQueryUpdate lodging ${lodging}`);
     if (lodging) { const [l, ls] = lodging.split("|"); q = q.and(wixData.query("guestReservations").eq("lodging", l).eq("lodgingSub", Number(ls))); }
 
     const s = normalize(searchText).trim();
-    console.log(`doQueryUpdate ${q} ${s}`);
+    console.log(`doQueryUpdate ${JSON.stringify(q)} ${s}`);
     if (s) {
         const sn = Number(s);
         if (s == sn.toString()) { // user entered a number
@@ -375,10 +377,10 @@ async function doQueryUpdate(searchText) {
             q = q.contains("searchField", s);
     }
 
-    console.log(`doQueryUpdate ${q}`);
+    console.log(`doQueryUpdate ${JSON.stringify(q)}`);
     try {
         const res = await q.find();
-        console.log(`doQueryUpdate ${res}`);
+        console.log(`doQueryUpdate ${JSON.stringify(res)}`);
         return res.items;
     } catch (err) {
         console.error("Query failed", err);
