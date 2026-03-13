@@ -1,5 +1,4 @@
 import wixData from 'wix-data';
-import wixLocation from 'wix-location-frontend';
 
 export class CmsEditor {
     constructor(config) {
@@ -128,14 +127,13 @@ export class CmsEditor {
     }
 
     async navigateTo(id) {
-        wixData.query(this.cmsName).eq("_id", id).limit(1).find().then((results) => {
-            if (results.items.length > 0) {
-                const dynamicUrl = this.linkField ? results.items[0][this.linkField] : `${wixLocation.url.split('/').slice(0, -1).join('/')}/${id}`;
-                console.log("going to:", dynamicUrl, "from:", wixLocation.url);
-                if (dynamicUrl && wixLocation.url.includes(dynamicUrl))
-                    wixLocation.to(wixLocation.url);
-                else if (dynamicUrl)
-                    wixLocation.to(dynamicUrl);
+        this.ds.getItems(0, this.ds.getTotalCount()).then((result) => {
+            const index = result.items.findIndex(item => item._id == id);
+            if (index != -1) {
+                console.log("navigateTo:", id, "index:", index);
+                this.ds.setCurrentItemIndex(index).then(() => { this.refreshUI(); });
+            } else {
+                console.warn("navigateTo cannot find item with ID", id, "among", result.items.length, "items");
             }
         });
     }
