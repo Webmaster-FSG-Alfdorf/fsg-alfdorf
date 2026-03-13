@@ -15,13 +15,14 @@ export class CmsEditor {
         this.generateTitle = config.generateTitle || ((item) => item?.title || "(Unbenannt)");
 
         this.messageTimer = null;
+        this.ds = $w(`#${this.dataSetName}`);
     }
 
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
-        $w(`#${this.dataSetName}`).onReady(() => { this.updateSelectorList(); });
-        $w(`#${this.dataSetName}`).onError((error) => { this.showError(error); });
+        this.ds.onReady(() => { this.refreshUI(); });
+        this.ds.onError((error) => { this.showError(error); });
 
         if ($w("#filterSearch").id) {
             $w("#filterSearch").onKeyPress((event) => { if (event.key == "Enter") this.updateSelectorList(); });
@@ -31,7 +32,7 @@ export class CmsEditor {
         if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
             console.log("selected value:", val);
-            if (val === "--new--") $w(`#${this.dataSetName}`).new().then(() => {
+            if (val === "--new--") this.ds.new().then(() => {
                 console.log("item created");
                 this.refreshUI();
             });
@@ -75,9 +76,8 @@ export class CmsEditor {
     async saveItem() {
         this.collapseResponse();
         this.beforeSafeResult = await this.onBeforeSave();
-        $w(`#${this.dataSetName}`).save().then(() => {
+        this.ds.save().then(() => {
             console.log("item saved");
-            this.updateSelectorList();
             this.onAfterSave(this.beforeSafeResult);
             this.showMessage("Erfolgreich gespeichert.");
         });
@@ -85,29 +85,27 @@ export class CmsEditor {
 
     revertItem() {
         this.collapseResponse();
-        $w(`#${this.dataSetName}`).revert().then(() => {
+        this.ds.revert().then(() => {
             console.log("item reverted");
-            this.updateSelectorList();
+            this.refreshUI();
             this.onAfterReverted();
             this.showMessage("Änderungen verworfen.");
         });
     }
 
     newItem() {
-        const ds = $w(`#${this.dataSetName}`);
         this.collapseResponse();
         ds.save().then(() => {
             console.log("item saved before creating new item");
             ds.new().then(() => {
                 console.log("item created");
-                this.updateSelectorList();
+                this.refreshUI();
                 this.showMessage("Erfolgreich erstellt.");
             });
         });
     }
 
     removeItem() {
-        const ds = $w(`#${this.dataSetName}`);
         this.collapseResponse();
         const itemToDelete = ds.getCurrentItem();
 
@@ -117,7 +115,6 @@ export class CmsEditor {
 
         ds.remove().then(() => {
             console.log("item removed"); // Filtern (Name, Unterkunft, Datum, ...)
-            this.updateSelectorList();
             this.onAfterDelete(itemToDelete);
             this.showMessage("Erfolgreich gelöscht.");
 
@@ -125,7 +122,7 @@ export class CmsEditor {
                 this.navigateTo(nextId);
             } else {
                 console.log("No items left to navigate to, creating new.");
-                ds.new().then(() => { this.updateSelectorList(); });
+                ds.new().then(() => { this.refreshUI(); });
             }
         });
     }
@@ -148,15 +145,13 @@ export class CmsEditor {
         console.log("Updating item selector list based on search text:", searchText);
 
         this.onQueryUpdate(searchText).then((items) => {
-            const currentItem = $w(`#${this.dataSetName}`).getCurrentItem();
+            const currentItem = this.ds.getCurrentItem();
             console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
             $w("#itemSelector").options = [
                 { label: "➕ Neuer Eintrag", value: "--new--" },
                 ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
             $w("#itemSelector").value = currentItem?._id ?? undefined;
-
-            this.refreshUI();
         });
 
         //wixData.query(this.cmsName).ascending("title").limit(1000).find().then((result) => {

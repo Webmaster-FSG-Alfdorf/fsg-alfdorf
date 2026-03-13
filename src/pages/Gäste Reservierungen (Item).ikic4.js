@@ -61,8 +61,6 @@ $w.onReady(function () {
             }
         });
 
-        updateAll();
-
         $w("#inputLodging").onChange(async () => {
             console.log("#inputLodging onChange");
             const lodging = $w("#inputLodging").value.split("|");
@@ -121,17 +119,20 @@ $w.onReady(function () {
         $w("#inputArrivalTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Ankunft")) reject(currentDateOccupied); });
         $w("#inputDepartureTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Abreise")) reject(currentDateOccupied); });
 
-        $w("#datasetGuestReservations").onAfterSave(() => {
-            console.log("#datasetGuestReservations onAfterSave");
-            updateAll();
-        });
-
         // special block below only for Management site -- all above shall be identical with Guest site
 
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetGuestReservations",
-            refreshUI: updateAll,
+
+            refreshUI: async () => {
+                editor.updateSelectorList();
+                updateDatePicker();
+                updateAllInputs();
+                await updateOccupations();
+                updateCostsTable();
+            },
+
             generateTitle: generateTitle,
 
             onBeforeSave: async () => { return prepareSave(); },
@@ -192,7 +193,7 @@ $w.onReady(function () {
 });
 
 /**
- * init, loaded TODO, item-changed (setFilter), reverted, removed, new, saved -> updateCostsTable, updateOccupations, updateDatePicker, updateAllInputs == updateAll
+ * init, loaded TODO, item-changed (setFilter), reverted, removed, new, saved -> updateCostsTable, updateOccupations, updateDatePicker, updateAllInputs == refreshUI
  * input-lodging.changed -> updateCostsTable, updateOccupations, setField item.lodging, setField item.lodgingSub
  * input-date.changed -> updateCostsTable, updateOccupations, updateDatePicker, setField item.dateFrom, setField item.dateTo
  * datepicker.changed -> updateCostsTable, updateOccupations, inputs-date.update, setField item.dateFrom, setField item.dateTo
@@ -203,13 +204,6 @@ $w.onReady(function () {
  * input-deposit.changed -> updateCostsTable
  * input-price-paid.changed -> updateCostsTable
  */
-async function updateAll() {
-    updateDatePicker();
-    updateAllInputs();
-    editor.updateSelectorList();
-    await updateOccupations();
-    updateCostsTable();
-}
 
 function updateAllInputs() {
     const item = $w("#datasetGuestReservations").getCurrentItem();
