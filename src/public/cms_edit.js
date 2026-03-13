@@ -5,7 +5,7 @@ export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
-        this.linkField = config.linkField || `link-${config.cmsName}-title`;
+        this.linkField = config.linkField;
         this.refreshUI = config.refreshUI || (() => { });
         this.onBeforeSave = config.onBeforeSave || (async () => true);
         this.onAfterSave = config.onAfterSave || (() => { });
@@ -130,7 +130,7 @@ export class CmsEditor {
     async navigateTo(id) {
         wixData.query(this.cmsName).eq("_id", id).limit(1).find().then((results) => {
             if (results.items.length > 0) {
-                const dynamicUrl = results.items[0][this.linkField];
+                const dynamicUrl = this.linkField ? results.items[0][this.linkField] : `${wixLocation.url.split('/').slice(0, -1).join('/')}/${id}`;
                 console.log("going to:", dynamicUrl, "from:", wixLocation.url);
                 if (dynamicUrl && wixLocation.url.includes(dynamicUrl))
                     wixLocation.to(wixLocation.url);
