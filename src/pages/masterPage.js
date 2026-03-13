@@ -12,7 +12,7 @@ function update() {
     currentMember.getRoles().then((roles) => {
         toggleMenu(roles, "276cacd9-b43e-4e4e-8e3f-92192eb8eba7", "guestReservations", "Gästeverwaltung", "guests-management");
         toggleMenu(roles, "231ed231-93cf-45c1-9cbe-d99e7e45a27e", "events", "Events bearbeiten", "events/edit");
-        toggleMenu(roles, "9cf0085c-a914-46de-a6b1-29aa4b86a76e", "Speisen", "Speisekarte bearbeiten", "food/edit");
+        toggleMenu(roles, "9cf0085c-a914-46de-a6b1-29aa4b86a76e", "foods", "Speisekarte bearbeiten", "food/edit");
     });
 }
 
