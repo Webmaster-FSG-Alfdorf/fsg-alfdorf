@@ -47,7 +47,7 @@ export class CmsEditor {
                                 }
                             });
                         } else {
-                            //console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
+                            console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
                         }
                     });
                 };
