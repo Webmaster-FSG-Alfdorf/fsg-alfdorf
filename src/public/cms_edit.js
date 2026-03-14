@@ -39,7 +39,7 @@ export class CmsEditor {
                     events.forEach(s => {
                         if (typeof el[s] == 'function') el[s](() => {
                             if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
-                            if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id));
+                            if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
                             else this.updateDataFromUi(id);
                         });
                     });
@@ -47,7 +47,7 @@ export class CmsEditor {
                 if (el && el.id) {
                     if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
                     bind(['onBlur', 'onAddressSelect']);
-                    bind(['onInput', 'onChange'], 500);
+                    bind(['onInput', 'onChange'], 2000);
                 }
             });
         });
