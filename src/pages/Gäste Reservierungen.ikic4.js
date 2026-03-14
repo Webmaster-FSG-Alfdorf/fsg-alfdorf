@@ -220,7 +220,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
         if (checkValidation) handleValidationResults(valRes);
 
         const message = { capacity: occ.capacity, occupations: occ.occupations };
-        if (resetCalendarView && item.dateFrom && item.dateTo) message.utcDates = [new Date(item.dateFrom), new Date(item.dateTo)];
+        if (resetCalendarView) message.utcDates = [new Date(item.dateFrom), new Date(item.dateTo)];
         $w("#htmlDate").postMessage(message);
     } catch (err) {
         console.error("Sync failed", err);
