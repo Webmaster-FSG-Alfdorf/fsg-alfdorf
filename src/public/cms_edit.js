@@ -54,12 +54,7 @@ export class CmsEditor {
 
         if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
-            console.log("selected value:", val);
-            if (val === "--new--") this.ds.new().then(() => {
-                console.log("item created");
-                this.refreshUI();
-            });
-            else if (val) this.navigateTo(val);
+            if (val == "--new--") this.newItem(); else this.navigateTo(val);
         }); else console.warn("itemSelector not found in DOM");
 
         if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => this.saveItem());
@@ -189,6 +184,7 @@ export class CmsEditor {
     }
 
     getDiff(originalItem) {
+        //TODO
         const current = this.ds.getCurrentItem();
         let diff = [];
 
@@ -213,6 +209,7 @@ export class CmsEditor {
     }
 
     async saveItem() {
+        console.log("saveItem");
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
         this.ds.save().then(() => {
@@ -224,6 +221,7 @@ export class CmsEditor {
     }
 
     revertItem() {
+        console.log("revertItem");
         this.collapseResponse();
         this.ds.revert().then(() => {
             console.log("item reverted");
@@ -234,6 +232,7 @@ export class CmsEditor {
     }
 
     newItem() {
+        console.log("newItem");
         this.collapseResponse();
         this.ds.save().then(() => {
             console.log("item saved before creating new item");
@@ -246,6 +245,7 @@ export class CmsEditor {
     }
 
     removeItem() {
+        console.log("removeItem");
         this.collapseResponse();
         const itemToDelete = this.ds.getCurrentItem();
 
@@ -254,42 +254,31 @@ export class CmsEditor {
         const nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
 
         this.ds.remove().then(() => {
-            console.log("item removed"); // Filtern (Name, Unterkunft, Datum, ...)
+            console.log("item removed");
             this.onAfterDelete(itemToDelete);
             this.showMessage("Erfolgreich gelöscht.");
-
-            if (nextId && nextId != "--new--") {
-                this.navigateTo(nextId);
-            } else {
-                console.log("No items left to navigate to, creating new.");
-                this.ds.new().then(() => { this.refreshUI(); });
-            }
+            if (nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
         });
     }
 
     navigateRelative(offset) {
-        const currentItem = this.ds.getCurrentItem();
-        if (!currentItem) return;
+        console.log("navigateRelative", offset);
         const currentId = this.ds.getCurrentItem()?._id;
-
         const options = $w("#itemSelector").options;
         const idx = options.findIndex(opt => opt.value == currentId);
         const nextIdx = idx == -1 ? -1 : idx + offset;
-        const nextId = nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value;
-        if (nextId && nextId != "--new--")
-            this.navigateTo(nextId);
-        else
-            console.log("Navigation reached 'New Entry' placeholder.");
+        this.navigateTo(nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value);
     }
 
     async navigateTo(id) {
-        this.ds.getItems(0, this.ds.getTotalCount()).then((result) => {
+        console.log("navigateTo", id);
+        if (id && id != "--new--") this.ds.getItems(0, this.ds.getTotalCount()).then((result) => {
             const index = result.items.findIndex(item => item._id == id);
             if (index != -1) {
-                console.log("setting current item index to", index, "for item", id);
+                console.log("navigateTo current item index", index);
                 this.ds.setCurrentItemIndex(index).then(() => { this.refreshUI(); });
             } else {
-                console.warn("navigateTo cannot find item with ID", id, "among", result.items.length, "items");
+                console.warn("navigateTo cannot find among", result.items.length, "items");
             }
         });
     }
