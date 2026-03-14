@@ -241,12 +241,6 @@ function handleValidationResults(res) {
     $w("#inputDate").updateValidityIndication();
     $w("#inputArrivalTime").updateValidityIndication();
     $w("#inputDepartureTime").updateValidityIndication();
-
-    if (!isValid) {
-        $w("#inputDate").updateValidityIndication();
-    } else {
-        $w("#inputDate").resetValidityIndication();
-    }
 }
 
 // special block below only for Management site -- all above shall be identical with Guest site
