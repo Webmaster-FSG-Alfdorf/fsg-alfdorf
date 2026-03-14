@@ -40,7 +40,7 @@ $w.onReady(function () {
         const dt = toUTC(new Date());
         dt.setUTCHours(0, 0, 0);
         const msg = { minDate: new Date(dt), maxDate: incUTCDate(dt, 365) };
-        console.log("postMessage {minDate:", debugStr(msg.minDate), ", maxDate:", debugStr(msg.maxDate), "}");
+        console.log("datasetReservations", "postMessage", JSON.stringify(message, null, 0));
         $w("#htmlDate").postMessage(msg);
 
         const query = wixLocation.query;
@@ -201,6 +201,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
 
     if (!item.lodging) {
         currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
+        console.log("updateOccupations", "postMessage", JSON.stringify(message, null, 0));
         $w("#htmlDate").postMessage({ capacity: 0, occupations: [] });
         handleValidationResults({ occupied: true });
         return;
@@ -220,7 +221,9 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
         if (checkValidation) handleValidationResults(valRes);
 
         const message = { capacity: occ.capacity, occupations: occ.occupations };
-        if (resetCalendarView) message.utcDates = [new Date(item.dateFrom), new Date(item.dateTo)];
+        if (resetCalendarView)
+            message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : null;
+        console.log("updateOccupations", "postMessage", JSON.stringify(message, null, 0));
         $w("#htmlDate").postMessage(message);
     } catch (err) {
         console.error("Sync failed", err);
