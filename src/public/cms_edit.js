@@ -37,15 +37,15 @@ export class CmsEditor {
                 const el = $w(id);
                 const bind = (events, delay = 0) => {
                     events.forEach(s => {
-                        console.log("Binding", s, "to", id, ":", el[s]);
                         if (typeof el[s] == 'function') {
+                            console.log("Binding", s, "to", id);
                             el[s](() => {
-                                console.log("Triggered", s, "on", id, ":", el[s]);
                                 if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
                                 if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
                                 else this.updateDataFromUi(id);
                             });
-                        }
+                        } else
+                            console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
                     });
                 };
                 if (el) {
