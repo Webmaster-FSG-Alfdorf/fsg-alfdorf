@@ -54,12 +54,11 @@ $w.onReady(function () {
 
         $w("#htmlDate").onMessage(async (event) => {
             console.log("received message", event.data);
-            if (event.data && Array.isArray(event.data.selectedDates) && event.data.selectedDates.length == 2) {
-                await updateDateKeepingHours(event.data.selectedDates);
-                updateOccupations();
-                updateCostsTable();
+            if (event.data?.selectedDates?.length == 2) {
+                $w("#inputDate").value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
+                await editor.updateDataFromUi("#inputDate");
             }
-            if (event.data && event.data.displayedMonth && event.data.displayedYear) {
+            if (event.data?.displayedMonth && event.data?.displayedYear) {
                 occupationsRange = [
                     new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                     new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
@@ -69,19 +68,6 @@ $w.onReady(function () {
 
             const firstItem = $w("#datasetReservations").getCurrentItem();
             if (firstItem) cloneItem(firstItem);
-        });
-
-        $w("#inputPhone").onBlur(() => {
-            $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`
-        });
-        $w("#inputPhone").onInput(() => {
-            $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`
-        });
-        $w("#inputMail").onBlur(() => {
-            $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`
-        });
-        $w("#inputMail").onInput(() => {
-            $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`
         });
 
         $w("#inputDate").onCustomValidation((value, reject) => { if (currentDateOccupied) reject(currentDateOccupied); });
@@ -121,8 +107,8 @@ $w.onReady(function () {
                 "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
                 "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
                 "#inputLastName": { field: "lastName", type: FieldType.STRING, label: "Nachnachme" },
-                "#inputMail": { field: "email", type: FieldType.STRING, label: "E-Mail" },
-                "#inputPhone": { field: "phoneNumber", type: FieldType.STRING, label: "Telefonnummer" },
+                "#inputMail": { field: "email", type: FieldType.STRING, label: "E-Mail", linkButton: "#buttonSendMail", linkPrefix: "mailto:" },
+                "#inputPhone": { field: "phoneNumber", type: FieldType.STRING, label: "Telefonnummer", linkButton: "#buttonPhone", linkPrefix: "tel:" },
                 "#inputAddress": { field: "address", type: FieldType.ADDRESS, label: "Addresse" },
                 "#inputNotes": { field: "notes", type: FieldType.STRING, label: "Hinweise des Gastes" },
                 "#inputPrivacyPolicy": { field: "privacyPolicy", type: FieldType.BOOLEAN, label: "Datenschutz akzeptiert" },
@@ -134,19 +120,24 @@ $w.onReady(function () {
 
             onRefreshUI: async () => {
                 updateDatePicker();
-                updateAllInputs();
                 await updateOccupations();
                 updateCostsTable();
             },
 
-            generateTitle: generateTitle,
+            generateTitle: () => {
+                if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
+                    const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
+                    const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
+                    return `${startDate} ${nights} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
+                } else
+                    return "(Neue Reservierung)";
+            },
 
             onBeforeSave: async () => { return prepareSave(); },
 
             onAfterSave: (diffData) => {
                 const item = editor.ds.getCurrentItem();
-
-                if (diffData && diffData.diff.length > 0) {
+                if (diffData && diffData.diff.length > 0)
                     wixWindow.openLightbox("CMSSuccessLightbox", {
                         msg: "Änderungen wurden gespeichert",
                         item,
@@ -154,7 +145,6 @@ $w.onReady(function () {
                         diffUser: diffData.diffUser,
                         customMessage: diffData.customMessage
                     });
-                }
                 cloneItem(item);
             },
 
@@ -188,9 +178,6 @@ $w.onReady(function () {
             });
             $w("#inputDeposit").options = options;
         });
-        $w("#inputDeposit").onChange(() => updateCostsTable());
-        $w("#inputPaidSum").onInput(() => updateCostsTable());
-        $w("#inputPaidSum").onBlur(() => updateCostsTable());
 
         // end special block
     });
@@ -208,11 +195,6 @@ $w.onReady(function () {
  * input-deposit.changed -> updateCostsTable
  * input-price-paid.changed -> updateCostsTable
  */
-
-function updateAllInputs() {
-    $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`;
-    $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`;
-}
 
 function makeValidDate(d, defaultDate = new Date()) {
     if (!d) return defaultDate;
@@ -308,15 +290,6 @@ async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO spli
 }
 
 // special block below only for Management site -- all above shall be identical with Guest site
-
-function generateTitle(item) {
-    if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
-        const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
-        const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
-        return `${startDate} ${nights} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
-    } else
-        return "(Neue Reservierung)";
-}
 
 function cloneItem(item) {
     originalItem = item ? structuredClone(item) : null;

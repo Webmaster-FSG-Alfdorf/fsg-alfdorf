@@ -22,55 +22,8 @@ export class CmsEditor {
         this.onQueryUpdate = config.onQueryUpdate || ((searchText) => { });
         this.generateTitle = config.generateTitle || ((item) => item?.title || "(Unbenannt)");
 
-        this.messageTimer = null;
         this.ds = $w(`#${this.dataSetName}`);
-    }
-
-    async updateDataFromUi(id) {
-        const el = $w(id);
-        if (!el || !el.id) {
-            console.error("Cannot assign from input", id, ": Input element not found")
-            return;
-        }
-        const cfg = this.cmsSchema[id];
-        if (!cfg) {
-            console.error("Cannot assign from input", id, ": CMS schema not found in configuration")
-            return;
-        }
-        let val;
-        switch (cfg.type) {
-            case FieldType.BOOLEAN: val = el.checked; break;
-            case FieldType.NUMBER: val = Number(el.value || 0); break;
-            case FieldType.ADDRESS: val = el.value; break;
-            case FieldType.HOURS_OF_DATE: {
-                const utcDate = this.ds.getCurrentItem()[cfg.field];
-                let dt = new Date(utcDate);
-                dt.setUTCHours(0, 0, 0, 0);
-                dt = toLocal(dt);
-                dt.setHours(Number(el.value || 0), 0, 0, 0);
-                val = toUTC(dt);
-                break;
-            }
-            case FieldType.DATE: { // update date with new value but keep hours
-                const range = stringToDateRange(el.value);
-                val = range.map((date, i) => {
-                    const dt = new Date(date);
-                    const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
-                    dt.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
-                    return dt;
-                });
-                break;
-            }
-            default: val = el.value; // STRING
-        }
-        if (cfg.onChange) val = await cfg.onChange(val);
-        console.log("Writing user input of", id, "to:", cfg.field, "with value:", val);
-
-        if (Array.isArray(cfg.field))
-            this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
-        else
-            this.ds.setFieldValue(cfg.field, val);
-        if (cfg.onChanged) cfg.onChanged(val);
+        this.messageTimer = null;
     }
 
     init() {
@@ -144,6 +97,53 @@ export class CmsEditor {
         this.onRefreshUI();
     }
 
+    async updateDataFromUi(id) {
+        const el = $w(id);
+        if (!el || !el.id) {
+            console.error("Cannot assign from input", id, ": Input element not found")
+            return;
+        }
+        const cfg = this.cmsSchema[id];
+        if (!cfg) {
+            console.error("Cannot assign from input", id, ": CMS schema not found in configuration")
+            return;
+        }
+        let val;
+        switch (cfg.type) {
+            case FieldType.BOOLEAN: val = el.checked; break;
+            case FieldType.NUMBER: val = Number(el.value || 0); break;
+            case FieldType.ADDRESS: val = el.value; break;
+            case FieldType.HOURS_OF_DATE: {
+                const utcDate = this.ds.getCurrentItem()[cfg.field];
+                let dt = new Date(utcDate);
+                dt.setUTCHours(0, 0, 0, 0);
+                dt = toLocal(dt);
+                dt.setHours(Number(el.value || 0), 0, 0, 0);
+                val = toUTC(dt);
+                break;
+            }
+            case FieldType.DATE: { // update date with new value but keep hours
+                const range = stringToDateRange(el.value);
+                val = range.map((date, i) => {
+                    const dt = new Date(date);
+                    const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
+                    dt.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
+                    return dt;
+                });
+                break;
+            }
+            default: val = el.value; // STRING
+        }
+        if (cfg.onChange) val = await cfg.onChange(val);
+        console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
+
+        if (Array.isArray(cfg.field))
+            this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
+        else
+            this.ds.setFieldValue(cfg.field, val);
+        if (cfg.onChanged) cfg.onChanged(val);
+    }
+
     updateUiFromData() {
         const item = this.ds.getCurrentItem();
         Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
@@ -162,6 +162,7 @@ export class CmsEditor {
                 val = item[cfg.field];
             }
 
+            console.log("Updating user input", id, "from", cfg.field, "with value:", val);
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
                     el.checked = !!val;
@@ -180,7 +181,13 @@ export class CmsEditor {
                     break;
                 default: // STRING
                     if ("value" in el) el.value = val || "";
-                    else console.error("Cannot assign to input", id, "from field", cfg.field, ": No 'value' property")
+                    else console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
+            }
+
+            const btn = cfg.linkButton ? $w(cfg.linkButton) : null;
+            if (btn && btn.id) {
+                btn.link = `${cfg.linkPrefix ?? ""}${val || ""}`;
+                if (val) btn.enable(); else btn.disable();
             }
 
             if (el.resetValidityIndication) el.resetValidityIndication();
@@ -211,26 +218,12 @@ export class CmsEditor {
         return diff;
     }
 
-    navigateRelative(offset) {
-        const currentItem = this.ds.getCurrentItem();
-        if (!currentItem) return;
-        const currentId = this.ds.getCurrentItem()?._id;
-
-        const options = $w("#itemSelector").options;
-        const idx = options.findIndex(opt => opt.value == currentId);
-        const nextIdx = idx == -1 ? -1 : idx + offset;
-        const nextId = nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value;
-        if (nextId && nextId != "--new--")
-            this.navigateTo(nextId);
-        else
-            console.log("Navigation reached 'New Entry' placeholder.");
-    }
-
     async saveItem() {
         this.collapseResponse();
         this.beforeSafeResult = await this.onBeforeSave();
         this.ds.save().then(() => {
             console.log("item saved");
+            this.updateSelectorList();
             this.onAfterSave(this.beforeSafeResult);
             this.showMessage("Erfolgreich gespeichert.");
         });
@@ -280,11 +273,26 @@ export class CmsEditor {
         });
     }
 
+    navigateRelative(offset) {
+        const currentItem = this.ds.getCurrentItem();
+        if (!currentItem) return;
+        const currentId = this.ds.getCurrentItem()?._id;
+
+        const options = $w("#itemSelector").options;
+        const idx = options.findIndex(opt => opt.value == currentId);
+        const nextIdx = idx == -1 ? -1 : idx + offset;
+        const nextId = nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value;
+        if (nextId && nextId != "--new--")
+            this.navigateTo(nextId);
+        else
+            console.log("Navigation reached 'New Entry' placeholder.");
+    }
+
     async navigateTo(id) {
         this.ds.getItems(0, this.ds.getTotalCount()).then((result) => {
             const index = result.items.findIndex(item => item._id == id);
             if (index != -1) {
-                console.log("navigateTo:", id, "index:", index);
+                console.log("setting current item index to", index, "for item", id);
                 this.ds.setCurrentItemIndex(index).then(() => { this.refreshUI(); });
             } else {
                 console.warn("navigateTo cannot find item with ID", id, "among", result.items.length, "items");
@@ -326,13 +334,13 @@ export class CmsEditor {
         if (this.messageTimer) clearTimeout(this.messageTimer);
         const color = isError ? "#E74C3C" : "#2ECC71";
         $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
-        $w("#textResponse").expand();
+        $w("#textResponse").show();
         this.messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
     }
 
     collapseResponse() {
         if (!$w("#textResponse").id) return;
-        $w("#textResponse").collapse();
+        $w("#textResponse").hide();
         if (this.messageTimer) {
             clearTimeout(this.messageTimer);
             this.messageTimer = null;
