@@ -36,11 +36,8 @@ export class CmsEditor {
                 const el = $w(id);
                 const bind = (events) => { events.forEach(s => { if (typeof el[s] == 'function') el[s](() => this.updateDataFromUi(id)); }); };
                 if (el && el.id) {
-                    if (typeof el.onKeyPress == 'function') {
-                        el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                        bind(['onBlur']);
-                    } else
-                        bind(['onInput', 'onChange']);
+                    if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
+                    bind(['onInput', 'onBlur', 'onChange', 'onAddressSelect']);
                 }
             });
         });
@@ -121,8 +118,14 @@ export class CmsEditor {
             default: val = el.value; // STRING
         }
         if (cfg.onChange) val = await cfg.onChange(val);
-        console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
 
+        const item = this.ds.getCurrentItem();
+        if ((Array.isArray(cfg.field) ? cfg.field : [cfg.field]).map(f => item[f]).join('|') == (Array.isArray(val) ? val : [val]).join('|')) {
+            console.log("No change detected for", id);
+            return;
+        }
+
+        console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
         if (Array.isArray(cfg.field))
             this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
         else
