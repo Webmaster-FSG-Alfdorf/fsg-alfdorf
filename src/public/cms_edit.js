@@ -92,6 +92,7 @@ export class CmsEditor {
     }
 
     refreshUI() {
+        console.log("refreshUI");
         this.updateUiFromData();
         this.updateSelectorList();
         this.onRefreshUI();
