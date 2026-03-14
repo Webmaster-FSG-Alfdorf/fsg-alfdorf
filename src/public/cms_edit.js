@@ -46,8 +46,8 @@ export class CmsEditor {
                 };
                 if (el && el.id) {
                     if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                    bind(['onInput', 'onBlur', 'onAddressSelect']);
-                    bind(['onChange'], 500);
+                    bind(['onBlur', 'onAddressSelect']);
+                    bind(['onInput', 'onChange'], 500);
                 }
             });
         });
