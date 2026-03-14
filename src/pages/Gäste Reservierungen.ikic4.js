@@ -39,10 +39,7 @@ $w.onReady(function () {
         console.log("#datasetReservations onReady");
         const dt = toUTC(new Date());
         dt.setUTCHours(0, 0, 0);
-        const msg = { minDate: new Date(dt), maxDate: incUTCDate(dt, 365) };
-        console.log("datasetReservations", "postMessage", JSON.stringify(message, null, 0));
-        $w("#htmlDate").postMessage(msg);
-
+        postMessageToDatePicker({ minDate: new Date(dt), maxDate: incUTCDate(dt, 365) });
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
@@ -192,6 +189,11 @@ function updateCostsTable() {
     return true;
 }
 
+function postMessageToDatePicker(message) {
+    console.log("postMessage", JSON.stringify(message, null, 0));
+    $w("#htmlDate").postMessage({ capacity: 0, occupations: [] });
+}
+
 async function syncUI(checkValidation = true, resetCalendarView = false) {
     console.log("syncUI", checkValidation, resetCalendarView);
     const item = editor.ds.getCurrentItem();
@@ -201,8 +203,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
 
     if (!item.lodging) {
         currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
-        console.log("updateOccupations", "postMessage", JSON.stringify(message, null, 0));
-        $w("#htmlDate").postMessage({ capacity: 0, occupations: [] });
+        postMessageToDatePicker({ capacity: 0, occupations: [] });
         handleValidationResults({ occupied: true });
         return;
     }
@@ -223,8 +224,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
         const message = { capacity: occ.capacity, occupations: occ.occupations };
         if (resetCalendarView)
             message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : null;
-        console.log("updateOccupations", "postMessage", JSON.stringify(message, null, 0));
-        $w("#htmlDate").postMessage(message);
+        postMessageToDatePicker(message);
     } catch (err) {
         console.error("Sync failed", err);
     }
