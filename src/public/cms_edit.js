@@ -37,7 +37,7 @@ export class CmsEditor {
                 const el = $w(id);
                 const bind = (events, delay = 0) => {
                     events.forEach(s => {
-                        console.log("Binding", s, "to", id, ":", el, el[s]);
+                        console.log("Binding", s, "to", id, ":", el[s]);
                         if (typeof el[s] == 'function') {
                             el[s](() => {
                                 console.log("Triggered", s, "on", id, ":", el[s]);
@@ -48,9 +48,11 @@ export class CmsEditor {
                         }
                     });
                 };
-                if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                bind(['onBlur', 'onAddressSelect']);
-                bind(['onInput', 'onChange'], 2000);
+                if (el) {
+                    if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
+                    bind(['onBlur']);
+                    bind(['onInput', 'onChange'], 2000);
+                } else console.warn("No such input element:", id);
             });
         });
 
