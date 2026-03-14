@@ -191,7 +191,7 @@ function updateCostsTable() {
 
 function postMessageToDatePicker(message) {
     console.log("postMessage", JSON.stringify(message, null, 0));
-    $w("#htmlDate").postMessage({ capacity: 0, occupations: [] });
+    $w("#htmlDate").postMessage(message);
 }
 
 async function syncUI(checkValidation = true, resetCalendarView = false) {
