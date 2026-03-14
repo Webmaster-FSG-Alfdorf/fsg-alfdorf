@@ -38,19 +38,21 @@ export class CmsEditor {
                 const bind = (events, delay = 0) => {
                     events.forEach(s => {
                         if (typeof el[s] == 'function') {
-                            console.log("Binding", s, "to", id);
-                            el[s](() => {
-                                if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
-                                if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
-                                else this.updateDataFromUi(id);
+                            //console.log("Binding", s, "to", id);
+                            el[s]((event) => {
+                                if (s != "onKeyPress" || event.key == "Enter") {
+                                    if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
+                                    if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
+                                    else this.updateDataFromUi(id);
+                                }
                             });
-                        } else
-                            console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
+                        } else {
+                            //console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
+                        }
                     });
                 };
                 if (el) {
-                    if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                    bind(['onBlur']);
+                    bind(['onBlur', 'onKeyPress', 'onAddressSelect']);
                     bind(['onInput', 'onChange'], 2000);
                 } else console.warn("No such input element:", id);
             });
