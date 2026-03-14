@@ -180,13 +180,15 @@ export class CmsEditor {
                     el.value = val || "";
                     break;
                 default: // STRING
-                    if ("value" in el) el.value = val || "";
-                    else console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
+                    if ("value" in el)
+                        el.value = Array.isArray(el.value) ? (Array.isArray(val) ? val : []) : (val || "");
+                    else
+                        console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
             }
 
             const btn = cfg.linkButton ? $w(cfg.linkButton) : null;
             if (btn && btn.id) {
-                btn.link = `${cfg.linkPrefix ?? ""}${val || ""}`;
+                if (val) btn.link = `${cfg.linkPrefix ?? ""}${val}`;
                 if (val) btn.enable(); else btn.disable();
                 btn.target = "_blank";
             }
