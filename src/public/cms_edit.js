@@ -34,23 +34,13 @@ export class CmsEditor {
 
             Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
                 const el = $w(id);
-                if (!el || !el.id) return;
-                const bind = (events) => {
-                    events.forEach(s => { if (typeof el[s] == 'function') el[s](() => this.updateDataFromUi(id)); });
-                };
-
-                switch (cfg.type) {
-                    case FieldType.DATE:
+                const bind = (events) => { events.forEach(s => { if (typeof el[s] == 'function') el[s](() => this.updateDataFromUi(id)); }); };
+                if (el && el.id) {
+                    if (typeof el.onKeyPress == 'function') {
+                        el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
                         bind(['onBlur']);
-                        if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                        break;
-                    case FieldType.BOOLEAN:
-                    case FieldType.ADDRESS:
-                        bind(['onChange']);
-                        break;
-                    default:
-                        bind(id.includes('State') ? ['onChange'] : ['onInput', 'onChange']);
-                        break;
+                    } else
+                        bind(['onInput', 'onChange']);
                 }
             });
         });
