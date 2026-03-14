@@ -33,8 +33,6 @@ $w.onReady(function () {
         $w("#inputLodging").options = options;
         $w("#filterLodging").options = [{ label: "(Alle)", value: "*" }, ...options];
         if (editor) editor.updateUiFromData();
-        updateCostsTable();
-        updateOccupations();
     });
 
     $w("#datasetReservations").onReady(async () => {
@@ -63,16 +61,12 @@ $w.onReady(function () {
                     new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                     new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
                 ];
-                updateOccupations(false);
+                syncUI(false);
             }
 
             const firstItem = $w("#datasetReservations").getCurrentItem();
             if (firstItem) cloneItem(firstItem);
         });
-
-        $w("#inputDate").onCustomValidation((value, reject) => { if (currentDateOccupied) reject(currentDateOccupied); });
-        $w("#inputArrivalTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Ankunft")) reject(currentDateOccupied); });
-        $w("#inputDepartureTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Abreise")) reject(currentDateOccupied); });
 
         // special block below only for Management site -- all above shall be identical with Guest site
 
@@ -88,21 +82,14 @@ $w.onReady(function () {
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
                     onUpdateUiFromData: (item) => item ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
-                    onChanged: () => {
-                        updateOccupations();
-                        updateCostsTable();
-                    }
+                    onChanged: () => syncUI(true)
                 },
                 "#inputDate": {
                     field: ["dateFrom", "dateTo"], type: FieldType.DATE, label: "XXX", resetValidityIndication: true,
-                    onChanged: () => {
-                        updateDatePicker();
-                        updateOccupations();
-                        updateCostsTable();
-                    }
+                    onChanged: () => syncUI(true)
                 },
-                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true },
-                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true },
+                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true) },
+                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true) },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
                 "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
                 "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
@@ -119,9 +106,7 @@ $w.onReady(function () {
             },
 
             onRefreshUI: async () => {
-                updateDatePicker();
-                await updateOccupations();
-                updateCostsTable();
+                await syncUI(true);
             },
 
             generateTitle: (item) => {
@@ -133,7 +118,14 @@ $w.onReady(function () {
                     return "(Neue Reservierung)";
             },
 
-            onBeforeSave: async () => { return prepareSave(); },
+            onBeforeSave: async () => {
+                await syncUI(true);
+                if (currentDateOccupied) {
+                    wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Speichern nicht möglich", customMessage: currentDateOccupied });
+                    return false;
+                }
+                return prepareSave();
+            },
 
             onAfterSave: (diffData) => {
                 const item = editor.ds.getCurrentItem();
@@ -183,34 +175,6 @@ $w.onReady(function () {
     });
 });
 
-/**
- * init, loaded TODO, item-changed (setFilter), reverted, removed, new, saved -> updateCostsTable, updateOccupations, updateDatePicker, updateAllInputs == refreshUI
- * input-lodging.changed -> updateCostsTable, updateOccupations, setField item.lodging, setField item.lodgingSub
- * input-date.changed -> updateCostsTable, updateOccupations, updateDatePicker, setField item.dateFrom, setField item.dateTo
- * datepicker.changed -> updateCostsTable, updateOccupations, inputs-date.update, setField item.dateFrom, setField item.dateTo
- * datepicker.current-month -> updateOccupations(false)
- * input-arrival-time.changed -> setField item.dateFrom
- * input-departure-time.changed -> setField item.dateTo
- * input-cnt-adults.changed -> updateCostsTable
- * input-deposit.changed -> updateCostsTable
- * input-price-paid.changed -> updateCostsTable
- */
-
-function makeValidDate(d, defaultDate = new Date()) {
-    if (!d) return defaultDate;
-    const date = new Date(d);
-    return isNaN(date.getTime()) ? defaultDate : date;
-}
-
-function updateDatePicker() {
-    const item = editor.ds.getCurrentItem();
-    const dateFrom = makeValidDate(item?.dateFrom);
-    const dateTo = makeValidDate(item?.dateTo);
-    const msg = { utcDates: [dateFrom, dateTo] };
-    console.log("updateOccupations", "postMessage utcDates: {", debugStr(msg.utcDates[0]), ",", debugStr(msg.utcDates[1]), "}");
-    $w("#htmlDate").postMessage(msg);
-}
-
 function updateCostsTable() {
     const item = editor.ds.getCurrentItem();
     if (item)
@@ -228,48 +192,61 @@ function updateCostsTable() {
     return true;
 }
 
-async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO split into two functions?
+async function syncUI(checkValidation = true) {
     const item = editor.ds.getCurrentItem();
+    if (!item) return;
 
-    if (currentDateOccupiedUpdate) {
-        if (item == null)
-            currentDateOccupied = ""
-        else if (!item.lodging) {
-            // would just return {occupied: true} anyway
-            currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
-        } else try {
-            const res = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
-            if (!res.occupied)
-                currentDateOccupied = "";
-            else if (res.suggestedArrival)
-                currentDateOccupied = `Nur möglich bei Ankunfts-Zeit nach ${res.suggestedArrival} Uhr`;
-            else if (res.suggestedDeparture)
-                currentDateOccupied = `Nur möglich bei Abreise-Zeit bis ${res.suggestedDeparture} Uhr`;
-            else
-                currentDateOccupied = "Ihr gewählter Datumsbereich ist leider nicht verfügbar";
-        } catch (err) {
-            currentDateOccupied = `Verfügbarkeit kann leider aktuell nicht geprüft werden: ${err}`;
-        }
-        console.log("updateOccupations currentDateOccupied =", currentDateOccupied);
+    updateCostsTable();
+
+    if (!item.lodging) {
+        currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
+        $w("#htmlDate").postMessage({ capacity: 0, occupations: [] });
+        handleValidationResults({ occupied: true });
+        return;
     }
-    $w("#inputDate").resetValidityIndication();
-    $w("#inputArrivalTime").resetValidityIndication();
-    $w("#inputDepartureTime").resetValidityIndication();
 
-    let oc = [];
-    if (item) try {
-        oc = await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id);
-        if (item.lodgingSub > 0 && oc.capacity >= 1) {
-            // report only capacity 0 and 1 for sub lodgings
-            oc.occupations.forEach((/** @type {{ count: number; capacity: number; }} */ oc) => { oc.count = oc.count >= oc.capacity ? 1 : 0; });
-            oc.capacity = 1;
+    try {
+        const [occ, valRes] = await Promise.all([
+            getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id),
+            checkValidation && item.lodging ? isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id) : { occupied: false }
+        ]);
+
+        if (item.lodgingSub > 0 && occ.capacity >= 1) {
+            occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
+            occ.capacity = 1;
         }
+
+        if (checkValidation) handleValidationResults(valRes);
+
+        $w("#htmlDate").postMessage({
+            utcDates: [new Date(item.dateFrom), new Date(item.dateTo)],
+            capacity: occ.capacity,
+            occupations: occ.occupations
+        });
     } catch (err) {
-        oc.capacity = 0;
-        oc.occupations = [];
+        console.error("Sync failed", err);
     }
-    console.log("updateOccupations", "postMessage", oc);
-    $w("#htmlDate").postMessage({ capacity: oc.capacity, occupations: oc.occupations });
+}
+
+function handleValidationResults(res) {
+    if (!res || !res.occupied)
+        currentDateOccupied = "";
+    else if (res.suggestedArrival)
+        currentDateOccupied = `Belegt. Ankunft erst ab ${res.suggestedArrival} Uhr möglich.`;
+    else if (res.suggestedDeparture)
+        currentDateOccupied = `Belegt. Abreise bis spätestens ${res.suggestedDeparture} Uhr nötig.`;
+    else
+        currentDateOccupied = "Der Zeitraum ist in dieser Unterkunft bereits belegt.";
+
+    $w("#inputDate").updateValidityIndication();
+    $w("#inputArrivalTime").updateValidityIndication();
+    $w("#inputDepartureTime").updateValidityIndication();
+
+    if (!isValid) {
+        $w("#inputDate").updateValidityIndication();
+    } else {
+        $w("#inputDate").resetValidityIndication();
+    }
 }
 
 // special block below only for Management site -- all above shall be identical with Guest site
@@ -327,6 +304,8 @@ async function prepareSave() {
         "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
     }[item.state] || customMessage;
     /*
+
+    TODO
     
         let diff = [];
         let diffUser = [];

@@ -188,6 +188,7 @@ export class CmsEditor {
             if (btn && btn.id) {
                 btn.link = `${cfg.linkPrefix ?? ""}${val || ""}`;
                 if (val) btn.enable(); else btn.disable();
+                btn.target = "_blank";
             }
 
             if (el.resetValidityIndication) el.resetValidityIndication();
@@ -220,11 +221,11 @@ export class CmsEditor {
 
     async saveItem() {
         this.collapseResponse();
-        this.beforeSafeResult = await this.onBeforeSave();
+        const beforeSafeResult = await this.onBeforeSave();
         this.ds.save().then(() => {
             console.log("item saved");
             this.updateSelectorList();
-            this.onAfterSave(this.beforeSafeResult);
+            this.onAfterSave(beforeSafeResult);
             this.showMessage("Erfolgreich gespeichert.");
         });
     }
