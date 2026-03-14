@@ -61,7 +61,7 @@ $w.onReady(function () {
                     new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                     new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
                 ];
-                syncUI(false);
+                syncUI(false, false);
             }
 
             const firstItem = $w("#datasetReservations").getCurrentItem();
@@ -82,14 +82,14 @@ $w.onReady(function () {
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
                     onUpdateUiFromData: (item) => item ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
-                    onChanged: () => syncUI(true)
+                    onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
                     field: ["dateFrom", "dateTo"], type: FieldType.DATE, label: "XXX", resetValidityIndication: true,
-                    onChanged: () => syncUI(true)
+                    onChanged: () => syncUI(true, false)
                 },
-                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true) },
-                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true) },
+                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
+                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
                 "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
                 "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
@@ -106,7 +106,7 @@ $w.onReady(function () {
             },
 
             onRefreshUI: async () => {
-                await syncUI(true);
+                await syncUI(true, true);
             },
 
             generateTitle: (item) => {
@@ -119,7 +119,7 @@ $w.onReady(function () {
             },
 
             onBeforeSave: async () => {
-                await syncUI(true);
+                await syncUI(true, false);
                 if (currentDateOccupied) {
                     wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Speichern nicht möglich", customMessage: currentDateOccupied });
                     return false;
@@ -192,7 +192,7 @@ function updateCostsTable() {
     return true;
 }
 
-async function syncUI(checkValidation = true) {
+async function syncUI(checkValidation = true, resetCalendarView = false) {
     const item = editor.ds.getCurrentItem();
     if (!item) return;
 
@@ -218,11 +218,9 @@ async function syncUI(checkValidation = true) {
 
         if (checkValidation) handleValidationResults(valRes);
 
-        $w("#htmlDate").postMessage({
-            utcDates: [new Date(item.dateFrom), new Date(item.dateTo)],
-            capacity: occ.capacity,
-            occupations: occ.occupations
-        });
+        const message = { capacity: occ.capacity, occupations: occ.occupations };
+        if (resetCalendarView) message.utcDates = [new Date(item.dateFrom), new Date(item.dateTo)];
+        $w("#htmlDate").postMessage(message);
     } catch (err) {
         console.error("Sync failed", err);
     }
