@@ -6,8 +6,11 @@ let editor;
 $w.onReady(function () {
     editor = new CmsEditor({
         cmsName: "events",
-        linkField: "link-events-1-edit-title",
-        refreshUI: refreshDatesUI
+        dataSetName: "datasetEvents",
+        cmsSchema: {
+
+        },
+        onRefreshUI: refreshDatesUI
     });
 
     $w("#datesRepeater").onItemReady(($item, itemData, index) => {

@@ -1,9 +1,17 @@
+export const FieldType = Object.freeze({
+    STRING: 'string',
+    NUMBER: 'number',
+    BOOLEAN: 'boolean',
+    ADDRESS: 'address',
+    DATE: 'date',
+    HOURS_OF_DATE: 'hoursOfDate',
+});
+
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
         this.cmsSchema = config.cmsSchema || {};
-        this.linkField = config.linkField;
         this.onRefreshUI = config.onRefreshUI || (() => { });
         this.onBeforeSave = config.onBeforeSave || (async () => true);
         this.onAfterSave = config.onAfterSave || (() => { });
@@ -21,8 +29,57 @@ export class CmsEditor {
 
         this.ds.onReady(() => {
             this.refreshUI();
-            this._setupTwoWayBinding();
+
+            Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
+                const el = $w(id);
+                if (!el || !el.id) return;
+
+                const changed = () => {
+                    let val;
+                    switch (cfg.type) {
+                        case FieldType.BOOLEAN: val = el.checked; break;
+                        case FieldType.NUMBER: val = Number(el.value || 0); break;
+                        case FieldType.ADDRESS: val = el.value; break;
+                        case FieldType.HOURS_OF_DATE: {
+                            const utcDate = this.ds.getCurrentItem()[cfg.field];
+                            let dt = new Date(utcDate);
+                            dt.setUTCHours(0, 0, 0, 0);
+                            dt = toLocal(dt);
+                            dt.setHours(Number(el.value || 0), 0, 0, 0);
+                            val = toUTC(dt);
+                            break;
+                        }
+                        case FieldType.DATE: { // update date with new value but keep hours
+                            const range = stringToDateRange(el.value);
+                            val = range.map((date, i) => {
+                                const dt = new Date(date);
+                                const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
+                                dt.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
+                                return dt;
+                            });
+                            break;
+                        }
+                        default: val = el.value; // STRING
+                    }
+                    if (cfg.onChange) val = cfg.onChange(val);
+                    console.log("changed", id, "to:", val);
+                    if (Array.isArray(cfg.field))
+                        this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
+                    else
+                        this.ds.setFieldValue(cfg.field, val);
+                    if (cfg.onChanged) cfg.onChanged(val);
+                };
+
+                if (cfg.type === FieldType.BOOLEAN || cfg.type === FieldType.ADDRESS || id.includes('State'))
+                    el.onChange(() => { changed() });
+                else if (cfg.type == FieldType.DATE) {
+                    el.onKeyPress((event) => { if (event.key == "Enter") changed() });
+                    el.onBlur(() => { changed() });
+                } else
+                    el.onInput(() => { changed() });
+            });
         });
+
         this.ds.onError((error) => { this.showError(error); });
 
         if ($w("#filterSearch").id) {
@@ -65,41 +122,44 @@ export class CmsEditor {
         this.onRefreshUI();
     }
 
-    _setupTwoWayBinding() {
-        Object.keys(this.cmsSchema).forEach(id => {
-            const cfg = this.cmsSchema[id];
-            const el = $w(id);
-            if (!el || !el.id) return;
-
-            // Automatische Wahl des Events
-            const event = (cfg.type === 'boolean' || cfg.type === 'address' || id.includes('State')) ? 'onChange' : 'onInput';
-
-            el[event]((e) => {
-                let val;
-                if (cfg.type === 'boolean') val = el.checked;
-                else if (cfg.type === 'address') val = el.value;
-                else if (cfg.type === 'number') val = Number(el.value || 0);
-                else val = el.value;
-
-                this.ds.setFieldValue(cfg.field, val);
-
-                // Falls im Schema eine zusätzliche Aktion definiert wurde (z.B. updateCostsTable)
-                if (cfg.onChange) cfg.onChange(val);
-            });
-        });
-    }
-
     updateUiFromData() {
         const item = this.ds.getCurrentItem();
-        Object.keys(this.cmsSchema).forEach(id => {
-            const cfg = this.cmsSchema[id];
+        Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
             const el = $w(id);
-            const val = item ? item[cfg.field] : null;
+            if (!el) return;
+            let val;
+            if (cfg.onUpdateUiFromData)
+                val = cfg.onUpdateUiFromData(item);
+            else if (!item)
+                val = null
+            else if (cfg.type === FieldType.DATE && Array.isArray(cfg.field)) {
+                val = dateRangeToString(item[cfg.field[0]], item[cfg.field[1]], { hour: null, minute: null });
+            } else if (Array.isArray(cfg.field)) {
+                val = cfg.field.map(f => item[f] ?? 0).join('|');
+            } else {
+                val = item[cfg.field];
+            }
 
-            if (cfg.type === 'boolean') el.checked = !!val;
-            else if (cfg.type === 'address') el.value = val || {};
-            else if (cfg.type === 'number') el.value = (val ?? 0).toString();
-            else el.value = val || "";
+            switch (cfg.type) {
+                case FieldType.BOOLEAN:
+                    el.checked = !!val;
+                    break;
+                case FieldType.NUMBER:
+                    el.value = (val ?? 0).toString();
+                    break;
+                case FieldType.ADDRESS:
+                    el.value = val || {};
+                    break;
+                case FieldType.HOURS_OF_DATE:
+                    if (val) el.value = toLocal(new Date(val)).getHours().toString(); else el.selectedIndex = 0;
+                    break;
+                case FieldType.DATE:
+                    el.value = val || "";
+                    break;
+                default: // STRING
+                    if ("value" in el) el.value = val || "";
+                    else console.error("Cannot assign to input", id, "from field", cfg.field, ": No 'value' property")
+            }
 
             if (el.resetValidityIndication) el.resetValidityIndication();
         });

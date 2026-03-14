@@ -19,13 +19,20 @@ $w.onReady(function () {
             options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
         });
         // then all sub lodgings
-        for (const lodging of results.items) if (lodging.capacity > 1) {
-            for (let index = 1; index <= lodging.capacity; index++) options.push({
-                label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
-                value: `${lodging.lodgingID}|${index}`
-            });
-            $w("#inputLodging").options = options;
-        }
+        const subPromises = [];
+        for (const lodging of results.items) if (lodging.capacity > 1)
+            for (let index = 1; index <= lodging.capacity; index++) subPromises.push(
+                generateLodgingName({
+                    lodging: lodging.lodgingID,
+                    capacityPrefix: lodging.capacityPrefix,
+                    lodgingSub: index
+                }).then(name => ({ label: name, value: `${lodging.lodgingID}|${index}` }))
+            );
+        const subOptions = await Promise.all(subPromises);
+        options.push(...subOptions);
+        $w("#inputLodging").options = options;
+        $w("#filterLodging").options = [{ label: "(Alle)", value: "*" }, ...options];
+        if (editor) editor.updateUiFromData();
         updateCostsTable();
         updateOccupations();
     });
@@ -64,47 +71,6 @@ $w.onReady(function () {
             if (firstItem) cloneItem(firstItem);
         });
 
-        $w("#inputLodging").onChange(async () => {
-            console.log("#inputLodging onChange");
-            const lodging = $w("#inputLodging").value.split("|");
-            await $w("#datasetReservations").setFieldValue("lodging", lodging[0]);
-            await $w("#datasetReservations").setFieldValue("lodgingSub", Number(lodging[1]));
-            updateOccupations();
-            updateCostsTable();
-        })
-
-        $w("#inputAdults").onChange(async () => {
-            console.log("#inputAdults onChange");
-            updateCostsTable();
-        })
-
-        $w("#inputArrivalTime").onChange(() => {
-            console.log("#inputArrivalTime onChange");
-            updateHoursKeepingDate("dateFrom", Number($w("#inputArrivalTime").value));
-        })
-
-        $w("#inputDepartureTime").onChange(() => {
-            console.log("#inputDepartureTime onChange");
-            updateHoursKeepingDate("dateTo", Number($w("#inputDepartureTime").value));
-        })
-
-        $w("#inputDate").onKeyPress(async (event) => {
-            if (event.key == "Enter") {
-                console.log("#inputDate onKeyPress Enter", $w("#inputDate").value);
-                await updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
-                updateDatePicker();
-                updateOccupations();
-                updateCostsTable();
-            }
-        });
-        $w("#inputDate").onBlur(async () => {
-            console.log("#inputDate onBlur", $w("#inputDate").value);
-            await updateDateKeepingHours(stringToDateRange($w("#inputDate").value));
-            updateDatePicker();
-            updateOccupations();
-            updateCostsTable();
-        });
-
         $w("#inputPhone").onBlur(() => {
             $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`
         });
@@ -128,29 +94,42 @@ $w.onReady(function () {
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
             cmsSchema: {
-                // Basis-Informationen
-                "#inputFirstName": { field: "firstName", type: "string", label: "Vorname" },
-                "#inputLastName": { field: "lastName", type: "string", label: "Nachnachme" },
-                "#inputMail": { field: "email", type: "string", label: "E-Mail" },
-                "#inputPhone": { field: "phoneNumber", type: "string", label: "Telefonnummer" },
-
-                // Buchungs-Details (Zahlen)
-                "#inputAdults": { field: "cntAdults", type: "number", label: "Erwachsene", onChange: () => updateCostsTable() },
-                "#inputChildren": { field: "cntChildren", type: "number", label: "Kinder", onChange: () => updateCostsTable() },
-
-                // Finanzen
-                "#inputPaidSum": { field: "paidSum", type: "number", label: "Bezahlt", onChange: () => updateCostsTable() },
-                "#inputPaidSumup": { field: "paidSumup", type: "string", label: "Sumup ID" },
-                "#inputDeposit": { field: "deposit", type: "string", label: "Pfand/Kaution", onChange: () => updateCostsTable() },
-
-                // Status & Admin
-                "#inputState": { field: "state", type: "string", label: "Status" },
-                "#inputComment": { field: "comment", type: "string", label: "Interner Kommentar" },
-                "#inputNotes": { field: "notes", type: "string", label: "Hinweise des Gastes" },
-
-                // Spezial-Eingaben
-                "#addressInput1": { field: "address", type: "address", label: "Adresse" },
-                "#inputPrivacyPolicy": { field: "privacyPolicy", type: "boolean", label: "Datenschutz akzeptiert" }
+                "#inputState": { field: "state", type: FieldType.STRING, label: "Status" },
+                "#inputLodging": {
+                    field: ["lodging", "lodgingSub"], type: FieldType.STRING, label: "XXX", resetValidityIndication: true,
+                    onChange: async (value) => {
+                        const lodging = value.split("|");
+                        return [lodging[0], Number(lodging[1] || 0)];
+                    },
+                    onUpdateUiFromData: (item) => item ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
+                    onChanged: () => {
+                        updateOccupations();
+                        updateCostsTable();
+                    }
+                },
+                "#inputDate": {
+                    field: ["dateFrom", "dateTo"], type: FieldType.DATE, label: "XXX", resetValidityIndication: true,
+                    onChanged: () => {
+                        updateDatePicker();
+                        updateOccupations();
+                        updateCostsTable();
+                    }
+                },
+                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true },
+                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true },
+                "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
+                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
+                "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
+                "#inputLastName": { field: "lastName", type: FieldType.STRING, label: "Nachnachme" },
+                "#inputMail": { field: "email", type: FieldType.STRING, label: "E-Mail" },
+                "#inputPhone": { field: "phoneNumber", type: FieldType.STRING, label: "Telefonnummer" },
+                "#inputAddress": { field: "address", type: FieldType.ADDRESS, label: "Addresse" },
+                "#inputNotes": { field: "notes", type: FieldType.STRING, label: "Hinweise des Gastes" },
+                "#inputPrivacyPolicy": { field: "privacyPolicy", type: FieldType.BOOLEAN, label: "Datenschutz akzeptiert" },
+                "#inputDeposit": { field: "deposit", type: FieldType.STRING, label: "Pfand/Kaution", onChanged: () => updateCostsTable() },
+                "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, label: "Bezahlt", onChanged: () => updateCostsTable() },
+                "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, label: "Sumup ID" },
+                "#inputComment": { field: "comment", type: FieldType.STRING, label: "Interner Kommentar" },
             },
 
             onRefreshUI: async () => {
@@ -231,28 +210,6 @@ $w.onReady(function () {
  */
 
 function updateAllInputs() {
-    const item = editor.ds.getCurrentItem();
-
-    console.log("updateAllInputs", item?._id, "lodging", item?.lodging, item?.lodgingSub, debugStr(item?.dateFrom), "to", debugStr(item?.dateTo));
-
-    if (item) {
-        $w("#inputLodging").value = `${item.lodging}|${item.lodgingSub ?? 0}`;
-        $w("#inputDate").value = dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null });
-        $w("#inputArrivalTime").value = toLocal(item.dateFrom).getHours().toString();
-        $w("#inputDepartureTime").value = toLocal(item.dateTo).getHours().toString();
-    } else {
-        $w("#inputLodging").value = "";
-        $w("#inputDate").value = "";
-        $w("#inputArrivalTime").selectedIndex = 0;
-        $w("#inputDepartureTime").selectedIndex = 0;
-    }
-    $w("#inputLodging").resetValidityIndication();
-    $w("#inputDate").resetValidityIndication();
-    $w("#inputArrivalTime").resetValidityIndication();
-    $w("#inputDepartureTime").resetValidityIndication();
-
-    //TODO update deposit list: list only items that are part of lodging
-
     $w("#buttonPhone").link = `tel:${$w("#inputPhone").value}`;
     $w("#buttonSendMail").link = `mailto:${$w("#inputMail").value}`;
 }
@@ -270,15 +227,6 @@ function updateDatePicker() {
     const msg = { utcDates: [dateFrom, dateTo] };
     console.log("updateOccupations", "postMessage utcDates: {", debugStr(msg.utcDates[0]), ",", debugStr(msg.utcDates[1]), "}");
     $w("#htmlDate").postMessage(msg);
-}
-
-async function updateHoursKeepingDate(field, hours) {
-    const utcDate = editor.ds.getCurrentItem()[field];
-    let dt = new Date(utcDate);
-    dt.setUTCHours(0, 0, 0, 0);
-    dt = toLocal(dt);
-    dt.setHours(hours, 0, 0, 0);
-    await editor.ds.setFieldValue(field, toUTC(dt));
 }
 
 async function updateDateKeepingHours(utcDateRange) {
@@ -312,6 +260,7 @@ function updateCostsTable() {
         });
     else
         $w("#textReservationPrice").html = "";
+    return true;
 }
 
 async function updateOccupations(currentDateOccupiedUpdate = true) { //TODO split into two functions?
@@ -421,65 +370,65 @@ async function prepareSave() {
         "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
         "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
     }[item.state] || customMessage;
-/*
-
-    let diff = [];
-    let diffUser = [];
-    const diffField = (label, v1, v2, showUser = true) => {
-        if (v1 != v2) {
-            diff.push([label, v1, v2]);
-            if (showUser) diffUser.push([label, v1, v2]);
+    /*
+    
+        let diff = [];
+        let diffUser = [];
+        const diffField = (label, v1, v2, showUser = true) => {
+            if (v1 != v2) {
+                diff.push([label, v1, v2]);
+                if (showUser) diffUser.push([label, v1, v2]);
+            }
+        };
+    
+        if (originalItem && item) {
+            diffField("Status", originalItem.state, item.state);
+            diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
+    
+            diffField("Datum",
+                dateRangeToString(originalItem.dateFrom, originalItem.dateTo, { hour: null, minute: null }),
+                dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null })
+            );
+    
+            const av0 = toLocal(originalItem.dateFrom).getHours().toString();
+            const av1 = toLocal(item.dateFrom).getHours().toString();
+            diffField("Ankunft ab",
+                $w("#inputArrivalTime").options.find(o => o.value == av0)?.label,
+                $w("#inputArrivalTime").options.find(o => o.value == av1)?.label
+            );
+    
+            const dp0 = toLocal(originalItem.dateTo).getHours().toString();
+            const dp1 = toLocal(item.dateTo).getHours().toString();
+            diffField("Abreise bis",
+                $w("#inputDepartureTime").options.find(o => o.value == dp0)?.label,
+                $w("#inputDepartureTime").options.find(o => o.value == dp1)?.label
+            );
+    
+            diffField("Erwachsene", originalItem.cntAdults, item.cntAdults);
+    
+            diffField("Kinder", originalItem.cntChildren, item.cntChildren);
+    
+            diffField("Name", `${originalItem.firstName} ${originalItem.lastName}`, `${item.firstName} ${item.lastName}`);
+    
+            diffField("E-Mail", originalItem.email, item.email);
+    
+            diffField("Telefonnummer", originalItem.phoneNumber, item.phoneNumber);
+    
+            diffField("Adresse", originalItem.address?.formatted, item.address?.formatted);
+    
+            diffField("Hinweise", originalItem.notes, item.notes);
+    
+            diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
+    
+            diffField("Pfand/Kaution", originalItem.deposit?.toString() ?? "", item.deposit?.toString() ?? "");
+    
+            diffField("Bezahlt", `${Number(originalItem.paidSum || 0).toFixed(2) ?? "0.00"} €`, `${Number(item.paidSum || 0).toFixed(2) ?? "0.00"} €`);
+    
+            diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
+    
+            diffField("Interner Kommentar", originalItem.comment, item.comment, false);
         }
-    };
-
-    if (originalItem && item) {
-        diffField("Status", originalItem.state, item.state);
-        diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
-
-        diffField("Datum",
-            dateRangeToString(originalItem.dateFrom, originalItem.dateTo, { hour: null, minute: null }),
-            dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null })
-        );
-
-        const av0 = toLocal(originalItem.dateFrom).getHours().toString();
-        const av1 = toLocal(item.dateFrom).getHours().toString();
-        diffField("Ankunft ab",
-            $w("#inputArrivalTime").options.find(o => o.value == av0)?.label,
-            $w("#inputArrivalTime").options.find(o => o.value == av1)?.label
-        );
-
-        const dp0 = toLocal(originalItem.dateTo).getHours().toString();
-        const dp1 = toLocal(item.dateTo).getHours().toString();
-        diffField("Abreise bis",
-            $w("#inputDepartureTime").options.find(o => o.value == dp0)?.label,
-            $w("#inputDepartureTime").options.find(o => o.value == dp1)?.label
-        );
-
-        diffField("Erwachsene", originalItem.cntAdults, item.cntAdults);
-
-        diffField("Kinder", originalItem.cntChildren, item.cntChildren);
-
-        diffField("Name", `${originalItem.firstName} ${originalItem.lastName}`, `${item.firstName} ${item.lastName}`);
-
-        diffField("E-Mail", originalItem.email, item.email);
-
-        diffField("Telefonnummer", originalItem.phoneNumber, item.phoneNumber);
-
-        diffField("Adresse", originalItem.address?.formatted, item.address?.formatted);
-
-        diffField("Hinweise", originalItem.notes, item.notes);
-
-        diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
-
-        diffField("Pfand/Kaution", originalItem.deposit?.toString() ?? "", item.deposit?.toString() ?? "");
-
-        diffField("Bezahlt", `${Number(originalItem.paidSum || 0).toFixed(2) ?? "0.00"} €`, `${Number(item.paidSum || 0).toFixed(2) ?? "0.00"} €`);
-
-        diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
-
-        diffField("Interner Kommentar", originalItem.comment, item.comment, false);
-    }
-    */
+        */
 
     console.log("save", item?._id, "diff:", diff);
 
