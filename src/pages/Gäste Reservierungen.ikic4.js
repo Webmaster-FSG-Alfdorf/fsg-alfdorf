@@ -60,9 +60,6 @@ $w.onReady(function () {
                 ];
                 syncUI(false, false);
             }
-
-            const firstItem = $w("#datasetReservations").getCurrentItem();
-            if (firstItem) cloneItem(firstItem);
         });
 
         // special block below only for Management site -- all above shall be identical with Guest site
@@ -78,7 +75,7 @@ $w.onReady(function () {
                         const lodging = value.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
-                    onUpdateUiFromData: (item) => item ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
+                    onUpdateUiFromData: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
@@ -107,7 +104,7 @@ $w.onReady(function () {
             },
 
             generateTitle: (item) => {
-                if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
+                if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging)) {
                     const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
                     const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
                     return `${startDate} ${nights} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
@@ -201,51 +198,43 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
 
     updateCostsTable();
 
-    if (!item.lodging) {
-        currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
-        postMessageToDatePicker({ capacity: 0, occupations: [] });
-        handleValidationResults({ occupied: true });
-        return;
-    }
+    let message = { capacity: 0, occupations: [] };
+    let valRes = { noLodging: !item.lodging };
 
-    try {
-        const [occ, valRes] = await Promise.all([
+    if (item.lodging) {
+        const [occ, checkRes] = await Promise.all([
             getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id),
-            checkValidation && item.lodging ? isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id) : { occupied: false }
+            checkValidation ?
+                isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id) :
+                Promise.resolve({ occupied: false })
         ]);
 
         if (item.lodgingSub > 0 && occ.capacity >= 1) {
             occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
             occ.capacity = 1;
         }
-
-        if (checkValidation) handleValidationResults(valRes);
-
-        const message = { capacity: occ.capacity, occupations: occ.occupations };
-        if (resetCalendarView)
-            message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : null;
-        postMessageToDatePicker(message);
-    } catch (err) {
-        console.error("Sync failed", err);
+        message = { capacity: occ.capacity, occupations: occ.occupations };
+        valRes = checkRes;
     }
+
+    if (resetCalendarView) message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : null;
+    if (checkValidation) {
+        if (valRes?.noLodging)
+            currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
+        else if (!valRes || !valRes.occupied)
+            currentDateOccupied = "";
+        else if (valRes.suggestedArrival)
+            currentDateOccupied = `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.`;
+        else if (valRes.suggestedDeparture)
+            currentDateOccupied = `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.`;
+        else
+            currentDateOccupied = "Der Zeitraum ist in dieser Unterkunft bereits belegt.";
+
+        ["#inputDate", "#inputArrivalTime", "#inputDepartureTime"].forEach(id => $w(id).updateValidityIndication());
+    }
+
+    postMessageToDatePicker(message);
 }
-
-function handleValidationResults(res) {
-    if (!res || !res.occupied)
-        currentDateOccupied = "";
-    else if (res.suggestedArrival)
-        currentDateOccupied = `Belegt. Ankunft erst ab ${res.suggestedArrival} Uhr möglich.`;
-    else if (res.suggestedDeparture)
-        currentDateOccupied = `Belegt. Abreise bis spätestens ${res.suggestedDeparture} Uhr nötig.`;
-    else
-        currentDateOccupied = "Der Zeitraum ist in dieser Unterkunft bereits belegt.";
-
-    $w("#inputDate").updateValidityIndication();
-    $w("#inputArrivalTime").updateValidityIndication();
-    $w("#inputDepartureTime").updateValidityIndication();
-}
-
-// special block below only for Management site -- all above shall be identical with Guest site
 
 function cloneItem(item) {
     originalItem = item ? structuredClone(item) : null;
