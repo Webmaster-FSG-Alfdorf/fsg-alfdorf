@@ -187,7 +187,7 @@ function updateCostsTable() {
 }
 
 function postMessageToDatePicker(message) {
-    console.log("postMessage", JSON.stringify(message, null, 0));
+    console.log("postMessage to #htmlDate", message);
     $w("#htmlDate").postMessage(message);
 }
 
@@ -217,7 +217,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
         valRes = checkRes;
     }
 
-    if (resetCalendarView) message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : null;
+    if (resetCalendarView) message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : [null, null];
     if (checkValidation) {
         if (valRes?.noLodging)
             currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
