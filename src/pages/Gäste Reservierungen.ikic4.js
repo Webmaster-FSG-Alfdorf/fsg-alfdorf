@@ -124,7 +124,7 @@ $w.onReady(function () {
                 updateCostsTable();
             },
 
-            generateTitle: () => {
+            generateTitle: (item) => {
                 if (item && (item.dateFom || item.dateTo || item.lastName || item.lodging)) {
                     const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
                     const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
@@ -209,23 +209,6 @@ function updateDatePicker() {
     const msg = { utcDates: [dateFrom, dateTo] };
     console.log("updateOccupations", "postMessage utcDates: {", debugStr(msg.utcDates[0]), ",", debugStr(msg.utcDates[1]), "}");
     $w("#htmlDate").postMessage(msg);
-}
-
-async function updateDateKeepingHours(utcDateRange) {
-    const item = editor.ds.getCurrentItem();
-
-    const dtFrom = makeValidDate(utcDateRange[0], new Date(0));
-    let hours = item ? new Date(item.dateFrom).getUTCHours() : 0;
-    dtFrom.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await editor.ds.setFieldValue("dateFrom", dtFrom);
-
-    const dtTo = makeValidDate(utcDateRange[1], new Date(0));
-    hours = item ? new Date(item.dateTo).getUTCHours() : 0;
-    dtTo.setUTCHours(isNaN(hours) ? 0 : hours, 0, 0, 0);
-    await editor.ds.setFieldValue("dateTo", dtTo);
-
-    console.log("updateDateKeepingHours", item?._id, dtFrom, dtTo);
-    $w("#inputDate").value = dateRangeToString(dtFrom, dtTo, { hour: null, minute: null });
 }
 
 function updateCostsTable() {
