@@ -33,15 +33,19 @@ export class CmsEditor {
         this.ds.onReady(() => {
             this.refreshUI();
 
-            Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
+            Object.keys(this.cmsSchema).forEach(id => {
                 const el = $w(id);
                 const bind = (events, delay = 0) => {
                     events.forEach(s => {
-                        if (typeof el[s] == 'function') el[s](() => {
-                            if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
-                            if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
-                            else this.updateDataFromUi(id);
-                        });
+                        console.log("Binding", s, "to", id, ":", el[s]);
+                        if (typeof el[s] == 'function') {
+                            el[s](() => {
+                                console.log("Triggered", s, "on", id, ":", el[s]);
+                                if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
+                                if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
+                                else this.updateDataFromUi(id);
+                            });
+                        }
                     });
                 };
                 if (el && el.id) {
@@ -91,6 +95,8 @@ export class CmsEditor {
     }
 
     async updateDataFromUi(id) {
+        this.debounceTimers[id] = null;
+
         const el = $w(id);
         if (!el || !el.id) {
             console.error("Cannot assign from input", id, ": Input element not found")
