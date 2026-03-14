@@ -24,6 +24,7 @@ export class CmsEditor {
 
         this.ds = $w(`#${this.dataSetName}`);
         this.messageTimer = null;
+        this.debounceTimers = {};
     }
 
     init() {
@@ -34,10 +35,19 @@ export class CmsEditor {
 
             Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
                 const el = $w(id);
-                const bind = (events) => { events.forEach(s => { if (typeof el[s] == 'function') el[s](() => this.updateDataFromUi(id)); }); };
+                const bind = (events, delay = 0) => {
+                    events.forEach(s => {
+                        if (typeof el[s] == 'function') el[s](() => {
+                            if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
+                            if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id));
+                            else this.updateDataFromUi(id);
+                        });
+                    });
+                };
                 if (el && el.id) {
                     if (typeof el.onKeyPress == 'function') el.onKeyPress((e) => { if (e.key == "Enter") this.updateDataFromUi(id) });
-                    bind(['onInput', 'onBlur', 'onChange', 'onAddressSelect']);
+                    bind(['onInput', 'onBlur', 'onAddressSelect']);
+                    bind(['onChange'], 500);
                 }
             });
         });
