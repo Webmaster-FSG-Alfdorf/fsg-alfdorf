@@ -4,7 +4,7 @@ import wixWindow from 'wix-window';
 
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
-import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
