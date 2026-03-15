@@ -71,11 +71,11 @@ $w.onReady(function () {
                 "#inputState": { field: "state", type: FieldType.STRING, label: "Status" },
                 "#inputLodging": {
                     field: ["lodging", "lodgingSub"], type: FieldType.STRING, label: "XXX", resetValidityIndication: true,
-                    onChange: async (value) => {
-                        const lodging = value.split("|");
+                    onParseUserInput: (input) => {
+                        const lodging = input.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
-                    onUpdateUiFromData: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
+                    onFormatValue: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {

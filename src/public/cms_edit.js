@@ -135,7 +135,7 @@ export class CmsEditor {
             }
             default: val = el.value; // STRING
         }
-        if (cfg.onChange) val = await cfg.onChange(val);
+        if (cfg.onParseUserInput) val = cfg.onParseUserInput(val);
 
         const item = this.ds.getCurrentItem();
         if ((Array.isArray(cfg.field) ? cfg.field : [cfg.field]).map(f => item[f]).join('|') == (Array.isArray(val) ? val : [val]).join('|')) {
@@ -156,41 +156,41 @@ export class CmsEditor {
         Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
             const el = $w(id);
             if (!el) return;
-            let val;
-            if (cfg.onUpdateUiFromData)
-                val = cfg.onUpdateUiFromData(item);
-            else if (!item)
-                val = null
-            else if (cfg.type === FieldType.DATE && Array.isArray(cfg.field)) {
-                val = dateRangeToString(item[cfg.field[0]], item[cfg.field[1]], { hour: null, minute: null });
-            } else if (Array.isArray(cfg.field)) {
-                val = cfg.field.map(f => item[f] ?? 0).join('|');
-            } else {
-                val = item[cfg.field];
-            }
 
-            console.log("Updating user input", id, "from", cfg.field, "with value:", val);
+            const val = !item ? null : Array.isArray(cfg.field) ? item[cfg.field[0]] : item[cfg.field];
+            let formatted = this.formatValue(item, cfg);
+
+            let done = false;
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
-                    el.checked = !!val;
-                    break;
-                case FieldType.NUMBER:
-                    el.value = (val ?? 0).toString();
+                    if ("checked" in el) {
+                        el.checked = formatted == "Ja";
+                        done = true;
+                    }
                     break;
                 case FieldType.ADDRESS:
-                    el.value = val || {};
+                    formatted = val && typeof val === 'object' ? val : {};
                     break;
                 case FieldType.HOURS_OF_DATE:
-                    if (val) el.value = toLocal(new Date(val)).getHours().toString(); else el.selectedIndex = 0;
+                    if (val)
+                        formatted = toLocal(new Date(val)).getHours().toString();
+                    else if ("selectedIndex" in el) {
+                        el.selectedIndex = 0;
+                        done = true;
+                    }
                     break;
                 case FieldType.DATE:
-                    el.value = val || "";
+                    if (item && Array.isArray(cfg.field) && cfg.field.length == 2)
+                        formatted = dateRangeToString(item[cfg.field[0]], item[cfg.field[1]], { hour: null, minute: null });
                     break;
-                default: // STRING
-                    if ("value" in el)
-                        el.value = Array.isArray(el.value) ? (Array.isArray(val) ? val : []) : (val || "");
-                    else
-                        console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
+            }
+            console.log("Updating user input", id, "from", cfg.field, "with value:", formatted);
+            if (!done) {
+                // if no special set function has been used, try to use the default 
+                if ("value" in el)
+                    el.value = formatted;
+                else
+                    console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
             }
 
             const btn = cfg.linkButton ? $w(cfg.linkButton) : null;
@@ -204,23 +204,51 @@ export class CmsEditor {
         });
     }
 
+    asString(cfg, v) {
+        if (v == null || v == undefined) return "";
+        switch (cfg.type) {
+            case FieldType.BOOLEAN:
+                return v ? "Ja" : "Nein";
+            case FieldType.NUMBER:
+                return Number(v).toFixed(2);
+            case FieldType.ADDRESS:
+                return v.formatted || String(v);
+            case FieldType.DATE:
+                return v instanceof Date ? v.toLocaleDateString('de-DE') : String(v);
+            case FieldType.HOURS_OF_DATE:
+                return v ? `${toLocal(new Date(v)).getHours()}:00` : "";
+            default:
+                return String(v);
+        }
+    }
+
+    formatValue(item, cfg) {
+        let val;
+        if (!cfg)
+            val = null;
+        else if (cfg.onFormatValue)
+            val = cfg.onFormatValue(item);
+        else if (!item)
+            val = null
+        else if (Array.isArray(cfg.field))
+            val = cfg.field.map(f => item[f]);
+        else
+            val = item[cfg.field];
+
+        return Array.isArray(val) ?
+            val.map(v => this.asString(cfg, v)).join(", ") :
+            this.asString(cfg, val);
+    }
+
     getDiff(originalItem) {
-        //TODO
-        const current = this.ds.getCurrentItem();
+        const currentItem = this.ds.getCurrentItem();
         let diff = [];
 
-        Object.keys(this.cmsSchema).forEach(id => {
-            const cfg = this.cmsSchema[id];
-            if (!cfg.label) return; // Nur Felder mit Label kommen in den Diff
+        Object.values(this.cmsSchema).forEach(cfg => {
+            if (!cfg.label) return;
 
-            let v1 = originalItem ? originalItem[cfg.field] : null;
-            let v2 = current ? current[cfg.field] : null;
-
-            // Formatierung für die Anzeige im Diff
-            if (cfg.type === 'number') {
-                v1 = Number(v1 || 0).toFixed(2);
-                v2 = Number(v2 || 0).toFixed(2);
-            }
+            const v1 = this.formatValue(originalItem, cfg);
+            const v2 = this.formatValue(currentItem, cfg);
 
             if (v1 != v2) {
                 diff.push([cfg.label, v1, v2]);
@@ -229,8 +257,18 @@ export class CmsEditor {
         return diff;
     }
 
+    listAllValues() {
+        const item = this.ds.getCurrentItem();
+        let res = [];
+        Object.values(this.cmsSchema).forEach(cfg => {
+            if (!cfg.label) return;
+            res.push([cfg.label, this.formatValue(item, cfg)]);
+        });
+        return res;
+    }
+
     async saveItem() {
-        console.log("saveItem");
+        console.log("saveItem", this.listAllValues());
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
         this.ds.save().then(() => {
