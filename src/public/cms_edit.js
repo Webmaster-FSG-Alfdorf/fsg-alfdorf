@@ -144,7 +144,7 @@ export class CmsEditor {
         }
         if (cfg.onParseUserInput) val = cfg.onParseUserInput(val);
 
-        const curVal = await this.formatValue(item, cfg);
+        const curVal = await this.formatValue(this.ds.getCurrentItem(), cfg);
         if (JSON.stringify(curVal) == JSON.stringify(val)) {
             console.log("No change detected for", id);
             return;
