@@ -238,7 +238,7 @@ export class CmsEditor {
         if (!cfg) return "";
         if (cfg.onDisplayValue) return await cfg.onDisplayValue(item);
         if (!item) return "";
-        const val = this.formatValue(item, cfg);
+        const val = await this.formatValue(item, cfg);
         return Array.isArray(val) && cfg.type != FieldType.DATE // DATE type will be combined in one dateRangeToString() call
             ? val.map(v => this.asString(cfg, v)).join(", ")
             : this.asString(cfg, val);
