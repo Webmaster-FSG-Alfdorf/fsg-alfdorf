@@ -282,13 +282,13 @@ async function prepareSave() {
     let diff = [...diffUser];
 
     let customMessage = "";
+    /*
     if (originalItem.state !== item.state) customMessage = {
         "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
         "Reserviert": "Ihre Anfrage wurde akzeptiert.",
         "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
         "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
     }[item.state] || customMessage;
-    /*
 
     TODO
     
