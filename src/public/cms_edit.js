@@ -51,7 +51,7 @@ export class CmsEditor {
                                 }
                             });
                         } else {
-                            console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
+                            //console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
                         }
                     });
                 };
@@ -218,8 +218,8 @@ export class CmsEditor {
             [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
             [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v)
         };
-        const res = v == null || v == "" ? null : (formatters[cfg.type] || (() => String(v)))();
-        return res ? `${cfg.prefix ?? ""}${res}${cfg.suffix ?? ""}` : "";
+        const res = v == null || v === "" ? null : (formatters[cfg.type] || (() => String(v)))();
+        return res !== null ? `${cfg.prefix ?? ""}${res}${cfg.suffix ?? ""}` : "";
     }
 
     async formatValue(item, cfg) {
