@@ -227,9 +227,9 @@ export class CmsEditor {
         if (cfg.onFormatValue) return await cfg.onFormatValue(item);
         if (!item) return null;
         const val = Array.isArray(cfg.field) ? cfg.field.map(f => item[f]) : item[cfg.field];
-        if (cfg.type === FieldType.HOURS_OF_DATE && val)
+        if (cfg.type == FieldType.HOURS_OF_DATE && val)
             return toLocal(new Date(val)).getHours().toString();
-        if (cfg.type === FieldType.NUMBER)
+        if (cfg.type == FieldType.NUMBER)
             return val || 0;
         return val;
     }
