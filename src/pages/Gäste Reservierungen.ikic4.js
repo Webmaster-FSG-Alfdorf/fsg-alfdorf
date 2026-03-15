@@ -70,22 +70,32 @@ $w.onReady(function () {
             cmsSchema: {
                 "#inputState": { field: "state", type: FieldType.STRING, label: "Status" },
                 "#inputLodging": {
-                    field: ["lodging", "lodgingSub"], type: FieldType.STRING, label: "XXX", resetValidityIndication: true,
+                    field: ["lodging", "lodgingSub"], type: FieldType.STRING, label: "Unterkunft", resetValidityIndication: true,
                     onParseUserInput: (input) => {
                         const lodging = input.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
                     onFormatValue: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
+                    onDisplayValue: async (item) => await generateLodgingName(item), //TODO
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
-                    field: ["dateFrom", "dateTo"], type: FieldType.DATE, label: "XXX", resetValidityIndication: true,
+                    field: ["dateFrom", "dateTo"], type: FieldType.DATE, label: "Datum",
+                    resetValidityIndication: true, //TODO resetValidityIndication
                     onChanged: () => syncUI(true, false)
                 },
-                "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
-                "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
+                "#inputArrivalTime": {
+                    field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "Ankunft ab", resetValidityIndication: true,
+                    onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item.dateFrom).getHours().toString())?.label,
+                    onChanged: () => syncUI(true, false)
+                },
+                "#inputDepartureTime": {
+                    field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "Abreise bis", resetValidityIndication: true,
+                    onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item.dateTo).getHours().toString())?.label,
+                    onChanged: () => syncUI(true, false)
+                },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
-                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable(), fractionDigits: 3 },
+                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
                 "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
                 "#inputLastName": { field: "lastName", type: FieldType.STRING, label: "Nachnachme" },
                 "#inputMail": { field: "email", type: FieldType.STRING, label: "E-Mail", linkButton: "#buttonSendMail", linkPrefix: "mailto:" },
@@ -94,9 +104,9 @@ $w.onReady(function () {
                 "#inputNotes": { field: "notes", type: FieldType.STRING, label: "Hinweise des Gastes" },
                 "#inputPrivacyPolicy": { field: "privacyPolicy", type: FieldType.BOOLEAN, label: "Datenschutz akzeptiert" },
                 "#inputDeposit": { field: "deposit", type: FieldType.MULTI_SELECT, label: "Pfand/Kaution", onChanged: () => updateCostsTable() },
-                "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, label: "Bezahlt", onChanged: () => updateCostsTable() },
-                "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, label: "Sumup ID" },
-                "#inputComment": { field: "comment", type: FieldType.STRING, label: "Interner Kommentar" },
+                "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, label: "Bezahlt", onChanged: () => updateCostsTable(), fractionDigits: 2, suffix: "€" },
+                "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, label: "Sumup ID", showToUser: false },
+                "#inputComment": { field: "comment", type: FieldType.STRING, label: "Interner Kommentar", showToUser: false },
             },
 
             onRefreshUI: async () => {
@@ -118,18 +128,30 @@ $w.onReady(function () {
                     wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Speichern nicht möglich", customMessage: currentDateOccupied });
                     return false;
                 }
-                return prepareSave();
+                const item = editor.ds.getCurrentItem();
+                const customMessage =
+                    originalItem && item && originalItem.state != item.state ? {
+                        "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
+                        "Reserviert": "Ihre Anfrage wurde akzeptiert.",
+                        "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
+                        "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
+                    }[item.state] || "" :
+                        "";
+
+                let diff = editor.getDiff(originalItem);
+                console.log("save", item?._id, "diff:", diff.diffIntern, "customMessage:", customMessage);
+                return { diff, customMessage };
             },
 
-            onAfterSave: (diffData) => {
+            onAfterSave: (data) => {
                 const item = editor.ds.getCurrentItem();
-                if (diffData && diffData.diff.length > 0)
+                if (data.diff.diffUser.length > 0)
                     wixWindow.openLightbox("CMSSuccessLightbox", {
                         msg: "Änderungen wurden gespeichert",
                         item,
-                        diff: diffData.diff,
-                        diffUser: diffData.diffUser,
-                        customMessage: diffData.customMessage
+                        diff: data.diff.diffIntern,
+                        diffUser: data.diff.diffUser,
+                        customMessage: data.customMessage
                     });
                 cloneItem(item);
             },
@@ -273,84 +295,4 @@ async function doQueryUpdate(searchText) {
         console.error("Query failed", err);
         return [];
     }
-}
-
-async function prepareSave() {
-    const item = editor.ds.getCurrentItem();
-
-    let diffUser = editor.getDiff(originalItem);
-    let diff = [...diffUser];
-
-    let customMessage = "";
-    /*
-    if (originalItem.state !== item.state) customMessage = {
-        "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
-        "Reserviert": "Ihre Anfrage wurde akzeptiert.",
-        "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
-        "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
-    }[item.state] || customMessage;
-
-    TODO
-    
-        let diff = [];
-        let diffUser = [];
-        const diffField = (label, v1, v2, showUser = true) => {
-            if (v1 != v2) {
-                diff.push([label, v1, v2]);
-                if (showUser) diffUser.push([label, v1, v2]);
-            }
-        };
-    
-        if (originalItem && item) {
-            diffField("Status", originalItem.state, item.state);
-            diffField("Unterkunft", await generateLodgingName(originalItem), await generateLodgingName(item))
-    
-            diffField("Datum",
-                dateRangeToString(originalItem.dateFrom, originalItem.dateTo, { hour: null, minute: null }),
-                dateRangeToString(item.dateFrom, item.dateTo, { hour: null, minute: null })
-            );
-    
-            const av0 = toLocal(originalItem.dateFrom).getHours().toString();
-            const av1 = toLocal(item.dateFrom).getHours().toString();
-            diffField("Ankunft ab",
-                $w("#inputArrivalTime").options.find(o => o.value == av0)?.label,
-                $w("#inputArrivalTime").options.find(o => o.value == av1)?.label
-            );
-    
-            const dp0 = toLocal(originalItem.dateTo).getHours().toString();
-            const dp1 = toLocal(item.dateTo).getHours().toString();
-            diffField("Abreise bis",
-                $w("#inputDepartureTime").options.find(o => o.value == dp0)?.label,
-                $w("#inputDepartureTime").options.find(o => o.value == dp1)?.label
-            );
-    
-            diffField("Erwachsene", originalItem.cntAdults, item.cntAdults);
-    
-            diffField("Kinder", originalItem.cntChildren, item.cntChildren);
-    
-            diffField("Name", `${originalItem.firstName} ${originalItem.lastName}`, `${item.firstName} ${item.lastName}`);
-    
-            diffField("E-Mail", originalItem.email, item.email);
-    
-            diffField("Telefonnummer", originalItem.phoneNumber, item.phoneNumber);
-    
-            diffField("Adresse", originalItem.address?.formatted, item.address?.formatted);
-    
-            diffField("Hinweise", originalItem.notes, item.notes);
-    
-            diffField("Datenschutzerklärung", originalItem.privacyPolicy ? "Ja" : "Nein", item.privacyPolicy ? "Ja" : "Nein");
-    
-            diffField("Pfand/Kaution", originalItem.deposit?.toString() ?? "", item.deposit?.toString() ?? "");
-    
-            diffField("Bezahlt", `${Number(originalItem.paidSum || 0).toFixed(2) ?? "0.00"} €`, `${Number(item.paidSum || 0).toFixed(2) ?? "0.00"} €`);
-    
-            diffField("SumupID", originalItem.paidSumup, item.paidSumup, false);
-    
-            diffField("Interner Kommentar", originalItem.comment, item.comment, false);
-        }
-        */
-
-    console.log("save", item?._id, "diff:", diff);
-
-    return { diff, diffUser, customMessage };
 }

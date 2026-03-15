@@ -164,44 +164,35 @@ export class CmsEditor {
             const el = $w(id);
             if (!el) return;
 
-            const val = !item ? null : Array.isArray(cfg.field) ? item[cfg.field[0]] : item[cfg.field];
-            let formatted = this.formatValue(item, cfg);
+            let val = this.formatValue(item, cfg);
 
             let done = false;
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
                     if ("checked" in el) {
-                        el.checked = formatted == cfg.boolTrue ?? BOOL_TRUE;
+                        el.checked = !!val;
                         done = true;
                     }
                     break;
-                case FieldType.NUMBER:
-                    formatted = Number(formatted || "0")
-                    break;
                 case FieldType.ADDRESS:
-                    formatted = val && typeof val === 'object' ? val : {};
+                    val = val && typeof val === 'object' ? val : {};
                     break;
                 case FieldType.HOURS_OF_DATE:
-                    if (val)
-                        formatted = toLocal(new Date(val)).getHours().toString();
-                    else if ("selectedIndex" in el) {
+                    if (!val && "selectedIndex" in el) {
                         el.selectedIndex = 0;
                         done = true;
                     }
                     break;
                 case FieldType.DATE:
                     if (item && Array.isArray(cfg.field) && cfg.field.length == 2)
-                        formatted = dateRangeToString(item[cfg.field[0]], item[cfg.field[1]], { hour: null, minute: null });
-                    break;
-                case FieldType.MULTI_SELECT:
-                    formatted = val;
+                        val = this.displayValue(item, cfg);
                     break;
             }
-            console.log("Updating user input", id, "from", cfg.field, "with value:", formatted);
+            console.log("Updating user input", id, "from", cfg.field, "with value:", val);
             if (!done) {
                 // if no special set function has been used, try to use the default 
                 if ("value" in el)
-                    el.value = formatted;
+                    el.value = val;
                 else
                     console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
             }
@@ -218,58 +209,59 @@ export class CmsEditor {
     }
 
     asString(cfg, v) {
-        if (v == null || v == undefined) return "";
-        switch (cfg.type) {
-            case FieldType.BOOLEAN:
-                return v ? (cfg.boolTrue ?? BOOL_TRUE) : (cfg.boolFalse ?? BOOL_FALSE);
-            case FieldType.NUMBER:
-                return Number(v).toFixed(cfg.fractionDigits ?? 0);
-            case FieldType.ADDRESS:
-                return v.formatted || String(v);
-            case FieldType.DATE:
-                return v instanceof Date ? v.toLocaleDateString('de-DE') : String(v);
-            case FieldType.HOURS_OF_DATE:
-                return v ? `${toLocal(new Date(v)).getHours()}:00` : "";
-            case FieldType.MULTI_SELECT:
-                return Array.isArray(v) ? v.join(", ") : String(v);
-            default:
-                return String(v);
-        }
+        const formatters = {
+            [FieldType.BOOLEAN]: () => v ? (cfg.boolTrue ?? BOOL_TRUE) : (cfg.boolFalse ?? BOOL_FALSE),
+            [FieldType.NUMBER]: () => Number(v).toLocaleString('de-DE', { minimumFractionDigits: cfg.fractionDigits ?? 0 }),
+            [FieldType.ADDRESS]: () => v.formatted || String(v),
+            [FieldType.DATE]: () => {
+                const [s, e] = Array.isArray(v) ? v : [v, null];
+                return dateRangeToString(s, e, cfg.format ?? { hour: null, minute: null });
+            },
+            [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
+            [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v)
+        };
+        const res = v == null || v == "" ? null : (formatters[cfg.type] || (() => String(v)))();
+        return res ? `${cfg.prefix ?? ""}${res}${cfg.suffix ?? ""}` : "";
     }
 
     formatValue(item, cfg) {
-        let val;
-        if (!cfg)
-            val = null;
-        else if (cfg.onFormatValue)
-            val = cfg.onFormatValue(item);
-        else if (!item)
-            val = null
-        else if (Array.isArray(cfg.field))
-            val = cfg.field.map(f => item[f]);
-        else
-            val = item[cfg.field];
+        if (!cfg) return null;
+        if (cfg.onFormatValue) return cfg.onFormatValue(item);
+        if (!item) return null;
+        const val = Array.isArray(cfg.field) ? cfg.field.map(f => item[f]) : item[cfg.field];
+        if (cfg.type === FieldType.HOURS_OF_DATE && val)
+            return toLocal(new Date(val)).getHours().toString();
+        if (cfg.type === FieldType.NUMBER)
+            return val || 0;
+        return val;
+    }
 
-        return Array.isArray(val) ?
-            val.map(v => this.asString(cfg, v)).join(", ") :
-            this.asString(cfg, val);
+    displayValue(item, cfg) {
+        if (!cfg) return "";
+        if (cfg.onDisplayValue) return cfg.onDisplayValue(item);
+        if (!item) return "";
+        const val = this.formatValue(item, cfg);
+        return Array.isArray(val) && cfg.type != FieldType.DATE // DATE type will be combined in one dateRangeToString() call
+            ? val.map(v => this.asString(cfg, v)).join(", ")
+            : this.asString(cfg, val);
     }
 
     getDiff(originalItem) {
         const currentItem = this.ds.getCurrentItem();
-        let diff = [];
+        let diffIntern = [];
+        let diffUser = [];
 
         Object.values(this.cmsSchema).forEach(cfg => {
             if (!cfg.label) return;
 
-            const v1 = this.formatValue(originalItem, cfg);
-            const v2 = this.formatValue(currentItem, cfg);
-
-            if (v1 != v2) {
-                diff.push([cfg.label, v1, v2]);
+            if (JSON.stringify(this.formatValue(originalItem, cfg)) != JSON.stringify(this.formatValue(currentItem, cfg))) {
+                const v1 = this.displayValue(originalItem, cfg);
+                const v2 = this.displayValue(currentItem, cfg);
+                diffIntern.push([cfg.label, v1, v2]);
+                if (cfg.showToUser) diffUser.push([cfg.label, v1, v2]);
             }
         });
-        return diff;
+        return { diffIntern, diffUser };
     }
 
     listAllValues() {
@@ -277,48 +269,59 @@ export class CmsEditor {
         let res = [];
         Object.values(this.cmsSchema).forEach(cfg => {
             if (!cfg.label) return;
-            res.push([cfg.label, this.formatValue(item, cfg)]);
+            res.push([cfg.label, this.displayValue(item, cfg)]);
         });
         return res;
     }
 
+    flushDebounce(update = true) {
+        Object.keys(this.debounceTimers).forEach(id => {
+            if (this.debounceTimers[id]) {
+                clearTimeout(this.debounceTimers[id]);
+                this.debounceTimers[id] = null;
+                if (update) this.updateDataFromUi(id);
+            }
+        });
+    }
+
     async saveItem() {
+        this.flushDebounce();
         console.log("saveItem", this.listAllValues());
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
-        this.ds.save().then(() => {
-            console.log("item saved");
-            this.updateSelectorList();
-            this.onAfterSave(beforeSafeResult);
-            this.showMessage("Erfolgreich gespeichert.");
-        });
+        if (beforeSafeResult == null) return;
+        await this.ds.save();
+        console.log("item saved");
+        this.updateSelectorList();
+        this.onAfterSave(beforeSafeResult);
+        this.showMessage("Erfolgreich gespeichert.");
     }
 
-    revertItem() {
+    async revertItem() {
+        this.flushDebounce(false);
         console.log("revertItem");
         this.collapseResponse();
-        this.ds.revert().then(() => {
-            console.log("item reverted");
-            this.refreshUI();
-            this.onAfterReverted();
-            this.showMessage("Änderungen verworfen.");
-        });
+        await this.ds.revert();
+        console.log("item reverted");
+        this.refreshUI();
+        this.onAfterReverted();
+        this.showMessage("Änderungen verworfen.");
     }
 
-    newItem() {
+    async newItem() {
+        this.flushDebounce();
         console.log("newItem");
         this.collapseResponse();
-        this.ds.save().then(() => {
-            console.log("item saved before creating new item");
-            this.ds.new().then(() => {
-                console.log("item created");
-                this.refreshUI();
-                this.showMessage("Erfolgreich erstellt.");
-            });
-        });
+        await this.ds.save();
+        console.log("item saved before creating new item");
+        await this.ds.new();
+        console.log("item created");
+        this.refreshUI();
+        this.showMessage("Erfolgreich erstellt.");
     }
 
-    removeItem() {
+    async removeItem() {
+        this.flushDebounce();
         console.log("removeItem");
         this.collapseResponse();
         const itemToDelete = this.ds.getCurrentItem();
@@ -327,12 +330,11 @@ export class CmsEditor {
         const idx = options.findIndex(opt => opt.value === itemToDelete._id);
         const nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
 
-        this.ds.remove().then(() => {
-            console.log("item removed");
-            this.onAfterDelete(itemToDelete);
-            this.showMessage("Erfolgreich gelöscht.");
-            if (nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
-        });
+        await this.ds.remove();
+        console.log("item removed");
+        this.onAfterDelete(itemToDelete);
+        this.showMessage("Erfolgreich gelöscht.");
+        if (nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
     }
 
     navigateRelative(offset) {
@@ -346,32 +348,31 @@ export class CmsEditor {
 
     async navigateTo(id) {
         console.log("navigateTo", id);
-        if (id && id != "--new--") this.ds.getItems(0, this.ds.getTotalCount()).then((result) => {
+        if (id && id != "--new--") {
+            const result = await this.ds.getItems(0, this.ds.getTotalCount());
             const index = result.items.findIndex(item => item._id == id);
             if (index != -1) {
                 console.log("navigateTo current item index", index);
-                this.ds.setCurrentItemIndex(index).then(() => { this.refreshUI(); });
+                await this.ds.setCurrentItemIndex(index);
+                this.refreshUI();
             } else {
                 console.warn("navigateTo cannot find among", result.items.length, "items");
             }
-        });
+        }
     }
 
-    updateSelectorList() {
+    async updateSelectorList() {
         const searchText = $w("#filterSearch").id ? $w("#filterSearch").value.trim() : "";
         console.log("Updating itemSelector based on search text:", searchText);
 
-        this.onQueryUpdate(searchText).then((items) => {
-            const currentItem = this.ds.getCurrentItem();
-            console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
-            $w("#itemSelector").options = [
-                { label: "➕ Neuer Eintrag", value: "--new--" },
-                ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
-            ];
-            $w("#itemSelector").value = currentItem?._id ?? undefined;
-        });
-
-        //wixData.query(this.cmsName).ascending("title").limit(1000).find().then((result) => {
+        const items = await this.onQueryUpdate(searchText);
+        const currentItem = this.ds.getCurrentItem();
+        console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
+        $w("#itemSelector").options = [
+            { label: "➕ Neuer Eintrag", value: "--new--" },
+            ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
+        ];
+        $w("#itemSelector").value = currentItem?._id ?? undefined;
     }
 
     showError(error) {
