@@ -9,6 +9,9 @@ export const FieldType = Object.freeze({
     HOURS_OF_DATE: 'hoursOfDate',
 });
 
+const BOOL_TRUE = "Ja";
+const BOOL_FALSE = "Nein";
+
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
@@ -164,9 +167,12 @@ export class CmsEditor {
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
                     if ("checked" in el) {
-                        el.checked = formatted == "Ja";
+                        el.checked = formatted == cfg.boolTrue ?? BOOL_TRUE;
                         done = true;
                     }
+                    break;
+                case FieldType.NUMBER:
+                    formatted = Number(formatted || "0")
                     break;
                 case FieldType.ADDRESS:
                     formatted = val && typeof val === 'object' ? val : {};
@@ -208,9 +214,9 @@ export class CmsEditor {
         if (v == null || v == undefined) return "";
         switch (cfg.type) {
             case FieldType.BOOLEAN:
-                return v ? "Ja" : "Nein";
+                return v ? (cfg.boolTrue ?? BOOL_TRUE) : (cfg.boolFalse ?? BOOL_FALSE);
             case FieldType.NUMBER:
-                return Number(v).toFixed(2);
+                return Number(v).toFixed(cfg.fractionDigits ?? 0);
             case FieldType.ADDRESS:
                 return v.formatted || String(v);
             case FieldType.DATE:

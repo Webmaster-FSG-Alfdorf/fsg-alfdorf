@@ -85,7 +85,7 @@ $w.onReady(function () {
                 "#inputArrivalTime": { field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
                 "#inputDepartureTime": { field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "XXX", resetValidityIndication: true, onChanged: () => syncUI(true, false) },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
-                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable() },
+                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, label: "Kinder", onChanged: () => updateCostsTable(), fractionDigits: 3 },
                 "#inputFirstName": { field: "firstName", type: FieldType.STRING, label: "Vorname" },
                 "#inputLastName": { field: "lastName", type: FieldType.STRING, label: "Nachnachme" },
                 "#inputMail": { field: "email", type: FieldType.STRING, label: "E-Mail", linkButton: "#buttonSendMail", linkPrefix: "mailto:" },
