@@ -160,6 +160,10 @@ export class CmsEditor {
 
     async updateUiFromData() {
         const item = this.ds.getCurrentItem();
+        if (!item) {
+            console.log("No current item - skipping UI update");
+            return;
+        }
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
             const el = $w(id);
             if (!el) return;
@@ -224,7 +228,12 @@ export class CmsEditor {
 
     async formatValue(item, cfg) {
         if (!cfg) return null;
-        if (cfg.onFormatValue) return await cfg.onFormatValue(item);
+        if (cfg.onFormatValue) try {
+            return await cfg.onFormatValue(item);
+        } catch (e) {
+            console.warn("Error in onFormatValue for", cfg.field, ":", e);
+            return null;
+        }
         if (!item) return null;
         const val = Array.isArray(cfg.field) ? cfg.field.map(f => item[f]) : item[cfg.field];
         if (cfg.type == FieldType.HOURS_OF_DATE && val)

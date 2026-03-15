@@ -76,7 +76,7 @@ $w.onReady(function () {
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
                     onFormatValue: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
-                    onDisplayValue: async (item) => await generateLodgingName(item), //TODO
+                    onDisplayValue: async (item) => item ? await generateLodgingName(item) : null,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
