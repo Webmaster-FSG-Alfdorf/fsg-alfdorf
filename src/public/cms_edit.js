@@ -52,7 +52,7 @@ export class CmsEditor {
                     });
                 };
                 if (el) {
-                    bind(['onBlur', 'onKeyPress', 'onAddressSelect']);
+                    bind(['onBlur', 'onKeyPress']);
                     bind(['onInput', 'onChange'], 2000);
                 } else console.warn("No such input element:", id);
             });
