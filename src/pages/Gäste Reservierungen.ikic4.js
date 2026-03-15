@@ -14,22 +14,21 @@ let editor;
 $w.onReady(function () {
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
+        let batchRequests = [];
         // main lodgings go first
         results.items.forEach((lodging) => {
             options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
         });
         // then all sub lodgings
-        const subPromises = [];
         for (const lodging of results.items) if (lodging.capacity > 1)
-            for (let index = 1; index <= lodging.capacity; index++) subPromises.push(
-                generateLodgingName({
-                    lodging: lodging.lodgingID,
-                    capacityPrefix: lodging.capacityPrefix,
-                    lodgingSub: index
-                }).then(name => ({ label: name, value: `${lodging.lodgingID}|${index}` }))
-            );
-        const subOptions = await Promise.all(subPromises);
-        options.push(...subOptions);
+            for (let index = 1; index <= lodging.capacity; index++) batchRequests.push({
+                lodging: lodging.lodgingID,
+                lodgingSub: index
+            });
+        if (batchRequests.length > 0) {
+            const names = await getAllLodgingNames(batchRequests);
+            options.push(...batchRequests.map((req, i) => ({ label: names[i], value: `${req.lodging}|${req.lodgingSub}` })));
+        }
         $w("#inputLodging").options = options;
         $w("#filterLodging").options = [{ label: "(Alle)", value: "*" }, ...options];
         if (editor) editor.updateUiFromData();

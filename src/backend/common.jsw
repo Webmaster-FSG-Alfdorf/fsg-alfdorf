@@ -16,7 +16,7 @@ import { nightsBetween, toLocal, debugStr } from 'public/cms.js';
  */
 export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, exclude = "", simulation = null) {
     if (!lodging || !dateFrom || !dateTo) return { capacity: 0, occupations: [] };
-    const lodgings = simulation? simulation.lodgings.filter(l => l.lodgingID == lodging) : (await wixData.query("lodgings").eq("lodgingID", lodging).find()).items;
+    const lodgings = simulation ? simulation.lodgings.filter(l => l.lodgingID == lodging) : (await wixData.query("lodgings").eq("lodgingID", lodging).find()).items;
     if (lodgings.length > 1) console.error(`Have multiple matches from #lodgings with lodgingID == ${lodging}: ${lodgings}`);
     const capacity = lodgings.length == 0 ? 0 : lodgings[0].capacity;
 
@@ -137,17 +137,41 @@ export function sendMail(mailId, item, options) {
     });
 }
 
-export async function generateLodgingName(item) {
-    if (!lodgingsMap) lodgingsMap = Object.fromEntries((await wixData.query("lodgings").find()).items.map(l => [l.lodgingID, l]));
-    const lme = lodgingsMap[item.lodging];
-    if (lme == null) {
+let lodgingsMap = null;
+let lodgingsMapPromise = null;
+
+async function ensureLodgingMap() {
+    if (lodgingsMap) return lodgingsMap;
+    if (lodgingsMapPromise) return lodgingsMapPromise;
+    lodgingsMapPromise = wixData.query("lodgings").limit(1000).find().then(results => {
+        lodgingsMap = Object.fromEntries(results.items.map(l => [l.lodgingID, l]));
+        return lodgingsMap;
+    }).catch(err => {
+        lodgingsMapPromise = null;
+        throw err;
+    });
+    return lodgingsMapPromise;
+}
+
+function formatLodgingName(item, map) {
+    if (!item || !item.lodging) return "";
+    const lme = map[item.lodging];
+    if (!lme) {
         console.error(`Could not find #lodgings with lodgingID == ${item.lodging}`);
         return String(item.lodging ?? "");
-    } else {
-        return item.lodgingSub > 0 && lme.capacityPrefix ? `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}` : lme.title;
     }
+    return item.lodgingSub > 0 && lme.capacityPrefix ? `${lme.title} ${lme.capacityPrefix} ${item.lodgingSub}` : lme.title;
 }
-let lodgingsMap = null;
+
+export async function generateLodgingName(item) {
+    return formatLodgingName(item, await ensureLodgingMap());
+}
+
+export async function getAllLodgingNames(requests) {
+    if (!requests || !Array.isArray(requests)) return [];
+    const map = await ensureLodgingMap();
+    return requests.map(item => formatLodgingName(item, map));
+}
 
 export async function generateCostsTable(item) {
     const formatPrice = (price, br) => `${br ? "(" : ""}${price.toFixed(2)} €${br ? ")" : ""}`;
