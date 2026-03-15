@@ -85,12 +85,12 @@ $w.onReady(function () {
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputArrivalTime": {
-                    field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "Ankunft ab", resetValidityIndication: true,
+                    field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "Ankunft", resetValidityIndication: true,
                     onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item?.dateFrom).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDepartureTime": {
-                    field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "Abreise bis", resetValidityIndication: true,
+                    field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "Abreise", resetValidityIndication: true,
                     onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item?.dateTo).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },

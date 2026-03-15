@@ -142,7 +142,7 @@ export class CmsEditor {
                 break;
             default: val = el.value; // STRING
         }
-        if (cfg.onParseUserInput) val = cfg.onParseUserInput(val);
+        if (cfg.onParseUserInput) val = await cfg.onParseUserInput(val);
 
         const curVal = await this.formatValue(this.ds.getCurrentItem(), cfg);
         if (JSON.stringify(curVal) == JSON.stringify(val)) {
@@ -155,7 +155,7 @@ export class CmsEditor {
             this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
         else
             this.ds.setFieldValue(cfg.field, val);
-        if (cfg.onChanged) cfg.onChanged(val);
+        if (cfg.onChanged) await cfg.onChanged(val);
     }
 
     async updateUiFromData() {
@@ -267,18 +267,19 @@ export class CmsEditor {
             [cfg.label, await this.displayValue(item, cfg)]));
     }
 
-    flushDebounce(update = true) {
-        Object.keys(this.debounceTimers).forEach(id => {
+    async flushDebounce(update = true) {
+        await Promise.all(Object.keys(this.debounceTimers).map(async (id) => {
             if (this.debounceTimers[id]) {
                 clearTimeout(this.debounceTimers[id]);
                 this.debounceTimers[id] = null;
-                if (update) this.updateDataFromUi(id);
+                if (update) await this.updateDataFromUi(id);
             }
-        });
+        }));
     }
 
     async saveItem() {
-        this.flushDebounce();
+        console.log("saveItem");
+        await this.flushDebounce();
         console.log("saveItem", await this.listAllValues());
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
@@ -291,8 +292,8 @@ export class CmsEditor {
     }
 
     async revertItem() {
-        this.flushDebounce(false);
         console.log("revertItem");
+        await this.flushDebounce(false);
         this.collapseResponse();
         await this.ds.revert();
         console.log("item reverted");
@@ -302,8 +303,8 @@ export class CmsEditor {
     }
 
     async newItem() {
-        this.flushDebounce();
         console.log("newItem");
+        await this.flushDebounce();
         this.collapseResponse();
         await this.ds.save();
         console.log("item saved before creating new item");
@@ -314,8 +315,8 @@ export class CmsEditor {
     }
 
     async removeItem() {
-        this.flushDebounce();
         console.log("removeItem");
+        await this.flushDebounce();
         this.collapseResponse();
         const itemToDelete = this.ds.getCurrentItem();
 
