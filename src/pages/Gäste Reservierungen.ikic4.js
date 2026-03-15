@@ -93,7 +93,7 @@ $w.onReady(function () {
                 "#inputAddress": { field: "address", type: FieldType.ADDRESS, label: "Addresse" },
                 "#inputNotes": { field: "notes", type: FieldType.STRING, label: "Hinweise des Gastes" },
                 "#inputPrivacyPolicy": { field: "privacyPolicy", type: FieldType.BOOLEAN, label: "Datenschutz akzeptiert" },
-                "#inputDeposit": { field: "deposit", type: FieldType.STRING, label: "Pfand/Kaution", onChanged: () => updateCostsTable() },
+                "#inputDeposit": { field: "deposit", type: FieldType.MULTI_SELECT, label: "Pfand/Kaution", onChanged: () => updateCostsTable() },
                 "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, label: "Bezahlt", onChanged: () => updateCostsTable() },
                 "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, label: "Sumup ID" },
                 "#inputComment": { field: "comment", type: FieldType.STRING, label: "Interner Kommentar" },

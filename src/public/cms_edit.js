@@ -7,6 +7,7 @@ export const FieldType = Object.freeze({
     ADDRESS: 'address',
     DATE: 'date',
     HOURS_OF_DATE: 'hoursOfDate',
+    MULTI_SELECT: 'multiSelect',
 });
 
 const BOOL_TRUE = "Ja";
@@ -136,6 +137,9 @@ export class CmsEditor {
                 });
                 break;
             }
+            case FieldType.MULTI_SELECT:
+                val = Array.isArray(el.value) ? el.value : el.value ? [el.value] : [];
+                break;
             default: val = el.value; // STRING
         }
         if (cfg.onParseUserInput) val = cfg.onParseUserInput(val);
@@ -189,6 +193,9 @@ export class CmsEditor {
                     if (item && Array.isArray(cfg.field) && cfg.field.length == 2)
                         formatted = dateRangeToString(item[cfg.field[0]], item[cfg.field[1]], { hour: null, minute: null });
                     break;
+                case FieldType.MULTI_SELECT:
+                    formatted = val;
+                    break;
             }
             console.log("Updating user input", id, "from", cfg.field, "with value:", formatted);
             if (!done) {
@@ -223,6 +230,8 @@ export class CmsEditor {
                 return v instanceof Date ? v.toLocaleDateString('de-DE') : String(v);
             case FieldType.HOURS_OF_DATE:
                 return v ? `${toLocal(new Date(v)).getHours()}:00` : "";
+            case FieldType.MULTI_SELECT:
+                return Array.isArray(v) ? v.join(", ") : String(v);
             default:
                 return String(v);
         }
