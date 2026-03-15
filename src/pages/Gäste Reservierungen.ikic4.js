@@ -86,12 +86,12 @@ $w.onReady(function () {
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom", type: FieldType.HOURS_OF_DATE, label: "Ankunft ab", resetValidityIndication: true,
-                    onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item.dateFrom).getHours().toString())?.label,
+                    onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item?.dateFrom).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDepartureTime": {
                     field: "dateTo", type: FieldType.HOURS_OF_DATE, label: "Abreise bis", resetValidityIndication: true,
-                    onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item.dateTo).getHours().toString())?.label,
+                    onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item?.dateTo).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, label: "Erwachsene", onChanged: () => updateCostsTable() },
@@ -138,7 +138,7 @@ $w.onReady(function () {
                     }[item.state] || "" :
                         "";
 
-                let diff = editor.getDiff(originalItem);
+                let diff = await editor.getDiff(originalItem);
                 console.log("save", item?._id, "diff:", diff.diffIntern, "customMessage:", customMessage);
                 return { diff, customMessage };
             },

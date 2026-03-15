@@ -144,8 +144,8 @@ export class CmsEditor {
         }
         if (cfg.onParseUserInput) val = cfg.onParseUserInput(val);
 
-        const item = this.ds.getCurrentItem();
-        if ((Array.isArray(cfg.field) ? cfg.field : [cfg.field]).map(f => item[f]).join('|') == (Array.isArray(val) ? val : [val]).join('|')) {
+        const curVal = await this.formatValue(item, cfg);
+        if (JSON.stringify(curVal) == JSON.stringify(val)) {
             console.log("No change detected for", id);
             return;
         }
@@ -158,14 +158,12 @@ export class CmsEditor {
         if (cfg.onChanged) cfg.onChanged(val);
     }
 
-    updateUiFromData() {
+    async updateUiFromData() {
         const item = this.ds.getCurrentItem();
-        Object.entries(this.cmsSchema).forEach(([id, cfg]) => {
+        for (const [id, cfg] of Object.entries(this.cmsSchema)) {
             const el = $w(id);
             if (!el) return;
-
-            let val = this.formatValue(item, cfg);
-
+            let val = await this.formatValue(item, cfg);
             let done = false;
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
@@ -185,7 +183,7 @@ export class CmsEditor {
                     break;
                 case FieldType.DATE:
                     if (item && Array.isArray(cfg.field) && cfg.field.length == 2)
-                        val = this.displayValue(item, cfg);
+                        val = await this.displayValue(item, cfg);
                     break;
             }
             console.log("Updating user input", id, "from", cfg.field, "with value:", val);
@@ -205,7 +203,7 @@ export class CmsEditor {
             }
 
             if (el.resetValidityIndication) el.resetValidityIndication();
-        });
+        }
     }
 
     asString(cfg, v) {
@@ -224,9 +222,9 @@ export class CmsEditor {
         return res ? `${cfg.prefix ?? ""}${res}${cfg.suffix ?? ""}` : "";
     }
 
-    formatValue(item, cfg) {
+    async formatValue(item, cfg) {
         if (!cfg) return null;
-        if (cfg.onFormatValue) return cfg.onFormatValue(item);
+        if (cfg.onFormatValue) return await cfg.onFormatValue(item);
         if (!item) return null;
         const val = Array.isArray(cfg.field) ? cfg.field.map(f => item[f]) : item[cfg.field];
         if (cfg.type === FieldType.HOURS_OF_DATE && val)
@@ -236,9 +234,9 @@ export class CmsEditor {
         return val;
     }
 
-    displayValue(item, cfg) {
+    async displayValue(item, cfg) {
         if (!cfg) return "";
-        if (cfg.onDisplayValue) return cfg.onDisplayValue(item);
+        if (cfg.onDisplayValue) return await cfg.onDisplayValue(item);
         if (!item) return "";
         const val = this.formatValue(item, cfg);
         return Array.isArray(val) && cfg.type != FieldType.DATE // DATE type will be combined in one dateRangeToString() call
@@ -246,32 +244,27 @@ export class CmsEditor {
             : this.asString(cfg, val);
     }
 
-    getDiff(originalItem) {
+    async getDiff(originalItem) {
         const currentItem = this.ds.getCurrentItem();
         let diffIntern = [];
         let diffUser = [];
 
-        Object.values(this.cmsSchema).forEach(cfg => {
+        await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
             if (!cfg.label) return;
-
-            if (JSON.stringify(this.formatValue(originalItem, cfg)) != JSON.stringify(this.formatValue(currentItem, cfg))) {
-                const v1 = this.displayValue(originalItem, cfg);
-                const v2 = this.displayValue(currentItem, cfg);
-                diffIntern.push([cfg.label, v1, v2]);
-                if (cfg.showToUser) diffUser.push([cfg.label, v1, v2]);
+            const [vOrg, vCur] = await Promise.all([this.formatValue(originalItem, cfg), this.formatValue(currentItem, cfg)]);
+            if (JSON.stringify(vOrg) != JSON.stringify(vCur)) {
+                const [dOrg, dCur] = await Promise.all([this.displayValue(originalItem, cfg), this.displayValue(currentItem, cfg)]);
+                diffIntern.push([cfg.label, dOrg, dCur]);
+                if (cfg.showToUser) diffUser.push([cfg.label, dOrg, dCur]);
             }
-        });
+        }));
         return { diffIntern, diffUser };
     }
 
-    listAllValues() {
+    async listAllValues() {
         const item = this.ds.getCurrentItem();
-        let res = [];
-        Object.values(this.cmsSchema).forEach(cfg => {
-            if (!cfg.label) return;
-            res.push([cfg.label, this.displayValue(item, cfg)]);
-        });
-        return res;
+        return await Promise.all(Object.values(this.cmsSchema).filter(cfg => cfg.label).map(async (cfg) =>
+            [cfg.label, await this.displayValue(item, cfg)]));
     }
 
     flushDebounce(update = true) {
@@ -286,7 +279,7 @@ export class CmsEditor {
 
     async saveItem() {
         this.flushDebounce();
-        console.log("saveItem", this.listAllValues());
+        console.log("saveItem", await this.listAllValues());
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
         if (beforeSafeResult == null) return;
