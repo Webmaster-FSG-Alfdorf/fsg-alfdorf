@@ -152,12 +152,14 @@ async function doQueryUpdate(searchText) {
 
     const s = searchText.trim();
     if (s) {
-        let qOr = wixData.query("events").contains("title", s);
-        ["subTitle", "description", "price", "address", "dates", "registration",
-            "responsible", "responsibleMail", "responsiblePhone"].forEach(f => {
-                qOr = qOr.or(wixData.query("events").contains(f, s));
-            });
-        q = q.and(qOr);
+        const fields = [
+            "title", "subTitle", "description", "price", "address",
+            "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
+        ];
+        let searchFilter = wixData.filter().contains(fields[0], s);
+        for (let i = 1; i < fields.length; i++)
+            searchFilter = searchFilter.or(wixData.filter().contains(fields[i], s));
+        q = q.and(searchFilter);
     }
 
     console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
