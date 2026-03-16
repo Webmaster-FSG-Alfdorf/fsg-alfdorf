@@ -255,6 +255,7 @@ export class CmsEditor {
                     break;
                 case FieldType.RICH_TEXT:
                     cfg.el.html = val || "";
+                    console.log("RICH_TEXT", val, cfg.el.html);
                     done = true;
                     break;
                 case FieldType.IMAGE: if (cfg.el.children) {

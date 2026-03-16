@@ -72,6 +72,10 @@ $w.onReady(function () {
     $w("#btnDateAdd").onClick(() => { addDate() });
 
     editor.init();
+
+    $w("#filterAlsoPast").onChange(() => editor.updateSelectorList());
+    $w("#filterType").onChange(() => editor.updateSelectorList());
+    $w("#filterSport").onChange(() => editor.updateSelectorList());
 });
 
 function addDate() {
