@@ -1,3 +1,5 @@
+import wixData from 'wix-data';
+
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
@@ -144,7 +146,7 @@ async function doQueryUpdate(searchText) {
     const sport = $w("#filterSport").value;
     if (sport && sport != "*") q = q.hasSome("sportarten", [sport]); //TODO
 
-    const s = normalize(searchText).trim();
+    const s = searchText.trim();
     if (s) {
         let qOr = wixData.query("events").contains("title", s);
         ["subTitle", "description", "price", "address", "dates", "registration",
