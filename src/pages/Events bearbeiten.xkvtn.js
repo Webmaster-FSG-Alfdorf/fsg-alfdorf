@@ -142,12 +142,15 @@ async function doQueryUpdate(searchText) {
     if (type && type != "*") q = q.eq("type", type);
 
     const sport = $w("#filterSport").value;
-    if (sport && sport != "*") q = q.contains("sportarten", sport); //TODO
+    if (sport && sport != "*") q = q.hasSome("sportarten", [sport]); //TODO
 
     const s = normalize(searchText).trim();
     if (s) {
         let qOr = wixData.query("events").contains("title", s);
-        ["subTitle", "description", "price", "address", "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"].forEach(f => { qOr = qOr.or(wixData.query("events").eq(f, sn)); });
+        ["subTitle", "description", "price", "address", "dates", "registration",
+            "responsible", "responsibleMail", "responsiblePhone"].forEach(f => {
+                qOr = qOr.or(wixData.query("events").contains(f, s));
+            });
         q = q.and(qOr);
     }
 
