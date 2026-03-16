@@ -132,7 +132,6 @@ export class CmsEditor {
         this.updateUiFromData();
         this.updateSelectorList();
         this.onRefreshUI();
-        $w("#descriptionField").html = '<p style="color:red">REFRESH</p>';
     }
 
     async updateDataFromUi(id) {
@@ -187,9 +186,6 @@ export class CmsEditor {
                 break;
             case FieldType.STRING:
                 val = cfg.trim ? String(cfg.el.value).trim() : String(cfg.el.value);
-                break;
-            case FieldType.RICH_TEXT:
-                val = cfg.el.html;
                 break;
             case FieldType.IMAGE:
                 const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
@@ -253,17 +249,6 @@ export class CmsEditor {
                 case FieldType.DATE:
                     if (item && cfg.field.length == 2)
                         val = await this.displayValue(item, cfg);
-                    break;
-                case FieldType.RICH_TEXT:
-                    cfg.el.html = val || "";
-                    console.log("1. Sofort-Log:", cfg.el.html);
-                    setTimeout(() => {
-                        console.log("2. Nach 500ms:", cfg.el.html);
-                        if (cfg.el.html === "") {
-                            console.error("Wix hat den HTML-Inhalt gelöscht!");
-                        }
-                    }, 500);
-                    done = true;
                     break;
                 case FieldType.IMAGE: if (cfg.el.children) {
                     const img = cfg.el.children.find(c => c.type == "$w.Image") || cfg.el;
