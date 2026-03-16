@@ -24,7 +24,8 @@ $w.onReady(function () {
             "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING },
             "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING }
         },
-        onRefreshUI: refreshDatesUI
+        onRefreshUI: refreshDatesUI,
+        onQueryUpdate: doQueryUpdate
     });
 
     $w("#datesRepeater").onItemReady(($item, itemData, index) => {
@@ -129,4 +130,33 @@ function refreshDateRangeText() {
         html += "<li>" + `${dateRangeToString(dr.start, dr.end)}`;
     });
     $w("#textDateRange").html = html + "</ul>";
+}
+
+async function doQueryUpdate(searchText) {
+    let q = wixData.query("events").ascending("title").limit(1000);
+
+    //TODO have to use the dates struct
+    //if (!$w('#filterAlsoPast').checked) q = q.ge("dateTo", incUTCDate(new Date(), 1));
+
+    const type = $w("#filterType").value;
+    if (type && type != "*") q = q.eq("type", type);
+
+    const sport = $w("#filterSport").value;
+    if (sport && sport != "*") q = q.contains("sportarten", sport); //TODO
+
+    const s = normalize(searchText).trim();
+    if (s) {
+        let qOr = wixData.query("events").contains("title", s);
+        ["subTitle", "description", "price", "address", "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"].forEach(f => { qOr = qOr.or(wixData.query("events").eq(f, sn)); });
+        q = q.and(qOr);
+    }
+
+    console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
+    try {
+        const res = await q.find();
+        return res.items;
+    } catch (err) {
+        console.error("Query failed", err);
+        return [];
+    }
 }
