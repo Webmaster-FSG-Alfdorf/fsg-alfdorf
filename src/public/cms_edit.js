@@ -241,7 +241,7 @@ export class CmsEditor {
                     }
                     break;
                 case FieldType.ADDRESS:
-                    val = val && typeof val === 'object' ? val : {};
+                    val = val && typeof val == 'object' ? val : { formatted: "" };
                     break;
                 case FieldType.HOURS_OF_DATE:
                     if (!val && "selectedIndex" in cfg.el) {
