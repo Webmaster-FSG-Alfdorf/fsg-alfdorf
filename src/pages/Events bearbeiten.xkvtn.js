@@ -8,20 +8,21 @@ $w.onReady(function () {
         cmsName: "events",
         dataSetName: "datasetEvents",
         cmsSchema: {
-            "#titleField": { field: "title", type: FieldType.STRING, label: "Titel" },
-            "#subTitleField": { field: "subTitle", type: FieldType.STRING, label: "Untertitel" },
-            //"#input2": { field: "slug", type: FieldType.STRING, label: "Sportarten" }, TODO
-            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, label: "Hauptbild" }, //TODO
-            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT, label: "Beschreibung" }, //TODO
-            "#priceField": { field: "price", type: FieldType.NUMBER, label: "Preis", suffix: " €" },
-            "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN, label: "Im Greut" },
-            "#addressField": { field: "address", type: FieldType.ADDRESS, label: "Ort" },
-            "#typeField": { field: "type", type: FieldType.STRING, label: "Typ" },
-            "#youthField": { field: "youth", type: FieldType.BOOLEAN, label: "Jugend" },
-            "#registrationField": { field: "registration", type: FieldType.DATE, label: "Anmeldeschluss" },
-            "#responsibleField": { field: "responsible", type: FieldType.STRING, label: "Verantwortlich" },
-            "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING, label: "Verantwortlicher E-Mail" },
-            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING, label: "Verantwortlicher Telefon" }
+            "#titleField": { field: "title", type: FieldType.STRING },
+            "#subTitleField": { field: "subTitle", type: FieldType.STRING },
+            //"#input2": { field: "sportarten", type: FieldType.MULTI_REFERENCE }, // TODO: Sportarten Logik
+            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE },//TODO
+            "#galleryField": { field: "gallery", type: FieldType.IMAGES },//TODO
+            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT },//TODO
+            "#priceField": { field: "price", type: FieldType.STRING },
+            "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN },
+            "#addressField": { field: "address", type: FieldType.ADDRESS },
+            "#typeField": { field: "type", type: FieldType.ENUM }, //TODO
+            "#youthField": { field: "youth", type: FieldType.BOOLEAN },
+            "#registrationField": { field: "registration", type: FieldType.DATE },
+            "#responsibleField": { field: "responsible", type: FieldType.STRING },
+            "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING },
+            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING }
         },
         onRefreshUI: refreshDatesUI
     });

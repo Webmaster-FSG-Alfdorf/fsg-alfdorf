@@ -10,9 +10,6 @@ export const FieldType = Object.freeze({
     MULTI_SELECT: 'multiSelect',
 });
 
-const BOOL_TRUE = "Ja";
-const BOOL_FALSE = "Nein";
-
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
@@ -35,21 +32,42 @@ export class CmsEditor {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-            const el = $w(id);
-            /*if (!cfg.label && el)*/ cfg.label = el.label || el.placeholder || "";
-            console.log("Have label for", id, cfg.label, el.label, el.placeholder);
+            cfg.el = $w(id);
+            if (!Array.isArray(cfg.field)) cfg.field = [cfg.field];
+            if (!cfg.label) cfg.label = cfg.el?.label || cfg.field[0];
+            cfg.required ??= false; //TODO
+            cfg.readOnly ??= false; //TODO
+            cfg.delay ??= cfg.type == FieldType.RICH_TEXT ? 3000 : 1500;
+            cfg.prefix ??= "";
+            cfg.suffix ??= "";
+            cfg.collectDiff ??= true;
+            cfg.showToUser ??= true;
+            switch (cfg.type) {
+                case FieldType.BOOLEAN:
+                    cfg.boolTrue ??= "Ja";
+                    cfg.boolFalse ??= "Nein";
+                    break;
+                case FieldType.NUMBER:
+                    cfg.fractionDigits ??= 0;
+                    break;
+                case FieldType.DATE:
+                    cfg.format ??= { hour: null, minute: null };
+                    break;
+                case FieldType.STRING:
+                    cfg.trim ??= true;
+                    break;
+            }
         }
 
         this.ds.onReady(() => {
             this.refreshUI();
 
-            Object.keys(this.cmsSchema).forEach(id => {
-                const el = $w(id);
+            for (const [id, cfg] of Object.entries(this.cmsSchema)) {
                 const bind = (events, delay = 0) => {
                     events.forEach(s => {
-                        if (typeof el[s] == 'function') {
+                        if (typeof cfg.el[s] == 'function') {
                             //console.log("Binding", s, "to", id);
-                            el[s]((event) => {
+                            cfg.el[s]((event) => {
                                 if (s != "onKeyPress" || event.key == "Enter") {
                                     if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
                                     if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
@@ -57,15 +75,15 @@ export class CmsEditor {
                                 }
                             });
                         } else {
-                            //console.warn("Cannot bind", s, "to", id, ":", typeof el[s]);
+                            //console.warn("Cannot bind", s, "to", id, ":", typeof cfg.el[s]);
                         }
                     });
                 };
-                if (el) {
+                if (cfg.el) {
                     bind(['onBlur', 'onKeyPress']);
-                    bind(['onInput', 'onChange'], 2000);
+                    bind(['onInput', 'onChange'], cfg.delay);
                 } else console.warn("No such input element:", id);
-            });
+            }
         });
 
         this.ds.onError((error) => { this.showError(error); });
@@ -108,33 +126,32 @@ export class CmsEditor {
 
     async updateDataFromUi(id) {
         this.debounceTimers[id] = null;
-
-        const el = $w(id);
-        if (!el || !el.id) {
-            console.error("Cannot assign from input", id, ": Input element not found")
-            return;
-        }
         const cfg = this.cmsSchema[id];
         if (!cfg) {
             console.error("Cannot assign from input", id, ": CMS schema not found in configuration")
             return;
         }
+
+        if (!cfg.el || !cfg.el.id) {
+            console.error("Cannot assign from input", id, ": Input element not found")
+            return;
+        }
         let val;
         switch (cfg.type) {
-            case FieldType.BOOLEAN: val = el.checked; break;
-            case FieldType.NUMBER: val = Number(el.value || 0); break;
-            case FieldType.ADDRESS: val = el.value; break;
+            case FieldType.BOOLEAN: val = cfg.el.checked; break;
+            case FieldType.NUMBER: val = Number(cfg.el.value || 0); break;
+            case FieldType.ADDRESS: val = cfg.el.value; break;
             case FieldType.HOURS_OF_DATE: {
-                const utcDate = this.ds.getCurrentItem()[cfg.field];
-                let dt = new Date(utcDate);
+                const utcDate = this.ds.getCurrentItem()[cfg.field[0]];
+                let dt = new Date(utcDate || Date.now());
                 dt.setUTCHours(0, 0, 0, 0);
                 dt = toLocal(dt);
-                dt.setHours(Number(el.value || 0), 0, 0, 0);
+                dt.setHours(Number(cfg.el.value || 0), 0, 0, 0);
                 val = toUTC(dt);
                 break;
             }
             case FieldType.DATE: { // update date with new value but keep hours
-                const range = stringToDateRange(el.value);
+                const range = stringToDateRange(cfg.el.value);
                 val = range.map((date, i) => {
                     const dt = new Date(date);
                     const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
@@ -144,9 +161,12 @@ export class CmsEditor {
                 break;
             }
             case FieldType.MULTI_SELECT:
-                val = Array.isArray(el.value) ? el.value : el.value ? [el.value] : [];
+                val = Array.isArray(cfg.el.value) ? cfg.el.value : cfg.el.value ? [cfg.el.value] : [];
                 break;
-            default: val = el.value; // STRING
+            case FieldType.STRING:
+                val = cfg.trim ? String(cfg.el.value).trim() : String(cfg.el.value);
+                break;
+            default: val = cfg.el.value;
         }
         if (cfg.onParseUserInput) val = await cfg.onParseUserInput(val);
 
@@ -157,10 +177,7 @@ export class CmsEditor {
         }
 
         console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
-        if (Array.isArray(cfg.field))
-            this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
-        else
-            this.ds.setFieldValue(cfg.field, val);
+        this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
         if (cfg.onChanged) await cfg.onChanged(val);
     }
 
@@ -171,14 +188,13 @@ export class CmsEditor {
             return;
         }
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-            const el = $w(id);
-            if (!el) return;
+            if (!cfg.el) return;
             let val = await this.formatValue(item, cfg);
             let done = false;
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
-                    if ("checked" in el) {
-                        el.checked = !!val;
+                    if ("checked" in cfg.el) {
+                        cfg.el.checked = !!val;
                         done = true;
                     }
                     break;
@@ -186,21 +202,21 @@ export class CmsEditor {
                     val = val && typeof val === 'object' ? val : {};
                     break;
                 case FieldType.HOURS_OF_DATE:
-                    if (!val && "selectedIndex" in el) {
-                        el.selectedIndex = 0;
+                    if (!val && "selectedIndex" in cfg.el) {
+                        cfg.el.selectedIndex = 0;
                         done = true;
                     }
                     break;
                 case FieldType.DATE:
-                    if (item && Array.isArray(cfg.field) && cfg.field.length == 2)
+                    if (item && cfg.field.length == 2)
                         val = await this.displayValue(item, cfg);
                     break;
             }
             console.log("Updating user input", id, "from", cfg.field, "with value:", val);
             if (!done) {
                 // if no special set function has been used, try to use the default 
-                if ("value" in el)
-                    el.value = val;
+                if ("value" in cfg.el)
+                    cfg.el.value = val;
                 else
                     console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
             }
@@ -212,24 +228,24 @@ export class CmsEditor {
                 btn.target = "_blank";
             }
 
-            if (el.resetValidityIndication) el.resetValidityIndication();
+            if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
         }
     }
 
     asString(cfg, v) {
         const formatters = {
-            [FieldType.BOOLEAN]: () => v ? (cfg.boolTrue ?? BOOL_TRUE) : (cfg.boolFalse ?? BOOL_FALSE),
-            [FieldType.NUMBER]: () => Number(v).toLocaleString('de-DE', { minimumFractionDigits: cfg.fractionDigits ?? 0 }),
+            [FieldType.BOOLEAN]: () => v ? cfg.boolTrue : cfg.boolFalse,
+            [FieldType.NUMBER]: () => Number(v).toLocaleString('de-DE', { minimumFractionDigits: cfg.fractionDigits }),
             [FieldType.ADDRESS]: () => v.formatted || String(v),
             [FieldType.DATE]: () => {
                 const [s, e] = Array.isArray(v) ? v : [v, null];
-                return dateRangeToString(s, e, cfg.format ?? { hour: null, minute: null });
+                return dateRangeToString(s, e, cfg.format);
             },
             [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
             [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v)
         };
         const res = v == null || v === "" ? null : (formatters[cfg.type] || (() => String(v)))();
-        return res !== null ? `${cfg.prefix ?? ""}${res}${cfg.suffix ?? ""}` : "";
+        return res !== null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
     }
 
     async formatValue(item, cfg) {
@@ -241,12 +257,12 @@ export class CmsEditor {
             return null;
         }
         if (!item) return null;
-        const val = Array.isArray(cfg.field) ? cfg.field.map(f => item[f]) : item[cfg.field];
-        if (cfg.type == FieldType.HOURS_OF_DATE && val)
-            return toLocal(new Date(val)).getHours().toString();
+        const val = cfg.field.map(f => item[f]);
+        if (cfg.type == FieldType.HOURS_OF_DATE && val[0])
+            return toLocal(new Date(val[0])).getHours().toString();
         if (cfg.type == FieldType.NUMBER)
-            return val || 0;
-        return val;
+            return val[0] || 0;
+        return val.length == 1 ? val[0] : val;
     }
 
     async displayValue(item, cfg) {
@@ -265,7 +281,7 @@ export class CmsEditor {
         let diffUser = [];
 
         await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
-            if (!cfg.label) return;
+            if (!cfg.collectDiff) return;
             const [vOrg, vCur] = await Promise.all([this.formatValue(originalItem, cfg), this.formatValue(currentItem, cfg)]);
             if (JSON.stringify(vOrg) != JSON.stringify(vCur)) {
                 const [dOrg, dCur] = await Promise.all([this.displayValue(originalItem, cfg), this.displayValue(currentItem, cfg)]);
@@ -278,7 +294,7 @@ export class CmsEditor {
 
     async listAllValues() {
         const item = this.ds.getCurrentItem();
-        return await Promise.all(Object.values(this.cmsSchema).filter(cfg => cfg.label).map(async (cfg) =>
+        return await Promise.all(Object.values(this.cmsSchema).filter(cfg => cfg.collectDiff).map(async (cfg) =>
             [cfg.label, await this.displayValue(item, cfg)]));
     }
 
