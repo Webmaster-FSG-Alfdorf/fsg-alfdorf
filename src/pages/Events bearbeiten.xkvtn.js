@@ -139,41 +139,38 @@ function refreshDateRangeText() {
 }
 
 async function doQueryUpdate(searchText) {
-    // 1. Start with a clean query
+    // 1. Initialize the query
     let q = wixData.query("events");
 
-    // 2. Build the OR filter for search (using Filter, not Query)
-    const s = searchText.trim();
-    let searchFilter = wixData.filter();
-
-    if (s) {
-        const fields = [
-            "title", "subTitle", "description", "price", "address",
-            "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
-        ];
-
-        // This builds a single WixDataFilter object with a flat OR structure
-        fields.forEach(f => {
-            searchFilter = searchFilter.or(wixData.filter().contains(f, s));
-        });
-    }
-
-    // 3. Combine everything using the .filter() method on the query
-    // This accepts the WixDataFilter object you just built
-    q = q.filter(searchFilter)
-        .ascending("title")
-        .limit(1000);
-
-    // 4. Handle other UI filters
+    // 2. Add static filters
     const type = $w("#filterType").value;
     if (type && type !== "*") q = q.eq("type", type);
 
     const sport = $w("#filterSport").value;
     if (sport && sport !== "*") q = q.hasSome("sportarten", [sport]);
 
-    console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
+    // 3. Add Search Logic
+    const s = searchText.trim();
+    if (s) {
+        const fields = [
+            "title", "subTitle", "description", "price", "address", 
+            "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
+        ];
+
+        // Create the FIRST condition
+        let searchClause = wixData.query("events").contains(fields[0], s);
+
+        // Chain the rest using .or() on the searchClause Query object
+        for (let i = 1; i < fields.length; i++) {
+            searchClause = searchClause.or(wixData.query("events").contains(fields[i], s));
+        }
+
+        // Combine the search block with the main query
+        q = q.and(searchClause);
+    }
+
     try {
-        const res = await q.find();
+        const res = await q.ascending("title").limit(1000).find();
         return res.items;
     } catch (err) {
         console.error("Query failed", err);
