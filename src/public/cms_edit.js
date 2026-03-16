@@ -34,6 +34,12 @@ export class CmsEditor {
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
+        for (const [id, cfg] of Object.entries(this.cmsSchema)) {
+            const el = $w(id);
+            /*if (!cfg.label && el)*/ cfg.label = el.label || el.placeholder || "";
+            console.log("Have label for", id, cfg.label, el.label, el.placeholder);
+        }
+
         this.ds.onReady(() => {
             this.refreshUI();
 

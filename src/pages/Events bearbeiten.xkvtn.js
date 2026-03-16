@@ -1,4 +1,4 @@
-import { CmsEditor } from 'public/cms_edit.js';
+import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 
 let editor;
@@ -8,16 +8,31 @@ $w.onReady(function () {
         cmsName: "events",
         dataSetName: "datasetEvents",
         cmsSchema: {
-
+            "#titleField": { field: "title", type: FieldType.STRING, label: "Titel" },
+            "#subTitleField": { field: "subTitle", type: FieldType.STRING, label: "Untertitel" },
+            //"#input2": { field: "slug", type: FieldType.STRING, label: "Sportarten" }, TODO
+            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, label: "Hauptbild" }, //TODO
+            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT, label: "Beschreibung" }, //TODO
+            "#priceField": { field: "price", type: FieldType.NUMBER, label: "Preis", suffix: " €" },
+            "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN, label: "Im Greut" },
+            "#addressField": { field: "address", type: FieldType.ADDRESS, label: "Ort" },
+            "#typeField": { field: "type", type: FieldType.STRING, label: "Typ" },
+            "#youthField": { field: "youth", type: FieldType.BOOLEAN, label: "Jugend" },
+            "#registrationField": { field: "registration", type: FieldType.DATE, label: "Anmeldeschluss" },
+            "#responsibleField": { field: "responsible", type: FieldType.STRING, label: "Verantwortlich" },
+            "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING, label: "Verantwortlicher E-Mail" },
+            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING, label: "Verantwortlicher Telefon" }
         },
         onRefreshUI: refreshDatesUI
     });
 
     $w("#datesRepeater").onItemReady(($item, itemData, index) => {
         const togglePickers = () => {
-            if ($item("#dropdownDatesType").value === "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
-            if (parseInt($item("#dropdownDatesInterval").value) != 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
-            if ($item("#dropdownDatesType").value === "monthly") $item("#dropdownMonthlyRepetition").expand(); else $item("#dropdownMonthlyRepetition").collapse();
+            const type = $item("#dropdownDatesType").value;
+            const interval = parseInt($item("#dropdownDatesInterval").value) || 0;
+            if (interval > 0 && type == "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
+            if (interval > 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
+            if (interval > 0 && type == "monthly") $item("#dropdownMonthlyRepetition").expand(); else $item("#dropdownMonthlyRepetition").collapse();
         };
 
         const setDateTime = (pickerDate, pickerTime, date) => {
@@ -46,19 +61,18 @@ $w.onReady(function () {
         $item("#checkboxDatesWeekdays").onChange(() => updateDatesArray(index, 'recurrenceDays', $item("#checkboxDatesWeekdays").value));
         $item("#dropdownMonthlyRepetition").onChange(() => updateDatesArray(index, 'monthlyRepetition', $item("#dropdownMonthlyRepetition").value));
 
-        $item("#btnDateRemove").onClick(() => { removeDate(index); });
+        $item("#btnDateRemove").onClick(() => { removeDate(index) });
 
         togglePickers();
     });
-
-    $w("#btnDateAdd").onClick(() => { addDate(); });
+    $w("#btnDateAdd").onClick(() => { addDate() });
 
     editor.init();
 });
 
 function addDate() {
     console.log("Adding new date to event");
-    let dates = $w("#eventsDataset").getCurrentItem().dates || [];
+    let dates = editor.ds.getCurrentItem().dates || [];
     dates.push({
         start: new Date(),
         end: new Date(),
@@ -66,44 +80,44 @@ function addDate() {
         recurrenceInterval: 1,
         recurrenceDays: []
     });
-    $w("#eventsDataset").setFieldValue("dates", dates);
+    editor.ds.setFieldValue("dates", dates);
     refreshDatesUI();
 }
 
 function removeDate(index) {
     console.log("Removing date from event");
-    let dates = $w("#eventsDataset").getCurrentItem().dates;
+    let dates = editor.ds.getCurrentItem().dates;
     dates.splice(index, 1);
-    $w("#eventsDataset").setFieldValue("dates", dates);
+    editor.ds.setFieldValue("dates", dates);
     refreshDatesUI();
 }
 
 function refreshDatesUI() {
-    const item = $w("#eventsDataset").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
     const dates = (item && item.dates) ? item.dates : [];
     $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
     refreshDateRangeText();
 }
 
-function updateDatesArray(index, field, value, timeValue = null) {
-    let dates = $w("#eventsDataset").getCurrentItem().dates;
+function updateDatesArray(index, field, value) {
+    let dates = [...editor.ds.getCurrentItem().dates]; // use a copy
     dates[index][field] = value;
-    $w("#eventsDataset").setFieldValue("dates", dates);
+    editor.ds.setFieldValue("dates", dates);
     refreshDateRangeText();
 }
 
 function updateDatesArrayTime(index, field, date, time) {
-    let dates = $w("#eventsDataset").getCurrentItem().dates;
+    let dates = [...editor.ds.getCurrentItem().dates]; // use a copy
     let finalDate = new Date(date);
     const [hours, minutes] = (time || "00:00").split(':');
     finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
     dates[index][field] = finalDate;
-    $w("#eventsDataset").setFieldValue("dates", dates);
+    editor.ds.setFieldValue("dates", dates);
     refreshDateRangeText();
 }
 
 function refreshDateRangeText() {
-    const item = $w("#eventsDataset").getCurrentItem();
+    const item = editor.ds.getCurrentItem();
     const dates = (item && item.dates) ? item.dates : [];
     let allDates = new Map();
     (dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
