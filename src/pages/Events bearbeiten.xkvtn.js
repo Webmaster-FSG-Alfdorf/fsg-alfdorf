@@ -11,13 +11,13 @@ $w.onReady(function () {
             "#titleField": { field: "title", type: FieldType.STRING },
             "#subTitleField": { field: "subTitle", type: FieldType.STRING },
             //"#input2": { field: "sportarten", type: FieldType.MULTI_REFERENCE }, // TODO: Sportarten Logik
-            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE },//TODO
-            "#galleryField": { field: "gallery", type: FieldType.IMAGES },//TODO
-            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT },//TODO
+            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE },
+            "#galleryField": { field: "gallery", type: FieldType.IMAGES },
+            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT },
             "#priceField": { field: "price", type: FieldType.STRING },
             "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN },
             "#addressField": { field: "address", type: FieldType.ADDRESS },
-            "#typeField": { field: "type", type: FieldType.ENUM }, //TODO
+            "#typeField": { field: "type", type: FieldType.SELECT },
             "#youthField": { field: "youth", type: FieldType.BOOLEAN },
             "#registrationField": { field: "registration", type: FieldType.DATE },
             "#responsibleField": { field: "responsible", type: FieldType.STRING },

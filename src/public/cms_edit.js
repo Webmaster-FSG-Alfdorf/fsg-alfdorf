@@ -1,13 +1,19 @@
 import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms.js';
 
 export const FieldType = Object.freeze({
-    STRING: 'string',
-    NUMBER: 'number',
-    BOOLEAN: 'boolean',
-    ADDRESS: 'address',
-    DATE: 'date',
-    HOURS_OF_DATE: 'hoursOfDate',
-    MULTI_SELECT: 'multiSelect',
+    STRING: 'STRING',
+    RICH_TEXT: 'RICH_TEXT',
+    NUMBER: 'NUMBER',
+    BOOLEAN: 'BOOLEAN',
+    ADDRESS: 'ADDRESS',
+    DATE: 'DATE',
+    HOURS_OF_DATE: 'HOURS_OF_DATE',
+    IMAGE: 'IMAGE',
+    IMAGES: 'IMAGES', //TODO
+    SELECT: 'SELECT',
+    MULTI_SELECT: 'MULTI_SELECT',
+    REFERENCE: 'REFERENCE',
+    MULTI_REFERENCE: 'MULTI_REFERENCE',
 });
 
 export class CmsEditor {
@@ -63,11 +69,11 @@ export class CmsEditor {
             this.refreshUI();
 
             for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-                const bind = (events, delay = 0) => {
+                const bind = (trg, events, delay = 0) => {
                     events.forEach(s => {
-                        if (typeof cfg.el[s] == 'function') {
+                        if (typeof trg[s] == 'function') {
                             //console.log("Binding", s, "to", id);
-                            cfg.el[s]((event) => {
+                            trg[s]((event) => {
                                 if (s != "onKeyPress" || event.key == "Enter") {
                                     if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
                                     if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
@@ -75,13 +81,17 @@ export class CmsEditor {
                                 }
                             });
                         } else {
-                            //console.warn("Cannot bind", s, "to", id, ":", typeof cfg.el[s]);
+                            //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
                         }
                     });
                 };
                 if (cfg.el) {
-                    bind(['onBlur', 'onKeyPress']);
-                    bind(['onInput', 'onChange'], cfg.delay);
+                    bind(cfg.el, ['onBlur', 'onKeyPress']);
+                    bind(cfg.el, ['onInput', 'onChange'], cfg.delay);
+                    if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
+                        const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
+                        if (btn) bind(btn, ['onChange']);
+                    }
                 } else console.warn("No such input element:", id);
             }
         });
@@ -138,9 +148,15 @@ export class CmsEditor {
         }
         let val;
         switch (cfg.type) {
-            case FieldType.BOOLEAN: val = cfg.el.checked; break;
-            case FieldType.NUMBER: val = Number(cfg.el.value || 0); break;
-            case FieldType.ADDRESS: val = cfg.el.value; break;
+            case FieldType.BOOLEAN:
+                val = cfg.el.checked;
+                break;
+            case FieldType.NUMBER:
+                val = Number(cfg.el.value || 0);
+                break;
+            case FieldType.ADDRESS:
+                val = cfg.el.value;
+                break;
             case FieldType.HOURS_OF_DATE: {
                 const utcDate = this.ds.getCurrentItem()[cfg.field[0]];
                 let dt = new Date(utcDate || Date.now());
@@ -160,12 +176,38 @@ export class CmsEditor {
                 });
                 break;
             }
+            case FieldType.SELECT:
+            case FieldType.REFERENCE:
+                val = cfg.el.value;
+                break;
             case FieldType.MULTI_SELECT:
+            case FieldType.MULTI_REFERENCE:
                 val = Array.isArray(cfg.el.value) ? cfg.el.value : cfg.el.value ? [cfg.el.value] : [];
                 break;
             case FieldType.STRING:
                 val = cfg.trim ? String(cfg.el.value).trim() : String(cfg.el.value);
                 break;
+            case FieldType.RICH_TEXT:
+                val = cfg.el.html;
+                break;
+            case FieldType.IMAGE:
+                const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
+                if (btn && btn.value.length > 0) {
+                    const files = await btn.uploadFiles();
+                    val = files[0].fileUrl;
+                } else
+                    val = this.ds.getCurrentItem()[cfg.field[0]]; // keep existing image
+                break;
+            case FieldType.IMAGES: {
+                const btn = cfg.el.children?.find(c => c.type === "$w.UploadButton");
+                if (btn && btn.value.length > 0) {
+                    const files = await btn.uploadFiles();
+                    val = [...this.ds.getCurrentItem()[cfg.field[0]] || [], ...files.map(f => f.fileUrl)]; // add new images
+                } else {
+                    val = this.ds.getCurrentItem()[cfg.field[0]];
+                }
+                break;
+            }
             default: val = cfg.el.value;
         }
         if (cfg.onParseUserInput) val = await cfg.onParseUserInput(val);
@@ -188,7 +230,7 @@ export class CmsEditor {
             return;
         }
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-            if (!cfg.el) return;
+            if (!cfg.el) continue;
             let val = await this.formatValue(item, cfg);
             let done = false;
             switch (cfg.type) {
@@ -210,6 +252,25 @@ export class CmsEditor {
                 case FieldType.DATE:
                     if (item && cfg.field.length == 2)
                         val = await this.displayValue(item, cfg);
+                    break;
+                case FieldType.RICH_TEXT:
+                    cfg.el.html = val || "";
+                    done = true;
+                    break;
+                case FieldType.IMAGE: {
+                    cfg.el.children?.find(c => c.type == "$w.Image")?.src = val || "";
+                    done = true;
+                    break;
+                }
+                case FieldType.IMAGES: {
+                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery") || cfg.el;
+                    if (gallery) gallery.items = Array.isArray(val) ? val.map(url => ({ src: url })) : [];
+                    done = true;
+                    break;
+                }
+                case FieldType.MULTI_REFERENCE:
+                    cfg.el.value = Array.isArray(val) ? val : (val ? [val] : []);
+                    done = true;
                     break;
             }
             console.log("Updating user input", id, "from", cfg.field, "with value:", val);
