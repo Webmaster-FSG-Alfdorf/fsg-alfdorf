@@ -167,7 +167,7 @@ export class CmsEditor {
                 break;
             }
             case FieldType.DATE: { // update date with new value but keep hours
-                const range = stringToDateRange(cfg.el.value);
+                const range = stringToDateRange(cfg.el.value) || [];
                 val = range.map((date, i) => {
                     const dt = new Date(date);
                     const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
@@ -452,7 +452,7 @@ export class CmsEditor {
         const searchText = $w("#filterSearch").id ? $w("#filterSearch").value.trim() : "";
         console.log("Updating itemSelector based on search text:", searchText);
 
-        const items = await this.onQueryUpdate(searchText);
+        const items = await this.onQueryUpdate(searchText) || [];
         const currentItem = this.ds.getCurrentItem();
         console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
         $w("#itemSelector").options = [
