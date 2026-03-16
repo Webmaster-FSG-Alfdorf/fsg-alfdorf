@@ -139,28 +139,37 @@ function refreshDateRangeText() {
 }
 
 async function doQueryUpdate(searchText) {
-    let q = wixData.query("events").ascending("title").limit(1000);
+    // 1. Start with a clean query
+    let q = wixData.query("events");
 
-    //TODO have to use the dates struct
-    //if (!$w('#filterAlsoPast').checked) q = q.ge("dateTo", incUTCDate(new Date(), 1));
-
-    const type = $w("#filterType").value;
-    if (type && type != "*") q = q.eq("type", type);
-
-    const sport = $w("#filterSport").value;
-    if (sport && sport != "*") q = q.hasSome("sportarten", [sport]); //TODO
-
+    // 2. Build the OR filter for search (using Filter, not Query)
     const s = searchText.trim();
+    let searchFilter = wixData.filter();
+
     if (s) {
         const fields = [
             "title", "subTitle", "description", "price", "address",
             "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
         ];
-        let searchFilter = wixData.filter().contains(fields[0], s);
-        for (let i = 1; i < fields.length; i++)
-            searchFilter = searchFilter.or(wixData.filter().contains(fields[i], s));
-        q = q.and(searchFilter);
+
+        // This builds a single WixDataFilter object with a flat OR structure
+        fields.forEach(f => {
+            searchFilter = searchFilter.or(wixData.filter().contains(f, s));
+        });
     }
+
+    // 3. Combine everything using the .filter() method on the query
+    // This accepts the WixDataFilter object you just built
+    q = q.filter(searchFilter)
+        .ascending("title")
+        .limit(1000);
+
+    // 4. Handle other UI filters
+    const type = $w("#filterType").value;
+    if (type && type !== "*") q = q.eq("type", type);
+
+    const sport = $w("#filterSport").value;
+    if (sport && sport !== "*") q = q.hasSome("sportarten", [sport]);
 
     console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
     try {
