@@ -1,5 +1,32 @@
 import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms.js';
 
+/**
+ * @typedef {Object} CmsFieldConfig
+ * @property {string} field - The CMS field key.
+ * @property {string[]} fieldsAdditonal - Additional CMS field keys for types that support multiple (like DATE_RANGE).
+ * @property {string} type - FieldType constant (e.g., STRING, DATE, RICH_TEXT).
+ * @property {Object} [el] - The Wix UI element $w (automatically assigned during init).
+ * @property {string} [label] - Display label for logs and diffs (defaults to 'label' property of 'el'.
+ * @property {boolean} [required] - Item can only be stored if data has been entered (default false).
+ * @property {boolean} [readOnly] - Data cannot be edited by the user (default false).
+ * @property {number} [delay] - Debounce delay in ms (default 1500ms, or 3000ms for RICH_TEXT).
+ * @property {string} [prefix] - String prepended to the display value (default "").
+ * @property {string} [suffix] - String appended to the display value (default "").
+ * @property {boolean} [collectDiff] - Whether to include this field in change tracking (default true).
+ * @property {boolean} [showToUser] - Whether to show changes in this field to the end user (default true).
+ * @property {string} [linkButton] - ID of a button (e.g., "#btn") to link to the field's value.
+ * @property {string} [linkPrefix] - Prefix for the URL in linkButton (e.g., "mailto:").
+ * @property {Function} [onDisplayValue] - (item) => string: Custom logic to format the value for display/logs.
+ * @property {Function} [onChanged] - (val) => void: Callback triggered after the field value has been updated.
+ * @property {Function} [onFormatValue] - (item) => any: For FieldType.CUSTOM: Custom logic to extract data from the CMS item.
+ * @property {Function} [onParseUserInput] - (val) => any: For FieldType.CUSTOM: Custom logic to clean/transform input before saving.
+ * @property {number} [fractionDigits] - For FieldType.NUMBER: Number of decimals (default 0).
+ * @property {string} [boolTrue] - For FieldType.BOOLEAN: Label for true (default "Ja").
+ * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
+ * @property {Object} [format] - For FieldType.DATE: Options for dateRangeToString.
+ * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
+ */
+
 export const FieldType = Object.freeze({
     STRING: 'STRING',
     RICH_TEXT: 'RICH_TEXT',
@@ -7,6 +34,7 @@ export const FieldType = Object.freeze({
     BOOLEAN: 'BOOLEAN',
     ADDRESS: 'ADDRESS',
     DATE: 'DATE',
+    DATE_RANGE: 'DATE_RANGE',
     HOURS_OF_DATE: 'HOURS_OF_DATE',
     IMAGE: 'IMAGE',
     IMAGES: 'IMAGES', //TODO
@@ -14,6 +42,7 @@ export const FieldType = Object.freeze({
     MULTI_SELECT: 'MULTI_SELECT',
     REFERENCE: 'REFERENCE',
     MULTI_REFERENCE: 'MULTI_REFERENCE',
+    CUSTOM: 'CUSTOM',
 });
 
 export class CmsEditor {
@@ -34,13 +63,16 @@ export class CmsEditor {
         this.debounceTimers = {};
     }
 
+    /**
+     * Initializes the editor, sets default schema values, and binds UI events.
+     */
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
             cfg.el = $w(id);
-            if (!Array.isArray(cfg.field)) cfg.field = [cfg.field];
-            if (!cfg.label) cfg.label = cfg.el?.label || cfg.field[0];
+            if (!cfg.label) cfg.label = cfg.el?.label || cfg.field;
+            cfg.fieldsAdditonal ??= [];
             cfg.required ??= false; //TODO
             cfg.readOnly ??= false; //TODO
             cfg.delay ??= cfg.type == FieldType.RICH_TEXT ? 3000 : 1500;
@@ -127,6 +159,9 @@ export class CmsEditor {
         else console.warn("buttonNext not found in DOM");
     }
 
+    /**
+     * Synchronizes the UI with the current dataset item.
+     */
     refreshUI() {
         console.log("refreshUI");
         this.updateUiFromData();
@@ -134,6 +169,10 @@ export class CmsEditor {
         this.onRefreshUI();
     }
 
+    /**
+     * Reads values from the UI and updates the dataset fields.
+     * @param {string} id - The ID of the element in cmsSchema.
+     */
     async updateDataFromUi(id) {
         this.debounceTimers[id] = null;
         const cfg = this.cmsSchema[id];
@@ -158,7 +197,7 @@ export class CmsEditor {
                 val = cfg.el.value;
                 break;
             case FieldType.HOURS_OF_DATE: {
-                const utcDate = this.ds.getCurrentItem()[cfg.field[0]];
+                const utcDate = this.ds.getCurrentItem()[cfg.field];
                 let dt = new Date(utcDate || Date.now());
                 dt.setUTCHours(0, 0, 0, 0);
                 dt = toLocal(dt);
@@ -167,13 +206,20 @@ export class CmsEditor {
                 break;
             }
             case FieldType.DATE: { // update date with new value but keep hours
+                val = new Date(cfg.el.value);
+                const oldDate = this.ds.getCurrentItem()[cfg.field];
+                val.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
+                break;
+            }
+            case FieldType.DATE_RANGE: { // update date with new value but keep hours
                 const range = stringToDateRange(cfg.el.value) || [];
-                val = range.map((date, i) => {
-                    const dt = new Date(date);
-                    const oldDate = this.ds.getCurrentItem()[cfg.field[i]];
-                    dt.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
-                    return dt;
-                });
+                val = new Date(range[0]);
+                const oldDate0 = this.ds.getCurrentItem()[cfg.field];
+                val.setUTCHours(oldDate0 ? new Date(oldDate0).getUTCHours() : 0, 0, 0, 0);
+                const dt1 = new Date(range[1]);
+                const oldDate1 = this.ds.getCurrentItem()[cfg.fieldsAdditonal[0]];
+                dt1.setUTCHours(oldDate1 ? new Date(oldDate1).getUTCHours() : 0, 0, 0, 0);
+                this.ds.setFieldValue(cfg.fieldsAdditonal[0], dt1);
                 break;
             }
             case FieldType.SELECT:
@@ -193,33 +239,37 @@ export class CmsEditor {
                     const files = await btn.uploadFiles();
                     val = files[0].fileUrl;
                 } else
-                    val = this.ds.getCurrentItem()[cfg.field[0]]; // keep existing image
+                    val = this.ds.getCurrentItem()[cfg.field]; // keep existing image
                 break;
             case FieldType.IMAGES: {
                 const btn = cfg.el.children?.find(c => c.type === "$w.UploadButton");
                 if (btn && btn.value.length > 0) {
                     const files = await btn.uploadFiles();
-                    val = [...this.ds.getCurrentItem()[cfg.field[0]] || [], ...files.map(f => f.fileUrl)]; // add new images
+                    val = [...this.ds.getCurrentItem()[cfg.field] || [], ...files.map(f => f.fileUrl)]; // add new images
                 } else {
-                    val = this.ds.getCurrentItem()[cfg.field[0]];
+                    val = this.ds.getCurrentItem()[cfg.field];
                 }
                 break;
             }
-            default: val = cfg.el.value;
-        }
-        if (cfg.onParseUserInput) val = await cfg.onParseUserInput(val);
-
-        const curVal = await this.formatValue(this.ds.getCurrentItem(), cfg);
-        if (JSON.stringify(curVal) == JSON.stringify(val)) {
-            console.log("No change detected for", id);
-            return;
+            case FieldType.CUSTOM:
+                try {
+                    val = await cfg.onParseUserInput(cfg.el.value);
+                } catch (e) {
+                    console.warn("Error in onParseUserInput for", id, ":", e);
+                }
+                break;
+            default:
+                val = cfg.el.value;
         }
 
         console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
-        this.ds.setFieldValues(Object.fromEntries(cfg.field.map((field, i) => [field, Array.isArray(val) ? val[i] : val])));
+        this.ds.setFieldValue(cfg.field, val);
         if (cfg.onChanged) await cfg.onChanged(val);
     }
 
+    /**
+     * Populates UI elements with data from the current dataset item.
+     */
     async updateUiFromData() {
         const item = this.ds.getCurrentItem();
         if (!item) {
@@ -228,12 +278,13 @@ export class CmsEditor {
         }
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
             if (!cfg.el) continue;
-            let val = await this.formatValue(item, cfg);
+            let val = item[cfg.field];
             let done = false;
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
+                    val = !!val;
                     if ("checked" in cfg.el) {
-                        cfg.el.checked = !!val;
+                        cfg.el.checked = val;
                         done = true;
                     }
                     break;
@@ -247,24 +298,35 @@ export class CmsEditor {
                     }
                     break;
                 case FieldType.DATE:
-                    if (item && cfg.field.length == 2)
-                        val = await this.displayValue(item, cfg);
+                    val = val ? new Date(val) : null;
                     break;
-                case FieldType.IMAGE: if (cfg.el.children) {
-                    const img = cfg.el.children.find(c => c.type == "$w.Image") || cfg.el;
-                    img.src = val || "";
-                    done = true;
+                case FieldType.DATE_RANGE:
+                    val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
                     break;
-                }
-                case FieldType.IMAGES: if (cfg.el.children) {
-                    const gallery = cfg.el.children.find(c => c.type === "$w.Gallery") || cfg.el;
-                    if (gallery) gallery.items = Array.isArray(val) ? val.map(url => ({ src: url })) : [];
-                    done = true;
+                case FieldType.IMAGE:
+                    if (cfg.el.children) {
+                        const img = cfg.el.children.find(c => c.type == "$w.Image") || cfg.el;
+                        img.src = val || "";
+                        done = true;
+                    }
                     break;
-                }
+                case FieldType.IMAGES:
+                    if (cfg.el.children) {
+                        const gallery = cfg.el.children.find(c => c.type === "$w.Gallery") || cfg.el;
+                        if (gallery) gallery.items = Array.isArray(val) ? val.map(url => ({ src: url })) : [];
+                        done = true;
+                    }
+                    break;
                 case FieldType.MULTI_REFERENCE:
                     cfg.el.value = Array.isArray(val) ? val : (val ? [val] : []);
                     done = true;
+                    break;
+                case FieldType.CUSTOM:
+                    try {
+                        val = await cfg.onFormatValue(item);
+                    } catch (e) {
+                        console.warn("Error in onFormatValue for", id, ":", e);
+                    }
                     break;
             }
             console.log("Updating user input", id, "from", cfg.field, "with value:", val);
@@ -285,52 +347,39 @@ export class CmsEditor {
 
             if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
         }
-        $w("#descriptionField").html = '<p style="color:red">TEST</p>';
     }
 
-    asString(cfg, v) {
+    /**
+     * Returns the user-friendly string representation of an item's field.
+     * @param {Object} item - CMS Item.
+     * @param {CmsFieldConfig} cfg - Field configuration.
+     * @returns {Promise<string>}
+     */
+    async displayValue(item, cfg) {
+        if (!cfg) return "";
+        if (cfg.onDisplayValue) return await cfg.onDisplayValue(item);
+        if (!item) return "";
+        const v = item[cfg.field];
         const formatters = {
             [FieldType.BOOLEAN]: () => v ? cfg.boolTrue : cfg.boolFalse,
             [FieldType.NUMBER]: () => Number(v).toLocaleString('de-DE', { minimumFractionDigits: cfg.fractionDigits }),
             [FieldType.ADDRESS]: () => v.formatted || String(v),
-            [FieldType.DATE]: () => {
-                const [s, e] = Array.isArray(v) ? v : [v, null];
-                return dateRangeToString(s, e, cfg.format);
-            },
+            [FieldType.DATE]: () => dateRangeToString(v, null, cfg.format),
+            [FieldType.DATE_RANGE]: () => dateRangeToString(v, item[cfg.fieldsAdditonal[0]], cfg.format),
             [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
-            [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v)
+            [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v),
+            [FieldType.IMAGES]: () => Array.isArray(v) ? `${v.length} Bilder` : "Keine Bilder",
+            [FieldType.CUSTOM]: () => cfg.onFormatValue(item),
         };
         const res = v == null || v === "" ? null : (formatters[cfg.type] || (() => String(v)))();
         return res !== null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
     }
 
-    async formatValue(item, cfg) {
-        if (!cfg) return null;
-        if (cfg.onFormatValue) try {
-            return await cfg.onFormatValue(item);
-        } catch (e) {
-            console.warn("Error in onFormatValue for", cfg.field, ":", e);
-            return null;
-        }
-        if (!item) return null;
-        const val = cfg.field.map(f => item[f]);
-        if (cfg.type == FieldType.HOURS_OF_DATE && val[0])
-            return toLocal(new Date(val[0])).getHours().toString();
-        if (cfg.type == FieldType.NUMBER)
-            return val[0] || 0;
-        return val.length == 1 ? val[0] : val;
-    }
-
-    async displayValue(item, cfg) {
-        if (!cfg) return "";
-        if (cfg.onDisplayValue) return await cfg.onDisplayValue(item);
-        if (!item) return "";
-        const val = await this.formatValue(item, cfg);
-        return Array.isArray(val) && cfg.type != FieldType.DATE // DATE type will be combined in one dateRangeToString() call
-            ? val.map(v => this.asString(cfg, v)).join(", ")
-            : this.asString(cfg, val);
-    }
-
+    /**
+      * Compares the original item with the current state to find changes.
+      * @param {Object} originalItem - Item before changes.
+      * @returns {Promise<Object>} Object containing internal and user-facing diff arrays.
+      */
     async getDiff(originalItem) {
         const currentItem = this.ds.getCurrentItem();
         let diffIntern = [];
@@ -338,22 +387,29 @@ export class CmsEditor {
 
         await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
             if (!cfg.collectDiff) return;
-            const [vOrg, vCur] = await Promise.all([this.formatValue(originalItem, cfg), this.formatValue(currentItem, cfg)]);
-            if (JSON.stringify(vOrg) != JSON.stringify(vCur)) {
-                const [dOrg, dCur] = await Promise.all([this.displayValue(originalItem, cfg), this.displayValue(currentItem, cfg)]);
-                diffIntern.push([cfg.label, dOrg, dCur]);
-                if (cfg.showToUser) diffUser.push([cfg.label, dOrg, dCur]);
+            const [vOrg, vCur] = await Promise.all([this.displayValue(originalItem, cfg), this.displayValue(currentItem, cfg)]);
+            if (vOrg != vCur) {
+                diffIntern.push([cfg.label, vOrg, vCur]);
+                if (cfg.showToUser) diffUser.push([cfg.label, vOrg, vCur]);
             }
         }));
         return { diffIntern, diffUser };
     }
 
+    /**
+     * Fetches all configured values of the current item.
+     * @returns {Promise<Array<[string, string]>>} List of [label, value].
+     */
     async listAllValues() {
         const item = this.ds.getCurrentItem();
         return await Promise.all(Object.values(this.cmsSchema).filter(cfg => cfg.collectDiff).map(async (cfg) =>
             [cfg.label, await this.displayValue(item, cfg)]));
     }
 
+    /**
+     * Immediately executes any pending debounced updates.
+     * @param {boolean} [update=true] - Whether to perform the data update.
+     */
     async flushDebounce(update = true) {
         await Promise.all(Object.keys(this.debounceTimers).map(async (id) => {
             if (this.debounceTimers[id]) {

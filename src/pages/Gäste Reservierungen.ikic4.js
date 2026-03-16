@@ -69,7 +69,7 @@ $w.onReady(function () {
             cmsSchema: {
                 "#inputState": { field: "state", type: FieldType.STRING },
                 "#inputLodging": {
-                    field: ["lodging", "lodgingSub"], type: FieldType.STRING, resetValidityIndication: true,
+                    field: "lodging", fieldsAdditonal: ["lodgingSub"], type: FieldType.CUSTOM, resetValidityIndication: true,
                     onParseUserInput: (input) => {
                         const lodging = input.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
@@ -79,7 +79,7 @@ $w.onReady(function () {
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
-                    field: ["dateFrom", "dateTo"], type: FieldType.DATE, 
+                    field: "dateFrom", fieldsAdditonal: ["dateTo"], type: FieldType.DATE_RANGE,
                     resetValidityIndication: true, //TODO resetValidityIndication
                     onChanged: () => syncUI(true, false)
                 },
