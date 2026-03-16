@@ -132,6 +132,7 @@ export class CmsEditor {
         this.updateUiFromData();
         this.updateSelectorList();
         this.onRefreshUI();
+        $w("#descriptionField").html = '<p style="color:red">REFRESH</p>';
     }
 
     async updateDataFromUi(id) {
@@ -299,6 +300,7 @@ export class CmsEditor {
 
             if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
         }
+        $w("#descriptionField").html = '<p style="color:red">TEST</p>';
     }
 
     asString(cfg, v) {
