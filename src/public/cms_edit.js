@@ -257,13 +257,14 @@ export class CmsEditor {
                     cfg.el.html = val || "";
                     done = true;
                     break;
-                case FieldType.IMAGE: {
-                    if (cfg.el.children) cfg.el.children.find(c => c.type == "$w.Image")?.src = val || "";
+                case FieldType.IMAGE: if (cfg.el.children) {
+                    const img = cfg.el.children.find(c => c.type == "$w.Image") || cfg.el;
+                    img.src = val || "";
                     done = true;
                     break;
                 }
-                case FieldType.IMAGES: {
-                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery") || cfg.el;
+                case FieldType.IMAGES: if (cfg.el.children) {
+                    const gallery = cfg.el.children.find(c => c.type === "$w.Gallery") || cfg.el;
                     if (gallery) gallery.items = Array.isArray(val) ? val.map(url => ({ src: url })) : [];
                     done = true;
                     break;
