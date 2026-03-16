@@ -279,8 +279,10 @@ async function doQueryUpdate(searchText) {
     if (s) {
         const sn = Number(s);
         if (s == sn.toString()) { // user entered a number
-            let qOr = wixData.query("guestReservations").eq("cntAdults", sn);
-            ["cntChildren", "paidSum", "lodgingSub"].forEach(f => { qOr = qOr.or(wixData.query("guestReservations").eq(f, sn)); });
+            const numFields = ["cntAdults", "cntChildren", "paidSum", "lodgingSub"];
+            let qOr = wixData.query("guestReservations").eq(numFields[0], sn);
+            for (let i = 1; i < numFields.length; i++)
+                qOr = qOr.or(wixData.query("guestReservations").eq(numFields[i], sn));
             q = q.and(qOr);
         } else // user entered a string
             q = q.contains("searchField", s);

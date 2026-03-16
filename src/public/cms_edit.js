@@ -25,6 +25,7 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
  * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
  * @property {Object} [format] - For FieldType.DATE: Options for dateRangeToString.
  * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
+ * @property {boolean} [dataSet] - For FieldType.REFERENCE and FieldType.MULTI_REFERENCE: Name of the dataset to which the references shall point.
  */
 
 export const FieldType = Object.freeze({
@@ -97,7 +98,7 @@ export class CmsEditor {
             }
         }
 
-        this.ds.onReady(() => {
+        this.ds.onReady(async () => {
             this.refreshUI();
 
             for (const [id, cfg] of Object.entries(this.cmsSchema)) {
@@ -124,6 +125,12 @@ export class CmsEditor {
                         const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
                         if (btn) bind(btn, ['onChange']);
                     }
+
+                    if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
+                        const data = await wixData.query(cfg.dataSet).find();
+                        cfg.el.options = data.items.map(item => ({ label: item.title, value: item._id }));
+                    }
+
                 } else console.warn("No such input element:", id);
             }
         });

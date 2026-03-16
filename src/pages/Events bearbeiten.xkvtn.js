@@ -12,7 +12,7 @@ $w.onReady(function () {
         cmsSchema: {
             "#titleField": { field: "title", type: FieldType.STRING },
             "#subTitleField": { field: "subTitle", type: FieldType.STRING },
-            //"#input2": { field: "sportarten", type: FieldType.MULTI_REFERENCE }, // TODO: Sportarten Logik
+            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports" },
             "#mainImageField": { field: "mainImage", type: FieldType.IMAGE },
             "#galleryField": { field: "gallery", type: FieldType.IMAGES },
             "#descriptionField": { field: "description", type: FieldType.RICH_TEXT },
@@ -139,35 +139,27 @@ function refreshDateRangeText() {
 }
 
 async function doQueryUpdate(searchText) {
-    // 1. Initialize the query
     let q = wixData.query("events");
 
-    // 2. Add static filters
     const type = $w("#filterType").value;
     if (type && type !== "*") q = q.eq("type", type);
 
     const sport = $w("#filterSport").value;
     if (sport && sport !== "*") q = q.hasSome("sportarten", [sport]);
 
-    // 3. Add Search Logic
-    const s = searchText.trim();
+    const s = searchText.toLowerCase().trim();
     if (s) {
         const fields = [
             "title", "subTitle", "description", "price", "address", 
             "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
         ];
-
-        // Create the FIRST condition
-        let searchClause = wixData.query("events").contains(fields[0], s);
-
-        // Chain the rest using .or() on the searchClause Query object
-        for (let i = 1; i < fields.length; i++) {
-            searchClause = searchClause.or(wixData.query("events").contains(fields[i], s));
-        }
-
-        // Combine the search block with the main query
-        q = q.and(searchClause);
+        let qOr = wixData.query("events").contains(fields[0], s);
+        for (let i = 1; i < fields.length; i++)
+            qOr = qOr.or(wixData.query("events").contains(fields[i], s));
+        q = q.and(qOr);
     }
+
+    console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
 
     try {
         const res = await q.ascending("title").limit(1000).find();
