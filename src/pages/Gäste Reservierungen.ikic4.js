@@ -125,7 +125,7 @@ $w.onReady(function () {
                 await syncUI(true, false);
                 if (currentDateOccupied) {
                     wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Speichern nicht möglich", customMessage: currentDateOccupied });
-                    return false;
+                    return null;
                 }
                 const item = editor.ds.getCurrentItem();
                 const customMessage =
