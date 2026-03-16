@@ -258,7 +258,7 @@ export class CmsEditor {
                     done = true;
                     break;
                 case FieldType.IMAGE: {
-                    cfg.el.children?.find(c => c.type == "$w.Image")?.src = val || "";
+                    if (cfg.el.children) cfg.el.children.find(c => c.type == "$w.Image")?.src = val || "";
                     done = true;
                     break;
                 }
