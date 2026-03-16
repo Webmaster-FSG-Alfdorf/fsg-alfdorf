@@ -255,7 +255,13 @@ export class CmsEditor {
                     break;
                 case FieldType.RICH_TEXT:
                     cfg.el.html = val || "";
-                    console.log("RICH_TEXT", val, cfg.el.html);
+                    console.log("1. Sofort-Log:", cfg.el.html);
+                    setTimeout(() => {
+                        console.log("2. Nach 500ms:", cfg.el.html);
+                        if (cfg.el.html === "") {
+                            console.error("Wix hat den HTML-Inhalt gelöscht!");
+                        }
+                    }, 500);
                     done = true;
                     break;
                 case FieldType.IMAGE: if (cfg.el.children) {
