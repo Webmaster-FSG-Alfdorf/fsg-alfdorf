@@ -28,6 +28,7 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
  * @property {Object} [format] - For FieldType.DATE: Options for dateRangeToString.
  * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
  * @property {boolean} [dataSet] - For FieldType.REFERENCE and FieldType.MULTI_REFERENCE: Name of the dataset to which the references shall point.
+ * @property {boolean} [onGenerateLabel] - (item) => string: For FieldType.REFERENCE and FieldType.MULTI_REFERENCE: Label for entries of the dataset.
  */
 
 export const FieldType = Object.freeze({
@@ -97,6 +98,10 @@ export class CmsEditor {
                 case FieldType.STRING:
                     cfg.trim ??= true;
                     break;
+                case FieldType.REFERENCE:
+                case FieldType.MULTI_REFERENCE:
+                    cfg.onGenerateLabel ??= (item) => item._id;
+                    break;
             }
         }
 
@@ -130,7 +135,7 @@ export class CmsEditor {
 
                     if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
                         const data = await wixData.query(cfg.dataSet).find();
-                        cfg.el.options = data.items.map(item => ({ label: item.title, value: item._id }));
+                        cfg.el.options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
                     }
 
                 } else console.warn("No such input element:", id);

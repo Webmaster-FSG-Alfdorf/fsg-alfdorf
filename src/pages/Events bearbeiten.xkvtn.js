@@ -12,7 +12,7 @@ $w.onReady(function () {
         cmsSchema: {
             "#titleField": { field: "title", type: FieldType.STRING },
             "#subTitleField": { field: "subTitle", type: FieldType.STRING },
-            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports" },
+            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name },
             "#mainImageField": { field: "mainImage", type: FieldType.IMAGE },
             "#galleryField": { field: "gallery", type: FieldType.IMAGES },
             "#descriptionField": { field: "description", type: FieldType.RICH_TEXT },
