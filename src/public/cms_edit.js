@@ -1,3 +1,5 @@
+import wixData from 'wix-data';
+
 import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms.js';
 
 /**
