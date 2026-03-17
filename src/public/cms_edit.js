@@ -312,34 +312,37 @@ export class CmsEditor {
                     }
                     break;
                 case FieldType.DATE:
-                    val = val ? new Date(val) : null;
+                    val ??= new Date(val);
                     break;
                 case FieldType.DATE_RANGE:
                     val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
                     break;
                 case FieldType.IMAGE:
-                    if (cfg.el.children) {
-                        const img = cfg.el.children.find(c => c.type == "$w.Image") || cfg.el;
-                        img.src = val || "";
+                    val ??= "";
+                    const img = cfg.el.children?.find(c => c.type == "$w.Image") || cfg.el;
+                    if (img && "src" in img) {
+                        img.src = val;
                         done = true;
                     }
                     break;
                 case FieldType.IMAGES:
-                    if (cfg.el.children) {
-                        const gallery = cfg.el.children.find(c => c.type === "$w.Gallery") || cfg.el;
-                        if (gallery) gallery.items = Array.isArray(val) ? val.map(url => ({ src: url })) : [];
+                    val = Array.isArray(val) ? val : (val ? [val] : []);
+                    val = val.map(url => ({ src: url }));
+                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery") || cfg.el;
+                    if (gallery && "items" in gallery) {
+                        gallery.items = val;
                         done = true;
                     }
                     break;
                 case FieldType.MULTI_REFERENCE:
-                    cfg.el.value = Array.isArray(val) ? val : (val ? [val] : []);
-                    done = true;
+                    val = Array.isArray(val) ? val : (val ? [val] : []);
                     break;
                 case FieldType.CUSTOM:
                     try {
                         val = await cfg.onFormatValue(item);
                     } catch (e) {
                         console.warn("Error in onFormatValue for", id, ":", e);
+                        val = null;
                     }
                     break;
             }
