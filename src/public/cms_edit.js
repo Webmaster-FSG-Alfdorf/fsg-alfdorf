@@ -318,6 +318,7 @@ export class CmsEditor {
                     val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
                     break;
                 case FieldType.IMAGE:
+                    if (val === "") val = null;
                     const img = cfg.el.children?.find(c => c.type == "$w.Image") || cfg.el;
                     if (img && "src" in img) {
                         img.src = val;
