@@ -41,7 +41,7 @@ export const FieldType = Object.freeze({
     DATE_RANGE: 'DATE_RANGE',
     HOURS_OF_DATE: 'HOURS_OF_DATE',
     IMAGE: 'IMAGE',
-    IMAGES: 'IMAGES', //TODO
+    IMAGES: 'IMAGES',
     SELECT: 'SELECT',
     MULTI_SELECT: 'MULTI_SELECT',
     REFERENCE: 'REFERENCE',
@@ -50,8 +50,6 @@ export const FieldType = Object.freeze({
 });
 
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
-let selIdx = -1; //TODO in class and based on ID, maybe part of cfg?
 
 export class CmsEditor {
     constructor(config) {
@@ -81,8 +79,8 @@ export class CmsEditor {
             cfg.el = $w(id);
             if (!cfg.label) cfg.label = cfg.el?.label || cfg.field;
             cfg.fieldsAdditonal ??= [];
-            cfg.required ??= false; //TODO
-            cfg.readOnly ??= false; //TODO
+            cfg.required ??= false;
+            cfg.readOnly ??= false;
             cfg.delay ??= cfg.type == FieldType.RICH_TEXT ? 3000 : 1500;
             cfg.prefix ??= "";
             cfg.suffix ??= "";
@@ -106,6 +104,9 @@ export class CmsEditor {
                 case FieldType.MULTI_REFERENCE:
                     cfg.onGenerateLabel ??= (item) => item._id;
                     break;
+                case FieldType.IMAGES:
+                    cfg.selIdx = -1;
+                    break;
             }
         }
 
@@ -114,60 +115,74 @@ export class CmsEditor {
 
             for (const [id, cfg] of Object.entries(this.cmsSchema)) {
                 const bind = (trg, events, delay = 0) => {
-                    events.forEach(s => {
-                        if (typeof trg[s] == 'function') {
-                            //console.log("Binding", s, "to", id);
-                            trg[s]((event) => {
-                                if (s != "onKeyPress" || event.key == "Enter") {
-                                    if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
-                                    if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
-                                    else this.updateDataFromUi(id);
-                                }
-                            });
-                        } else {
-                            //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
-                        }
-                    });
+                    for (const s of events) if (typeof trg[s] == 'function') {
+                        //console.log("Binding", s, "to", id);
+                        trg[s]((event) => {
+                            if (s != "onKeyPress" || event.key == "Enter") {
+                                if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
+                                if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
+                                else this.updateDataFromUi(id);
+                            }
+                        });
+                    } else {
+                        //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
+                    }
                 };
                 if (cfg.el) {
                     bind(cfg.el, ['onBlur', 'onKeyPress']);
                     bind(cfg.el, ['onInput', 'onChange'], cfg.delay);
 
+                    const appplyAttrs = (el) => {
+                        //if (el) {
+                        if ("required" in el) el.required = cfg.required;
+                        if (cfg.readOnly && "disable" in el) el.disable();
+                        if (!cfg.readOnly && "enable" in el) el.enable();
+                        //}
+                    };
+                    appplyAttrs(cfg.el);
+
                     if (cfg.type == FieldType.IMAGES) {
                         const gallery = this.findRecursive(cfg.el, "$w.Gallery");
-                        if (gallery) gallery.onItemClicked((event) => {
-                            selIdx = event.itemIndex;
-                            console.log("Selected media index on", id, ":", selIdx);
+                        if (gallery && !cfg.readOnly) gallery.onItemClicked((event) => {
+                            cfg.selIdx = event.itemIndex;
+                            console.log("Selected media index on", id, ":", cfg.selIdx);
                             this.updateUiFromData(id, this.ds.getCurrentItem()); // just to update selection marker
                         });
 
                         const updateMedia = (action) => {
                             const val = this.ensureArray(this.ds.getCurrentItem()?.[cfg.field]);
-                            console.log("Executing", action, "on", id, "with", val.length, "items for index", selIdx);
-                            if (selIdx < 0 || selIdx >= val.length) return;
-                            if (action == "moveleft" && selIdx > 0) {
-                                [val[selIdx - 1], val[selIdx]] = [val[selIdx], val[selIdx - 1]];
-                                selIdx--;
-                            } else if (action == "moveright" && selIdx < val.length - 1) {
-                                [val[selIdx + 1], val[selIdx]] = [val[selIdx], val[selIdx + 1]];
-                                selIdx++;
+                            console.log("Executing", action, "on", id, "with", val.length, "items for index", cfg.selIdx);
+                            if (cfg.selIdx < 0 || cfg.selIdx >= val.length) return;
+                            if (action == "moveleft" && cfg.selIdx > 0) {
+                                [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
+                                cfg.selIdx--;
+                            } else if (action == "moveright" && cfg.selIdx < val.length - 1) {
+                                [val[cfg.selIdx + 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx + 1]];
+                                cfg.selIdx++;
                             } else if (action == "remove") {
-                                val.splice(selIdx, 1);
-                                selIdx = -1;
+                                val.splice(cfg.selIdx, 1);
+                                cfg.selIdx = -1;
                             }
-                            console.log("Selected media index on", id, ":", selIdx);
+                            console.log("Selected media index on", id, ":", cfg.selIdx);
                             this.ds.setFieldValue(cfg.field, val);
                             this.updateUiFromData(id, null, val);
                         };
-                        ['moveleft', 'moveright', 'remove'].forEach(namePart => {
+                        for (const namePart of ['moveleft', 'moveright', 'remove']) {
                             const btn = this.findRecursive(cfg.el, "$w.Button", namePart);
                             if (btn) btn.onClick(() => updateMedia(namePart));
-                        });
+                            appplyAttrs(btn);
+                        }
                     }
 
                     if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
+                        const lbl = this.findRecursive(cfg.el, "$w.Text", "name");
+                        if (lbl && "text" in lbl) {
+                            const s = lbl.text.replace(/\s\*$/, "").trim();
+                            lbl.text = cfg.required ? s + " *" : s;
+                        }
                         const btn = this.findRecursive(cfg.el, "$w.UploadButton");
                         if (btn) bind(btn, ['onChange']);
+                        appplyAttrs(btn);
                     }
 
                     if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
@@ -200,10 +215,10 @@ export class CmsEditor {
             "#buttonNext": () => this.navigateRelative(1)
         };
 
-        Object.entries(uiButtons).forEach(([id, action]) => {
+        for (const [id, action] of Object.entries(uiButtons)) {
             const el = $w(id);
             if (el.id) el.onClick(async () => await action()); else console.warn(id, "not found in DOM");
-        });
+        }
     }
 
     /**
@@ -211,6 +226,7 @@ export class CmsEditor {
      */
     refreshUI() {
         console.log("refreshUI");
+        for (const cfg of Object.values(this.cmsSchema)) if ("selIdx" in cfg) cfg.selIdx = -1;
         const item = this.ds.getCurrentItem();
         if (item) for (const id of Object.keys(this.cmsSchema))
             this.updateUiFromData(id, item);
@@ -300,7 +316,7 @@ export class CmsEditor {
                 if (btn?.value?.length > 0) {
                     const files = await btn.uploadFiles();
                     val = files[0].fileUrl;
-                    btn.value = [];
+                    btn.reset();
                     needRefresh = true;
                 } else
                     val = this.ds.getCurrentItem()?.[cfg.field] || ""; // keep existing image
@@ -310,8 +326,8 @@ export class CmsEditor {
                 const currentImages = this.ensureArray(this.ds.getCurrentItem()?.[cfg.field]);
                 if (btn?.value?.length > 0) {
                     const files = await btn.uploadFiles();
-                    val = [...currentImages, ...files.map(file => this.createMediaStruct(file.fileUrl, file.fileName))];
-                    btn.value = [];
+                    val = [...currentImages, ...files.map((file, i) => this.createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
+                    btn.reset();
                     needRefresh = true;
                 } else {
                     val = currentImages;
@@ -336,12 +352,15 @@ export class CmsEditor {
         if (needRefresh) await this.updateUiFromData(id, null, val);
     }
 
-    createMediaStruct(v, namePart = null) {
-        return typeof v != "string" ? v : {
-            src: v,
-            title: namePart ?? (v.split('/').pop()?.split('?')[0] || ""),
-            type: /\.(mp4|mov|webm|video)/i.test(v) ? "video" : "image"
-        };
+    createMediaStruct(cfg, idx, v, namePart = null) {
+        return typeof v != "string"
+            ? { ...v, description: idx == cfg.selIdx ? "✅" : "" }
+            : {
+                src: v,
+                title: namePart ?? (v.split('/').pop()?.split('?')[0] || ""),
+                type: /\.(mp4|mov|webm|video)/i.test(v) ? "video" : "image",
+                description: idx == cfg.selIdx ? "✅" : "",
+            };
     }
 
     /**
@@ -395,13 +414,11 @@ export class CmsEditor {
                 }
                 break;
             case FieldType.IMAGES:
-                val = this.ensureArray(val).map(v => this.createMediaStruct(v));
+                val = this.ensureArray(val).map((v, i) => this.createMediaStruct(cfg, i, v));
                 const gallery = this.findRecursive(cfg.el, "$w.Gallery");
                 if (gallery && "items" in gallery) {
-                    gallery.items = val.map((item, idx) => ({
-                        ...item,
-                        description: idx == selIdx ? "✅" : ""
-                    }));
+                    gallery.items = val;
+                    if (gallery.items.length == 0) gallery.collapse(); else gallery.expand();
                     done = true;
                 }
                 break;
@@ -510,6 +527,12 @@ export class CmsEditor {
         console.log("saveItem");
         await this.flushDebounce();
         console.log(`saveItem:\n${JSON.stringify(this.ds.getCurrentItem(), null, 2)}`);
+
+        if (!this.validate()) {
+            this.showError("Bitte Eingaben auf Fehler prüfen");
+            return;
+        }
+
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
         if (beforeSafeResult == null) return;
@@ -602,6 +625,18 @@ export class CmsEditor {
             ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
         ];
         $w("#itemSelector").value = currentItem?._id ?? undefined;
+    }
+
+    validate() {
+        let isValid = true;
+        for (const cfg of Object.values(this.cmsSchema)) if (cfg.required) {
+            const val = this.ds.getCurrentItem()?.[cfg.field];
+            if (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0)) {
+                if (cfg.el?.updateValidityIndication) cfg.el.updateValidityIndication();
+                isValid = false;
+            }
+        }
+        return isValid;
     }
 
     showError(error) {
