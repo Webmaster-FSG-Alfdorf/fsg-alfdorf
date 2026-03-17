@@ -49,6 +49,8 @@ export const FieldType = Object.freeze({
     CUSTOM: 'CUSTOM',
 });
 
+const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
@@ -318,7 +320,7 @@ export class CmsEditor {
                     val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
                     break;
                 case FieldType.IMAGE:
-                    if (val === "") val = null;
+                    val ||= TRANSPARENT_PIXEL;
                     const img = cfg.el.children?.find(c => c.type == "$w.Image") || cfg.el;
                     if (img && "src" in img) {
                         img.src = val;
