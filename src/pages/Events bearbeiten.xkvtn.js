@@ -163,6 +163,7 @@ async function doQueryUpdate(searchText) {
 
     try {
         const res = await q.ascending("title").limit(1000).find();
+        //console.log(`doQueryUpdate result:\n${JSON.stringify(res, null, 2)}`);
         return res.items;
     } catch (err) {
         console.error("Query failed", err);

@@ -447,7 +447,8 @@ export function debugStr(dt) {
  * @returns {Date}
  */
 export function toUTC(localDate) {
-    const dt = new Date(localDate);
+    const dt = new Date(localDate || Date.now());
+    if (isNaN(dt.getTime())) return new Date();
     return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000);
 }
 
@@ -456,7 +457,8 @@ export function toUTC(localDate) {
  * @returns {Date}
  */
 export function toLocal(utcDate) {
-    const dt = new Date(utcDate);
+    const dt = new Date(utcDate || Date.now());
+    if (isNaN(dt.getTime())) return new Date();
     return new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
 }
 

@@ -130,9 +130,50 @@ export class CmsEditor {
                 if (cfg.el) {
                     bind(cfg.el, ['onBlur', 'onKeyPress']);
                     bind(cfg.el, ['onInput', 'onChange'], cfg.delay);
+
                     if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
+                        const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery");
+                        const moveLeft = cfg.el.children?.find(c => c.id.includes("MoveLeftButton"));
+                        const moveRight = cfg.el.children?.find(c => c.id.includes("MoveRightButton"));
+                        const removeBtn = cfg.el.children?.find(c => c.id.includes("RemoveButton"));
+
+                        // State to track selection
+                        let selectedIndex = -1;
+
+                        gallery.onItemClicked((event) => {
+                            selectedIndex = event.itemIndex;
+                            // Optional: Visual feedback (e.g., update a label or button style)
+                            console.log("Selected media index:", selectedIndex);
+                        });
+
+                        const updateMedia = (action) => {
+                            const item = this.ds.getCurrentItem();
+                            let media = this.ensureArray(item[cfg.field]);
+                            if (selectedIndex === -1 || media.length === 0) return;
+
+                            if (action === "LEFT" && selectedIndex > 0) {
+                                [media[selectedIndex - 1], media[selectedIndex]] = [media[selectedIndex], media[selectedIndex - 1]];
+                                selectedIndex--;
+                            } else if (action === "RIGHT" && selectedIndex < media.length - 1) {
+                                [media[selectedIndex + 1], media[selectedIndex]] = [media[selectedIndex], media[selectedIndex + 1]];
+                                selectedIndex++;
+                            } else if (action === "DELETE") {
+                                media.splice(selectedIndex, 1);
+                                selectedIndex = -1;
+                            }
+
+                            this.ds.setFieldValue(cfg.field, media);
+                            this.refreshUI();
+                        };
+
+                        if (moveLeft) moveLeft.onClick(() => updateMedia("LEFT"));
+                        if (moveRight) moveRight.onClick(() => updateMedia("RIGHT"));
+                        if (removeBtn) removeBtn.onClick(() => updateMedia("DELETE"));
+                    }
+
+                    if (cfg.type == FieldType.IMAGE) {
                         const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
-                        if (btn) bind(btn, ['onChange']);
+                        if (btn) bind(btn, ['onClick']);
                     }
 
                     if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
@@ -214,17 +255,27 @@ export class CmsEditor {
                 break;
             case FieldType.HOURS_OF_DATE: {
                 const utcDate = this.ds.getCurrentItem()[cfg.field];
-                let dt = new Date(utcDate || Date.now());
-                dt.setUTCHours(0, 0, 0, 0);
-                dt = toLocal(dt);
-                dt.setHours(Number(cfg.el.value || 0), 0, 0, 0);
-                val = toUTC(dt);
+                let dt = new Date(utcDate);
+                if (isNaN(dt.getTime()))
+                    val = null;
+                else {
+                    dt.setUTCHours(0, 0, 0, 0);
+                    dt = toLocal(dt);
+                    dt.setHours(Number(cfg.el.value || 0), 0, 0, 0);
+                    val = toUTC(dt);
+                }
                 break;
             }
             case FieldType.DATE: { // update date with new value but keep hours
-                val = new Date(cfg.el.value);
-                const oldDate = this.ds.getCurrentItem()[cfg.field];
-                val.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
+                const local = cfg.el.value;
+                if (!local || isNaN(new Date(local).getTime())) {
+                    val = null;
+                } else {
+                    val = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
+                    const cur = this.ds.getCurrentItem();
+                    const oldDate = cur ? cur[cfg.field] : null;
+                    val.setUTCHours(oldDate ? new Date(oldDate).getUTCHours() : 0, 0, 0, 0);
+                }
                 break;
             }
             case FieldType.DATE_RANGE: { // update date with new value but keep hours
@@ -244,26 +295,29 @@ export class CmsEditor {
                 break;
             case FieldType.MULTI_SELECT:
             case FieldType.MULTI_REFERENCE:
-                val = Array.isArray(cfg.el.value) ? cfg.el.value : cfg.el.value ? [cfg.el.value] : [];
+                val = this.ensureArray(cfg.el.value);
                 break;
             case FieldType.STRING:
                 val = cfg.trim ? String(cfg.el.value).trim() : String(cfg.el.value);
                 break;
             case FieldType.IMAGE:
                 const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
-                if (btn && btn.value.length > 0) {
+                if (btn && btn.value && btn.value.length > 0) {
                     const files = await btn.uploadFiles();
                     val = files[0].fileUrl;
+                    const img = cfg.el.children?.find(c => c.type == "$w.Image");
+                    if (img && "src" in img) img.src = val;
                 } else
-                    val = this.ds.getCurrentItem()[cfg.field]; // keep existing image
+                    val = this.ds.getCurrentItem()?.[cfg.field] || ""; // keep existing image
                 break;
             case FieldType.IMAGES: {
                 const btn = cfg.el.children?.find(c => c.type === "$w.UploadButton");
-                if (btn && btn.value.length > 0) {
+                const currentImages = this.ensureArray(this.ds.getCurrentItem()?.[cfg.field]);
+                if (btn && btn.value && btn.value.length > 0) {
                     const files = await btn.uploadFiles();
-                    val = [...this.ds.getCurrentItem()[cfg.field] || [], ...files.map(f => f.fileUrl)]; // add new images
+                    val = [...currentImages, ...files.map(f => f.fileUrl)];
                 } else {
-                    val = this.ds.getCurrentItem()[cfg.field];
+                    val = currentImages;
                 }
                 break;
             }
@@ -288,6 +342,8 @@ export class CmsEditor {
      */
     async updateUiFromData() {
         const item = this.ds.getCurrentItem();
+        //console.log(`updateUiFromData:\n${JSON.stringify(item, null, 2)}`);
+
         if (!item) {
             console.log("No current item - skipping UI update");
             return;
@@ -314,31 +370,43 @@ export class CmsEditor {
                     }
                     break;
                 case FieldType.DATE:
-                    if (val) val = new Date(val);
+                    if (val) val = toLocal(new Date(val));
+                    if (val && isNaN(val.getTime())) val = null;
                     break;
                 case FieldType.DATE_RANGE:
                     val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
                     break;
                 case FieldType.IMAGE:
                     val ||= TRANSPARENT_PIXEL;
-                    const img = cfg.el.children?.find(c => c.type == "$w.Image") || cfg.el;
+                    const img = cfg.el.children?.find(c => c.type == "$w.Image");
                     if (img && "src" in img) {
                         img.src = val;
                         done = true;
                     }
                     break;
                 case FieldType.IMAGES:
-                    val = Array.isArray(val) ? val : (val ? [val] : []);
-                    val = val.map(url => ({ src: url }));
-                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery") || cfg.el;
+                    val = this.ensureArray(val).map(url => ({
+                        src: url,
+                        type: url.includes("video") || url.toLowerCase().includes("mp4") ? "video" : "image"
+                    }));
+                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery");
                     if (gallery && "items" in gallery) {
                         gallery.items = val;
                         done = true;
                     }
                     break;
-                case FieldType.MULTI_REFERENCE:
-                    val = Array.isArray(val) ? val : (val ? [val] : []);
+                case FieldType.MULTI_REFERENCE: {
+                    if (!val) try {
+                        const refResult = await wixData.queryReferenced(this.cmsName, item._id, cfg.field);
+                        //console.log(`updateUiFromData MULTI_REFERENCE:\n${JSON.stringify(refResult, null, 2)}`);
+                        val = this.ensureArray(refResult.items.map(refItem => refItem._id));
+                        this.ds.setFieldValue(cfg.field, val);
+                    } catch (e) {
+                        console.error("Failed to fetch references for", cfg.field, ":", e);
+                        val = [];
+                    }
                     break;
+                }
                 case FieldType.CUSTOM:
                     try {
                         val = await cfg.onFormatValue(item);
@@ -386,8 +454,8 @@ export class CmsEditor {
             [FieldType.DATE]: () => dateRangeToString(v, null, cfg.format),
             [FieldType.DATE_RANGE]: () => dateRangeToString(v, item[cfg.fieldsAdditonal[0]], cfg.format),
             [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
-            [FieldType.MULTI_SELECT]: () => Array.isArray(v) ? v.join(", ") : String(v),
-            [FieldType.IMAGES]: () => Array.isArray(v) ? `${v.length} Bilder` : "Keine Bilder",
+            [FieldType.MULTI_SELECT]: () => this.ensureArray(v).join(", "),
+            [FieldType.IMAGES]: () => `${this.ensureArray(v).length} Bilder`,
             [FieldType.CUSTOM]: () => cfg.onFormatValue(item),
         };
         const res = v == null || v === "" ? null : (formatters[cfg.type] || (() => String(v)))();
@@ -416,16 +484,6 @@ export class CmsEditor {
     }
 
     /**
-     * Fetches all configured values of the current item.
-     * @returns {Promise<Array<[string, string]>>} List of [label, value].
-     */
-    async listAllValues() {
-        const item = this.ds.getCurrentItem();
-        return await Promise.all(Object.values(this.cmsSchema).filter(cfg => cfg.collectDiff).map(async (cfg) =>
-            [cfg.label, await this.displayValue(item, cfg)]));
-    }
-
-    /**
      * Immediately executes any pending debounced updates.
      * @param {boolean} [update=true] - Whether to perform the data update.
      */
@@ -442,11 +500,17 @@ export class CmsEditor {
     async saveItem() {
         console.log("saveItem");
         await this.flushDebounce();
-        console.log("saveItem", await this.listAllValues());
+        console.log(`saveItem:\n${JSON.stringify(this.ds.getCurrentItem(), null, 2)}`);
         this.collapseResponse();
         const beforeSafeResult = await this.onBeforeSave();
         if (beforeSafeResult == null) return;
-        await this.ds.save();
+        const savedItem = await this.ds.save();
+        if (savedItem) for (const cfg of Object.values(this.cmsSchema))
+            if (cfg.type == FieldType.MULTI_REFERENCE) {
+                const val = this.ensureArray(cfg.el.value);
+                console.log("saveItem replaceReferences", cfg.field, savedItem._id, val);
+                await wixData.replaceReferences(this.cmsName, cfg.field, savedItem._id, val);
+            }
         console.log("item saved");
         this.updateSelectorList();
         this.onAfterSave(beforeSafeResult);
@@ -559,6 +623,17 @@ export class CmsEditor {
             clearTimeout(this.messageTimer);
             this.messageTimer = null;
         }
+    }
+
+    /**
+     * If val already is an array, returns it, 
+     * if val is null, returns [],
+     * else returns val as a single-length array.
+     * @param {any} val 
+     * @returns any[] 
+     */
+    ensureArray(val) {
+        return Array.isArray(val) ? val : (val ? [val] : []);
     }
 
 }
