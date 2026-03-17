@@ -51,6 +51,8 @@ export const FieldType = Object.freeze({
 
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
+let selIdx = -1; //TODO in class and based on ID, maybe part of cfg?
+
 export class CmsEditor {
     constructor(config) {
         this.cmsName = config.cmsName;
@@ -131,49 +133,41 @@ export class CmsEditor {
                     bind(cfg.el, ['onBlur', 'onKeyPress']);
                     bind(cfg.el, ['onInput', 'onChange'], cfg.delay);
 
-                    if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
-                        const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery");
-                        const moveLeft = cfg.el.children?.find(c => c.id.includes("MoveLeftButton"));
-                        const moveRight = cfg.el.children?.find(c => c.id.includes("MoveRightButton"));
-                        const removeBtn = cfg.el.children?.find(c => c.id.includes("RemoveButton"));
-
-                        // State to track selection
-                        let selectedIndex = -1;
-
-                        gallery.onItemClicked((event) => {
-                            selectedIndex = event.itemIndex;
-                            // Optional: Visual feedback (e.g., update a label or button style)
-                            console.log("Selected media index:", selectedIndex);
+                    if (cfg.type == FieldType.IMAGES) {
+                        const gallery = this.findRecursive(cfg.el, "$w.Gallery");
+                        if (gallery) gallery.onItemClicked((event) => {
+                            selIdx = event.itemIndex;
+                            console.log("Selected media index on", id, ":", selIdx);
+                            this.updateUiFromData(id, this.ds.getCurrentItem()); // just to update selection marker
                         });
 
                         const updateMedia = (action) => {
-                            const item = this.ds.getCurrentItem();
-                            let media = this.ensureArray(item[cfg.field]);
-                            if (selectedIndex === -1 || media.length === 0) return;
-
-                            if (action === "LEFT" && selectedIndex > 0) {
-                                [media[selectedIndex - 1], media[selectedIndex]] = [media[selectedIndex], media[selectedIndex - 1]];
-                                selectedIndex--;
-                            } else if (action === "RIGHT" && selectedIndex < media.length - 1) {
-                                [media[selectedIndex + 1], media[selectedIndex]] = [media[selectedIndex], media[selectedIndex + 1]];
-                                selectedIndex++;
-                            } else if (action === "DELETE") {
-                                media.splice(selectedIndex, 1);
-                                selectedIndex = -1;
+                            const val = this.ensureArray(this.ds.getCurrentItem()?.[cfg.field]);
+                            console.log("Executing", action, "on", id, "with", val.length, "items for index", selIdx);
+                            if (selIdx < 0 || selIdx >= val.length) return;
+                            if (action == "moveleft" && selIdx > 0) {
+                                [val[selIdx - 1], val[selIdx]] = [val[selIdx], val[selIdx - 1]];
+                                selIdx--;
+                            } else if (action == "moveright" && selIdx < val.length - 1) {
+                                [val[selIdx + 1], val[selIdx]] = [val[selIdx], val[selIdx + 1]];
+                                selIdx++;
+                            } else if (action == "remove") {
+                                val.splice(selIdx, 1);
+                                selIdx = -1;
                             }
-
-                            this.ds.setFieldValue(cfg.field, media);
-                            this.refreshUI();
+                            console.log("Selected media index on", id, ":", selIdx);
+                            this.ds.setFieldValue(cfg.field, val);
+                            this.updateUiFromData(id, null, val);
                         };
-
-                        if (moveLeft) moveLeft.onClick(() => updateMedia("LEFT"));
-                        if (moveRight) moveRight.onClick(() => updateMedia("RIGHT"));
-                        if (removeBtn) removeBtn.onClick(() => updateMedia("DELETE"));
+                        ['moveleft', 'moveright', 'remove'].forEach(namePart => {
+                            const btn = this.findRecursive(cfg.el, "$w.Button", namePart);
+                            if (btn) btn.onClick(() => updateMedia(namePart));
+                        });
                     }
 
-                    if (cfg.type == FieldType.IMAGE) {
-                        const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
-                        if (btn) bind(btn, ['onClick']);
+                    if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
+                        const btn = this.findRecursive(cfg.el, "$w.UploadButton");
+                        if (btn) bind(btn, ['onChange']);
                     }
 
                     if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
@@ -197,23 +191,19 @@ export class CmsEditor {
             if (val == "--new--") this.newItem(); else this.navigateTo(val);
         }); else console.warn("itemSelector not found in DOM");
 
-        if ($w("#buttonSave").id) $w("#buttonSave").onClick(async () => this.saveItem());
-        else console.warn("buttonSave not found in DOM");
+        const uiButtons = {
+            "#buttonSave": () => this.saveItem(),
+            "#buttonRevert": () => this.revertItem(),
+            "#buttonNew": () => this.newItem(),
+            "#buttonRemove": () => this.removeItem(),
+            "#buttonPrev": () => this.navigateRelative(-1),
+            "#buttonNext": () => this.navigateRelative(1)
+        };
 
-        if ($w("#buttonRevert").id) $w("#buttonRevert").onClick(() => this.revertItem());
-        else console.warn("buttonRevert not found in DOM");
-
-        if ($w("#buttonNew").id) $w("#buttonNew").onClick(() => this.newItem());
-        else console.warn("buttonNew not found in DOM");
-
-        if ($w("#buttonRemove").id) $w("#buttonRemove").onClick(() => this.removeItem());
-        else console.warn("buttonRemove not found in DOM");
-
-        if ($w("#buttonPrev").id) $w("#buttonPrev").onClick(() => this.navigateRelative(-1));
-        else console.warn("buttonPrev not found in DOM");
-
-        if ($w("#buttonNext").id) $w("#buttonNext").onClick(() => this.navigateRelative(1));
-        else console.warn("buttonNext not found in DOM");
+        Object.entries(uiButtons).forEach(([id, action]) => {
+            const el = $w(id);
+            if (el.id) el.onClick(async () => await action()); else console.warn(id, "not found in DOM");
+        });
     }
 
     /**
@@ -221,7 +211,10 @@ export class CmsEditor {
      */
     refreshUI() {
         console.log("refreshUI");
-        this.updateUiFromData();
+        const item = this.ds.getCurrentItem();
+        if (item) for (const id of Object.keys(this.cmsSchema))
+            this.updateUiFromData(id, item);
+        else console.log("No current item - skipping UI update");
         this.updateSelectorList();
         this.onRefreshUI();
     }
@@ -242,6 +235,8 @@ export class CmsEditor {
             console.error("Cannot assign from input", id, ": Input element not found")
             return;
         }
+
+        let needRefresh = false;
         let val;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
@@ -301,21 +296,23 @@ export class CmsEditor {
                 val = cfg.trim ? String(cfg.el.value).trim() : String(cfg.el.value);
                 break;
             case FieldType.IMAGE:
-                const btn = cfg.el.children?.find(c => c.type == "$w.UploadButton");
-                if (btn && btn.value && btn.value.length > 0) {
+                const btn = this.findRecursive(cfg.el, "$w.UploadButton");
+                if (btn?.value?.length > 0) {
                     const files = await btn.uploadFiles();
                     val = files[0].fileUrl;
-                    const img = cfg.el.children?.find(c => c.type == "$w.Image");
-                    if (img && "src" in img) img.src = val;
+                    btn.value = [];
+                    needRefresh = true;
                 } else
                     val = this.ds.getCurrentItem()?.[cfg.field] || ""; // keep existing image
                 break;
             case FieldType.IMAGES: {
-                const btn = cfg.el.children?.find(c => c.type === "$w.UploadButton");
+                const btn = this.findRecursive(cfg.el, "$w.UploadButton");
                 const currentImages = this.ensureArray(this.ds.getCurrentItem()?.[cfg.field]);
-                if (btn && btn.value && btn.value.length > 0) {
+                if (btn?.value?.length > 0) {
                     const files = await btn.uploadFiles();
-                    val = [...currentImages, ...files.map(f => f.fileUrl)];
+                    val = [...currentImages, ...files.map(file => this.createMediaStruct(file.fileUrl, file.fileName))];
+                    btn.value = [];
+                    needRefresh = true;
                 } else {
                     val = currentImages;
                 }
@@ -335,105 +332,117 @@ export class CmsEditor {
         console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
         this.ds.setFieldValue(cfg.field, val);
         if (cfg.onChanged) await cfg.onChanged(val);
+
+        if (needRefresh) await this.updateUiFromData(id, null, val);
+    }
+
+    createMediaStruct(v, namePart = null) {
+        return typeof v != "string" ? v : {
+            src: v,
+            title: namePart ?? (v.split('/').pop()?.split('?')[0] || ""),
+            type: /\.(mp4|mov|webm|video)/i.test(v) ? "video" : "image"
+        };
     }
 
     /**
-     * Populates UI elements with data from the current dataset item.
+     * Populates UI elements with data from an item or a given value.
+     * @param {string} id - The ID of the element in cmsSchema.
      */
-    async updateUiFromData() {
-        const item = this.ds.getCurrentItem();
-        //console.log(`updateUiFromData:\n${JSON.stringify(item, null, 2)}`);
-
-        if (!item) {
-            console.log("No current item - skipping UI update");
+    async updateUiFromData(id, item = null, val = null) {
+        const cfg = this.cmsSchema[id];
+        if (!cfg) {
+            console.error("Cannot assign to input", id, ": CMS schema not found in configuration")
             return;
         }
-        for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-            if (!cfg.el) continue;
-            let val = item[cfg.field];
-            let done = false;
-            switch (cfg.type) {
-                case FieldType.BOOLEAN:
-                    val = !!val;
-                    if ("checked" in cfg.el) {
-                        cfg.el.checked = val;
-                        done = true;
-                    }
-                    break;
-                case FieldType.ADDRESS:
-                    val = val && typeof val == 'object' ? val : { formatted: "" };
-                    break;
-                case FieldType.HOURS_OF_DATE:
-                    if (!val && "selectedIndex" in cfg.el) {
-                        cfg.el.selectedIndex = 0;
-                        done = true;
-                    }
-                    break;
-                case FieldType.DATE:
-                    if (val) val = toLocal(new Date(val));
-                    if (val && isNaN(val.getTime())) val = null;
-                    break;
-                case FieldType.DATE_RANGE:
-                    val = dateRangeToString(val, item[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
-                    break;
-                case FieldType.IMAGE:
-                    val ||= TRANSPARENT_PIXEL;
-                    const img = cfg.el.children?.find(c => c.type == "$w.Image");
-                    if (img && "src" in img) {
-                        img.src = val;
-                        done = true;
-                    }
-                    break;
-                case FieldType.IMAGES:
-                    val = this.ensureArray(val).map(url => ({
-                        src: url,
-                        type: url.includes("video") || url.toLowerCase().includes("mp4") ? "video" : "image"
-                    }));
-                    const gallery = cfg.el.children?.find(c => c.type === "$w.Gallery");
-                    if (gallery && "items" in gallery) {
-                        gallery.items = val;
-                        done = true;
-                    }
-                    break;
-                case FieldType.MULTI_REFERENCE: {
-                    if (!val) try {
-                        const refResult = await wixData.queryReferenced(this.cmsName, item._id, cfg.field);
-                        //console.log(`updateUiFromData MULTI_REFERENCE:\n${JSON.stringify(refResult, null, 2)}`);
-                        val = this.ensureArray(refResult.items.map(refItem => refItem._id));
-                        this.ds.setFieldValue(cfg.field, val);
-                    } catch (e) {
-                        console.error("Failed to fetch references for", cfg.field, ":", e);
-                        val = [];
-                    }
-                    break;
-                }
-                case FieldType.CUSTOM:
-                    try {
-                        val = await cfg.onFormatValue(item);
-                    } catch (e) {
-                        console.warn("Error in onFormatValue for", id, ":", e);
-                        val = null;
-                    }
-                    break;
-            }
-            console.log("Updating user input", id, "from", cfg.field, "with value:", val);
-            if (!done) {
-                // if no special set function has been used, try to use the default 
-                if ("value" in cfg.el)
-                    cfg.el.value = val;
-                else
-                    console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
-            }
 
-            const btn = cfg.linkButton ? $w(cfg.linkButton) : null;
-            if (btn && btn.id) {
-                if (val) btn.link = `${cfg.linkPrefix ?? ""}${val}`;
-                if (val) btn.enable(); else btn.disable();
-                btn.target = "_blank";
-            }
-
-            if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
+        if (!cfg.el || !cfg.el.id) {
+            console.error("Cannot assign to input", id, ": Input element not found")
+            return;
         }
+
+        val ??= item?.[cfg.field];
+        let done = false;
+        switch (cfg.type) {
+            case FieldType.BOOLEAN:
+                val = !!val;
+                if ("checked" in cfg.el) {
+                    cfg.el.checked = val;
+                    done = true;
+                }
+                break;
+            case FieldType.ADDRESS:
+                val = val && typeof val == 'object' ? val : { formatted: "" };
+                break;
+            case FieldType.HOURS_OF_DATE:
+                if (!val && "selectedIndex" in cfg.el) {
+                    cfg.el.selectedIndex = 0;
+                    done = true;
+                }
+                break;
+            case FieldType.DATE:
+                if (val) val = toLocal(new Date(val));
+                if (val && isNaN(val.getTime())) val = null;
+                break;
+            case FieldType.DATE_RANGE:
+                val = dateRangeToString(val, item?.[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
+                break;
+            case FieldType.IMAGE:
+                val ||= TRANSPARENT_PIXEL;
+                const img = this.findRecursive(cfg.el, "$w.Image");
+                if (img && "src" in img) {
+                    img.src = val;
+                    done = true;
+                }
+                break;
+            case FieldType.IMAGES:
+                val = this.ensureArray(val).map(v => this.createMediaStruct(v));
+                const gallery = this.findRecursive(cfg.el, "$w.Gallery");
+                if (gallery && "items" in gallery) {
+                    gallery.items = val.map((item, idx) => ({
+                        ...item,
+                        description: idx == selIdx ? "✅" : ""
+                    }));
+                    done = true;
+                }
+                break;
+            case FieldType.MULTI_REFERENCE: {
+                if (!val) try {
+                    const refResult = await wixData.queryReferenced(this.cmsName, item?._id, cfg.field);
+                    //console.log(`updateUiFromData MULTI_REFERENCE:\n${JSON.stringify(refResult, null, 2)}`);
+                    val = this.ensureArray(refResult.items.map(refItem => refItem._id));
+                    this.ds.setFieldValue(cfg.field, val);
+                } catch (e) {
+                    console.error("Failed to fetch references for", cfg.field, ":", e);
+                    val = [];
+                }
+                break;
+            }
+            case FieldType.CUSTOM:
+                try {
+                    val = await cfg.onFormatValue(item);
+                } catch (e) {
+                    console.warn("Error in onFormatValue for", id, ":", e);
+                    val = null;
+                }
+                break;
+        }
+        console.log("Updating user input", id, "from", cfg.field, "with value:", val);
+        if (!done) {
+            // if no special set function has been used, try to use the default 
+            if ("value" in cfg.el)
+                cfg.el.value = val;
+            else
+                console.error("Cannot assign to user input", id, "from field", cfg.field, ": No 'value' property")
+        }
+
+        const btn = cfg.linkButton ? $w(cfg.linkButton) : null;
+        if (btn && btn.id) {
+            if (val) btn.link = `${cfg.linkPrefix ?? ""}${val}`;
+            if (val) btn.enable(); else btn.disable();
+            btn.target = "_blank";
+        }
+
+        if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
     }
 
     /**
@@ -634,6 +643,17 @@ export class CmsEditor {
      */
     ensureArray(val) {
         return Array.isArray(val) ? val : (val ? [val] : []);
+    }
+
+    findRecursive(element, type = null, namePart = null) {
+        if (!element.children) return null;
+        let found = element.children.find(c => (!type || c.type === type) && (!namePart || c.id.toLowerCase().includes(namePart)));
+        if (found) return found;
+        for (const child of element.children) {
+            found = this.findRecursive(child, type, namePart);
+            if (found) return found;
+        }
+        return null;
     }
 
 }
