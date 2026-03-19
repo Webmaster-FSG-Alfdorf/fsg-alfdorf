@@ -4,9 +4,9 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
 
 /**
  * @typedef {Object} CmsFieldConfig
- * @property {string} field - The CMS field key.
- * @property {string[]} fieldsAdditonal - Additional CMS field keys for types that support multiple (like DATE_RANGE).
- * @property {string} type - FieldType constant (e.g., STRING, DATE, RICH_TEXT).
+ * @property {string} field - The CMS field key in case there is only one field.
+ * @property {string[]} fields - A list of CMS field keys for types that support multiple (like DATE_RANGE). Overwrites field property.
+ * @property {string} type - FieldType constant.
  * @property {Object} [el] - The Wix UI element $w (automatically assigned during init).
  * @property {string} [label] - Display label for logs and diffs (defaults to 'label' property of 'el'.
  * @property {boolean} [required] - Item can only be stored if data has been entered (default false).
@@ -27,8 +27,8 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
  * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
  * @property {Object} [format] - For FieldType.DATE: Options for dateRangeToString.
  * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
- * @property {boolean} [dataSet] - For FieldType.REFERENCE and FieldType.MULTI_REFERENCE: Name of the dataset to which the references shall point.
- * @property {boolean} [onGenerateLabel] - (item) => string: For FieldType.REFERENCE and FieldType.MULTI_REFERENCE: Label for entries of the dataset.
+ * @property {boolean} [dataSet] - For FieldType.REFERENCE/MULTI_REFERENCE: Name of the dataset to which the references shall point.
+ * @property {boolean} [onGenerateLabel] - (item) => string: For FieldType.REFERENCE/MULTI_REFERENCE: Label for entries of the dataset.
  */
 
 export const FieldType = Object.freeze({
@@ -49,6 +49,15 @@ export const FieldType = Object.freeze({
     CUSTOM: 'CUSTOM',
 });
 
+export const FilterType = Object.freeze({
+    EQ: 'EQ',
+    CONTAINS: 'CONTAINS',
+    HAS_SOME: 'HAS_SOME',
+    GE: 'GE',
+    LE: 'LE',
+    IS_NOT_EMPTY: 'IS_NOT_EMPTY'
+});
+
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export class CmsEditor {
@@ -61,10 +70,15 @@ export class CmsEditor {
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
         this.onAfterDelete = config.onAfterDelete || (() => { });
-        this.onQueryUpdate = config.onQueryUpdate || ((searchText) => { });
         this.generateTitle = config.generateTitle || ((item) => item?.title || "(Unbenannt)");
 
+        this.filterSchema = config.filterSchema || {};
+        this.filterLimit = config.filterLimit || 1000;
+        this.filterSortField = config.filterSortField || "_id";
+        this.filterSortAscending = config.filterSortAscending || true;
+
         this.ds = $w(`#${this.dataSetName}`);
+        this.originalItem = null;
         this.messageTimer = null;
         this.debounceTimers = {};
     }
@@ -77,8 +91,11 @@ export class CmsEditor {
 
         for (const [id, cfg] of Object.entries(this.cmsSchema)) {
             cfg.el = $w(id);
+            if (Array.isArray(cfg.fields)) {
+                cfg.field = cfg.fields[0];
+            } else
+                cfg.fields = null;
             if (!cfg.label) cfg.label = cfg.el?.label || cfg.field;
-            cfg.fieldsAdditonal ??= [];
             cfg.required ??= false;
             cfg.readOnly ??= false;
             cfg.delay ??= cfg.type == FieldType.RICH_TEXT ? 3000 : 1500;
@@ -113,31 +130,45 @@ export class CmsEditor {
         this.ds.onReady(async () => {
             this.refreshUI();
 
-            for (const [id, cfg] of Object.entries(this.cmsSchema)) {
-                const bind = (trg, events, delay = 0) => {
-                    for (const s of events) if (typeof trg[s] == 'function') {
-                        //console.log("Binding", s, "to", id);
-                        trg[s]((event) => {
-                            if (s != "onKeyPress" || event.key == "Enter") {
-                                if (this.debounceTimers[id]) clearTimeout(this.debounceTimers[id]);
-                                if (delay > 0) this.debounceTimers[id] = setTimeout(() => this.updateDataFromUi(id), delay);
-                                else this.updateDataFromUi(id);
-                            }
-                        });
-                    } else {
-                        //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
-                    }
-                };
-                if (cfg.el) {
-                    bind(cfg.el, ['onBlur', 'onKeyPress']);
-                    bind(cfg.el, ['onInput', 'onChange'], cfg.delay);
+            const bind = (trg, events, delay, callback) => {
+                for (const s of events) if (typeof trg[s] == "function") {
+                    //console.log("Binding", s, "to", id);
+                    trg[s]((event) => {
+                        if (s != "onKeyPress" || event.key == "Enter") {
+                            const timerId = trg.id || "global";
+                            if (this.debounceTimers[timerId]) clearTimeout(this.debounceTimers[timerId]);
+                            if (delay > 0) this.debounceTimers[timerId] = setTimeout(() => callback(), delay);
+                            else callback();
+                        }
+                    });
+                } else {
+                    //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
+                }
+            };
 
+            for (const [id, cfg] of Object.entries(this.cmsSchema)) {
+                if (!cfg.el)
+                    console.warn("No such input element:", id);
+                else {
+                    bind(cfg.el, ['onBlur', 'onKeyPress'], 0, () => this.updateDataFromUi(id));
+                    bind(cfg.el, ['onInput', 'onChange'], cfg.delay, () => this.updateDataFromUi(id));
+
+                    let requiredApplied = false;
+                    let readOnlyApplied = false;
+                    let customValidationApplied = false;
                     const appplyAttrs = (el) => {
-                        //if (el) {
-                        if ("required" in el) el.required = cfg.required;
-                        if (cfg.readOnly && "disable" in el) el.disable();
-                        if (!cfg.readOnly && "enable" in el) el.enable();
-                        //}
+                        if (cfg.required && "required" in el) {
+                            el.required = cfg.required;
+                            requiredApplied = true;
+                        }
+                        if (cfg.readOnly && typeof el.disable == "function") {
+                            el.disable();
+                            readOnlyApplied = true;
+                        }
+                        if (cfg.onCustomValidation && "onCustomValidation" in el) {
+                            el.onCustomValidation(cfg.onCustomValidation);
+                            customValidationApplied = true;
+                        }
                     };
                     appplyAttrs(cfg.el);
 
@@ -175,31 +206,57 @@ export class CmsEditor {
                     }
 
                     if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
-                        const lbl = this.findRecursive(cfg.el, "$w.Text", "name");
-                        if (lbl && "text" in lbl) {
-                            const s = lbl.text.replace(/\s\*$/, "").trim();
-                            lbl.text = cfg.required ? s + " *" : s;
+                        if (cfg.required) {
+                            const lbl = this.findRecursive(cfg.el, "$w.Text", "name");
+                            if (lbl && "text" in lbl) {
+                                lbl.text += " *";
+                                requiredApplied = true;
+                            }
                         }
                         const btn = this.findRecursive(cfg.el, "$w.UploadButton");
-                        if (btn) bind(btn, ['onChange']);
+                        if (btn) bind(btn, ['onChange'], 0, () => this.updateDataFromUi(id));
                         appplyAttrs(btn);
                     }
 
                     if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
                         const data = await wixData.query(cfg.dataSet).find();
-                        cfg.el.options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
+                        const options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
+                        if ("options" in cfg.el)
+                            cfg.el.options = options;
+                        else
+                            console.error("Cannot assign options list to", id);
+
+                        //must also be applied to filters for those fields
+                        for (const [fId, fCfg] of Object.entries(this.filterSchema)) if (fCfg.field == cfg.field) {
+                            const filterEl = $w(fId);
+                            if (filterEl && "options" in filterEl)
+                                filterEl.options = [{ label: "(Alle)", value: "*" }, ...options];
+                            else
+                                console.error("Cannot assign options list to", fId);
+                        }
                     }
 
-                } else console.warn("No such input element:", id);
+                    if (cfg.required && !requiredApplied) console.error("Cannot assign required attribute to", id);
+                    if (cfg.readOnly && !readOnlyApplied) console.error("Cannot assign readonly attribute to", id);
+                    if (cfg.onCustomValidation && !customValidationApplied) console.error("Cannot assign onCustomValidation attribute to", id);
+                }
+            }
+
+            const boundIds = new Set();
+            for (const [key, cfg] of Object.entries(this.filterSchema)) {
+                const id = cfg.id ?? key;
+                const el = $w(id);
+                if (!el)
+                    console.warn("No such filter element:", id);
+                else if (!boundIds.has(id)) {
+                    boundIds.add(id);
+                    bind(el, ['onBlur', 'onKeyPress'], 0, () => this.updateSelectorList());
+                    bind(el, ['onInput', 'onChange'], cfg.delay ?? 400, () => this.updateSelectorList());
+                }
             }
         });
 
         this.ds.onError((error) => { this.showError(error); });
-
-        if ($w("#filterSearch").id) {
-            $w("#filterSearch").onKeyPress((event) => { if (event.key == "Enter") this.updateSelectorList(); });
-            $w("#filterSearch").onBlur(() => { this.updateSelectorList() });
-        }
 
         if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
             const val = $w("#itemSelector").value;
@@ -233,6 +290,7 @@ export class CmsEditor {
         else console.log("No current item - skipping UI update");
         this.updateSelectorList();
         this.onRefreshUI();
+        this.originalItem = item ? structuredClone(item) : null;
     }
 
     /**
@@ -259,7 +317,7 @@ export class CmsEditor {
                 val = cfg.el.checked;
                 break;
             case FieldType.NUMBER:
-                val = Number(cfg.el.value || 0);
+                val = Number(cfg.el.value ?? 0);
                 break;
             case FieldType.ADDRESS:
                 val = cfg.el.value;
@@ -272,7 +330,7 @@ export class CmsEditor {
                 else {
                     dt.setUTCHours(0, 0, 0, 0);
                     dt = toLocal(dt);
-                    dt.setHours(Number(cfg.el.value || 0), 0, 0, 0);
+                    dt.setHours(Number(cfg.el.value ?? 0), 0, 0, 0);
                     val = toUTC(dt);
                 }
                 break;
@@ -295,9 +353,9 @@ export class CmsEditor {
                 const oldDate0 = this.ds.getCurrentItem()[cfg.field];
                 val.setUTCHours(oldDate0 ? new Date(oldDate0).getUTCHours() : 0, 0, 0, 0);
                 const dt1 = new Date(range[1]);
-                const oldDate1 = this.ds.getCurrentItem()[cfg.fieldsAdditonal[0]];
+                const oldDate1 = this.ds.getCurrentItem()[cfg.fields[1]];
                 dt1.setUTCHours(oldDate1 ? new Date(oldDate1).getUTCHours() : 0, 0, 0, 0);
-                this.ds.setFieldValue(cfg.fieldsAdditonal[0], dt1);
+                this.ds.setFieldValue(cfg.fields[1], dt1);
                 break;
             }
             case FieldType.SELECT:
@@ -319,7 +377,7 @@ export class CmsEditor {
                     btn.reset();
                     needRefresh = true;
                 } else
-                    val = this.ds.getCurrentItem()?.[cfg.field] || ""; // keep existing image
+                    val = this.ds.getCurrentItem()?.[cfg.field]; // keep existing image
                 break;
             case FieldType.IMAGES: {
                 const btn = this.findRecursive(cfg.el, "$w.UploadButton");
@@ -348,6 +406,7 @@ export class CmsEditor {
         console.log("Writing user input of", id, "to", cfg.field, "with value:", val);
         this.ds.setFieldValue(cfg.field, val);
         if (cfg.onChanged) await cfg.onChanged(val);
+        this.validate(cfg);
 
         if (needRefresh) await this.updateUiFromData(id, null, val);
     }
@@ -403,7 +462,7 @@ export class CmsEditor {
                 if (val && isNaN(val.getTime())) val = null;
                 break;
             case FieldType.DATE_RANGE:
-                val = dateRangeToString(val, item?.[cfg.fieldsAdditonal[0]], { hour: null, minute: null });
+                val = dateRangeToString(val, item?.[cfg.fields[1]], { hour: null, minute: null });
                 break;
             case FieldType.IMAGE:
                 val ||= TRANSPARENT_PIXEL;
@@ -459,7 +518,7 @@ export class CmsEditor {
             btn.target = "_blank";
         }
 
-        if (cfg.el.resetValidityIndication) cfg.el.resetValidityIndication();
+        this.validate(cfg);
     }
 
     /**
@@ -478,7 +537,7 @@ export class CmsEditor {
             [FieldType.NUMBER]: () => Number(v).toLocaleString('de-DE', { minimumFractionDigits: cfg.fractionDigits }),
             [FieldType.ADDRESS]: () => v.formatted || String(v),
             [FieldType.DATE]: () => dateRangeToString(v, null, cfg.format),
-            [FieldType.DATE_RANGE]: () => dateRangeToString(v, item[cfg.fieldsAdditonal[0]], cfg.format),
+            [FieldType.DATE_RANGE]: () => dateRangeToString(v, item[cfg.fields[1]], cfg.format),
             [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(v).join(", "),
             [FieldType.IMAGES]: () => `${this.ensureArray(v).length} Bilder`,
@@ -490,17 +549,16 @@ export class CmsEditor {
 
     /**
       * Compares the original item with the current state to find changes.
-      * @param {Object} originalItem - Item before changes.
       * @returns {Promise<Object>} Object containing internal and user-facing diff arrays.
       */
-    async getDiff(originalItem) {
+    async getDiff() {
         const currentItem = this.ds.getCurrentItem();
         let diffIntern = [];
         let diffUser = [];
 
         await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
             if (!cfg.collectDiff) return;
-            const [vOrg, vCur] = await Promise.all([this.displayValue(originalItem, cfg), this.displayValue(currentItem, cfg)]);
+            const [vOrg, vCur] = await Promise.all([this.displayValue(this.originalItem, cfg), this.displayValue(currentItem, cfg)]);
             if (vOrg != vCur) {
                 diffIntern.push([cfg.label, vOrg, vCur]);
                 if (cfg.showToUser) diffUser.push([cfg.label, vOrg, vCur]);
@@ -528,14 +586,18 @@ export class CmsEditor {
         await this.flushDebounce();
         console.log(`saveItem:\n${JSON.stringify(this.ds.getCurrentItem(), null, 2)}`);
 
-        if (!this.validate()) {
+        let allValid = true;
+        for (const cfg of Object.values(this.cmsSchema)) if (!this.validate(cfg)) allValid = false;
+        if (!allValid) {
             this.showError("Bitte Eingaben auf Fehler prüfen");
-            return;
+            return false;
         }
 
         this.collapseResponse();
+        let diff = await this.getDiff();
+        console.log("saveItem diff:", diff.diffIntern);
         const beforeSafeResult = await this.onBeforeSave();
-        if (beforeSafeResult == null) return;
+        if (beforeSafeResult == null) return false;
         const savedItem = await this.ds.save();
         if (savedItem) for (const cfg of Object.values(this.cmsSchema))
             if (cfg.type == FieldType.MULTI_REFERENCE) {
@@ -545,8 +607,10 @@ export class CmsEditor {
             }
         console.log("item saved");
         this.updateSelectorList();
-        this.onAfterSave(beforeSafeResult);
+        this.onAfterSave(diff, beforeSafeResult);
         this.showMessage("Erfolgreich gespeichert.");
+        this.refreshUI();
+        return savedItem; //TODO or always true?
     }
 
     async revertItem() {
@@ -562,14 +626,15 @@ export class CmsEditor {
 
     async newItem() {
         console.log("newItem");
-        await this.flushDebounce();
-        this.collapseResponse();
-        await this.ds.save();
-        console.log("item saved before creating new item");
-        await this.ds.new();
-        console.log("item created");
-        this.refreshUI();
-        this.showMessage("Erfolgreich erstellt.");
+        const saveSuccessful = await this.saveItem();
+        if (saveSuccessful) {
+            console.log("item saved before creating new item");
+            await this.ds.new();
+            console.log("item created");
+            this.refreshUI();
+            this.showMessage("Erfolgreich erstellt.");
+        } else
+            console.warn("New item aborted: Save failed.");
     }
 
     async removeItem() {
@@ -614,29 +679,109 @@ export class CmsEditor {
     }
 
     async updateSelectorList() {
-        const searchText = $w("#filterSearch").id ? $w("#filterSearch").value.trim() : "";
-        console.log("Updating itemSelector based on search text:", searchText);
+        console.log("updateSelectorList");
 
-        const items = await this.onQueryUpdate(searchText) || [];
-        const currentItem = this.ds.getCurrentItem();
-        console.log("current item:", currentItem?._id, "query results:\n", items.map(i => `${i._id}: ${this.generateTitle(i)}`).join("\n"));
-        $w("#itemSelector").options = [
-            { label: "➕ Neuer Eintrag", value: "--new--" },
-            ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
-        ];
-        $w("#itemSelector").value = currentItem?._id ?? undefined;
+        let q = wixData.query(this.cmsName);
+
+        for (const [key, cfg] of Object.entries(this.filterSchema)) {
+            const el = $w(cfg.id ?? key);
+            if (!el.id && cfg.type != FilterType.IS_NOT_EMPTY) continue;
+
+            const val = "checked" in el ? el.checked : el.value;
+            if (cfg.skip && cfg.skip(val)) continue;
+
+            const pVal = cfg.value ? cfg.value(val) : val;
+            const fields = cfg.fields || [cfg.field];
+
+            const applyOp = (q, f, v) => {
+                switch (cfg.type) {
+                    case FilterType.EQ: return q.eq(f, v);
+                    case FilterType.CONTAINS: return q.contains(f, v);
+                    case FilterType.GE: return q.ge(f, v);
+                    case FilterType.LE: return q.le(f, v);
+                    case FilterType.HAS_SOME: return q.hasSome(f, Array.isArray(v) ? v : [v]);
+                    case FilterType.IS_NOT_EMPTY: return q.isNotEmpty(f);
+                    default: return q;
+                }
+            };
+
+            if (cfg.orCombined) {
+                // ONE value vs MANY fields (OR)
+                let qOr = null;
+                for (let i = 0; i < fields.length; i++) {
+                    const qI = applyOp(wixData.query(this.cmsName), fields[i], pVal);
+                    qOr = i == 0 ? qI : qOr.or(qI);
+                }
+                if (qOr) q = q.and(qOr);
+            }
+            else if (fields.length > 1 && Array.isArray(pVal) && pVal.length == fields.length)
+                // Parallel Mapping (Many-to-Many)
+                q = fields.reduce((q0, f, i) => applyOp(q0, f, pVal[i]), q);
+            else
+                // Broadcasting (One-to-Many) or Standard (One-to-One)
+                q = fields.reduce((q0, f) => applyOp(q0, f, pVal), q);
+        }
+
+        q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
+        q = q.limit(this.filterLimit);
+
+        try {
+            console.log(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
+            const res = await q.find();
+            //console.log(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
+            $w("#itemSelector").options = [
+                { label: "➕ Neuer Eintrag", value: "--new--" },
+                ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
+            ];
+            $w("#itemSelector").value = this.ds.getCurrentItem()?._id;
+        } catch (err) {
+            console.error("updateSelectorList failed", err);
+        }
     }
 
-    validate() {
-        let isValid = true;
-        for (const cfg of Object.values(this.cmsSchema)) if (cfg.required) {
-            const val = this.ds.getCurrentItem()?.[cfg.field];
-            if (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0)) {
-                if (cfg.el?.updateValidityIndication) cfg.el.updateValidityIndication();
-                isValid = false;
-            }
+    validate(cfg) {
+        const el = cfg.el;
+        if (!el || cfg.readOnly) return true; // treat non-existing and readonly as valid so don't block saving
+        const isUiValid = el.validity ? el.validity.valid : true;
+        let isDataValid = true;
+        const val = cfg.required || cfg.onCustomValidation ? this.ds.getCurrentItem()?.[cfg.field] : null;
+        if (cfg.required)
+            isDataValid = val !== undefined && val !== null && val !== "" && val != TRANSPARENT_PIXEL && (!Array.isArray(val) || val.length > 0);
+        if (cfg.onCustomValidation) cfg.onCustomValidation(val, (errorMessage) => {
+            isDataValid = false;
+            if (el.setCustomValidity) el.setCustomValidity(errorMessage);
+            console.warn(`Custom rejection for ${cfg.field}: ${errorMessage}`);
+        })
+        if (!isUiValid || !isDataValid)
+            console.warn(`Validation failed for ${cfg.field}: UI Valid: ${isUiValid}, Data Valid: ${isDataValid}`);
+        if (el.updateValidityIndication)
+            el.updateValidityIndication();
+        else {
+            if (el.style) el.style.borderColor = isUiValid && isDataValid ? "rgba(0,0,0,0)" : "red";
+            const lbl = this.findRecursive(cfg.el, "$w.Text", "name");
+            if (lbl) lbl.html = `<p style="color: ${isUiValid && isDataValid ? "#000000" : "#FF0000"}; font-size: 16px;">${lbl.text}</p>`;
         }
-        return isValid;
+        return isUiValid && isDataValid;
+    }
+
+    updateButtonStates() { //TODO
+        const hasChanges = this.ds.getHasChanges();
+        const currentIndex = this.ds.getCurrentItemIndex();
+        const totalCount = this.ds.getTotalCount();
+
+        // Save & Revert: Only if there are unsaved changes
+        const btnSave = $w("#buttonSave");
+        const btnRevert = $w("#buttonRevert");
+        if (btnSave.id) hasChanges ? btnSave.enable() : btnSave.disable();
+        if (btnRevert.id) hasChanges ? btnRevert.enable() : btnRevert.disable();
+
+        // Prev: Only if not on the first item
+        const btnPrev = $w("#buttonPrev");
+        if (btnPrev.id) currentIndex > 0 ? btnPrev.enable() : btnPrev.disable();
+
+        // Next: Only if not on the last item
+        const btnNext = $w("#buttonNext");
+        if (btnNext.id) (currentIndex < totalCount - 1) ? btnNext.enable() : btnNext.disable();
     }
 
     showError(error) {

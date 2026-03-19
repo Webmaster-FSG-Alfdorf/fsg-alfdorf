@@ -2,13 +2,12 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
-import { CmsEditor, FieldType } from 'public/cms_edit.js';
-import { dateRangeToString, FormatTypesMonth, stringToDateRange, toUTC, toLocal, debugStr, incUTCDate, nightsBetween } from 'public/cms.js';
+import { CmsEditor, FieldType, FilterType } from 'public/cms_edit.js';
+import { dateRangeToString, FormatTypesMonth, toUTC, toLocal, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDateOccupied = "";
 let occupationsRange = [new Date(), new Date()];
-let originalItem = null;
 let editor;
 
 $w.onReady(function () {
@@ -66,10 +65,11 @@ $w.onReady(function () {
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
+
             cmsSchema: {
                 "#inputState": { field: "state", type: FieldType.STRING },
                 "#inputLodging": {
-                    field: "lodging", fieldsAdditonal: ["lodgingSub"], type: FieldType.CUSTOM, resetValidityIndication: true,
+                    fields: ["lodging", "lodgingSub"], type: FieldType.CUSTOM,
                     onParseUserInput: (input) => {
                         const lodging = input.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
@@ -79,17 +79,16 @@ $w.onReady(function () {
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
-                    field: "dateFrom", fieldsAdditonal: ["dateTo"], type: FieldType.DATE_RANGE,
-                    resetValidityIndication: true, //TODO resetValidityIndication
+                    fields: ["dateFrom", "dateTo"], type: FieldType.DATE_RANGE,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputArrivalTime": {
-                    field: "dateFrom", type: FieldType.HOURS_OF_DATE, resetValidityIndication: true,
+                    field: "dateFrom", type: FieldType.HOURS_OF_DATE,
                     onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item?.dateFrom).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDepartureTime": {
-                    field: "dateTo", type: FieldType.HOURS_OF_DATE, resetValidityIndication: true,
+                    field: "dateTo", type: FieldType.HOURS_OF_DATE,
                     onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item?.dateTo).getHours().toString())?.label,
                     onChanged: () => syncUI(true, false)
                 },
@@ -106,6 +105,42 @@ $w.onReady(function () {
                 "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, onChanged: () => updateCostsTable(), fractionDigits: 2, suffix: "€" },
                 "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, showToUser: false },
                 "#inputComment": { field: "comment", type: FieldType.STRING, showToUser: false },
+            },
+
+            filterSortField: "_updatedDate",
+            filterSortAscending: false,
+            filterSchema: {
+                "#filterSearch": {
+                    type: FilterType.CONTAINS,
+                    field: "searchField",
+                    skip: (val) => !val || !isNaN(Number(val)),
+                    value: (val) => val.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(),
+                },
+                "#filterSearch   numeric": {
+                    id: "#filterSearch",
+                    type: FilterType.EQ,
+                    orCombined: true,
+                    fields: ["cntAdults", "cntChildren", "paidSum", "lodgingSub"],
+                    skip: (val) => isNaN(Number(val)),
+                    value: (val) => Number(val)
+                },
+                "#filterAlsoPast": {
+                    type: FilterType.GE,
+                    skip: (val) => val, // only apply if not checked
+                    value: () => incUTCDate(new Date(), 1),
+                    field: "dateTo",
+                },
+                "#filterStatus": {
+                    type: FilterType.EQ,
+                    skip: (val) => !val || val == "*",
+                    field: "state"
+                },
+                "#filterLodging": {
+                    type: FilterType.EQ,
+                    skip: (val) => [!val || val == "*"],
+                    value: (val) => [val.split("|").map((v, i) => i == 0 ? v : Number(v))],
+                    fields: ["lodging", "lodgingSub"],
+                }
             },
 
             onRefreshUI: async () => {
@@ -128,36 +163,28 @@ $w.onReady(function () {
                     return null;
                 }
                 const item = editor.ds.getCurrentItem();
-                const customMessage =
-                    originalItem && item && originalItem.state != item.state ? {
-                        "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
-                        "Reserviert": "Ihre Anfrage wurde akzeptiert.",
-                        "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
-                        "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
-                    }[item.state] || "" :
-                        "";
-
-                let diff = await editor.getDiff(originalItem);
-                console.log("save", item?._id, "diff:", diff.diffIntern, "customMessage:", customMessage);
-                return { diff, customMessage };
+                return editor.originalItem && item && editor.originalItem.state != item.state ? {
+                    "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
+                    "Reserviert": "Ihre Anfrage wurde akzeptiert.",
+                    "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
+                    "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
+                }[item.state] || "" :
+                    "";
             },
 
-            onAfterSave: (data) => {
-                const item = editor.ds.getCurrentItem();
-                if (data.diff.diffUser.length > 0)
+            onAfterSave: (diff, customMessage) => {
+                if (diff.diffUser.length > 0)
                     wixWindow.openLightbox("CMSSuccessLightbox", {
                         msg: "Änderungen wurden gespeichert",
-                        item,
-                        diff: data.diff.diffIntern,
-                        diffUser: data.diff.diffUser,
-                        customMessage: data.customMessage
+                        item: editor.ds.getCurrentItem(),
+                        diff: diff.diffIntern,
+                        diffUser: diff.diffUser,
+                        customMessage
                     });
-                cloneItem(item);
             },
 
             onAfterReverted: () => {
                 wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-                cloneItem(editor.ds.getCurrentItem());
             },
 
             onAfterDelete: (deletedItem) => {
@@ -166,17 +193,10 @@ $w.onReady(function () {
                     item: deletedItem,
                     customMessage: "Ihre Reservierungsanfrage wurde storniert."
                 });
-                cloneItem(null);
             },
-
-            onQueryUpdate: doQueryUpdate
         });
 
         editor.init();
-
-        $w("#filterAlsoPast").onChange(() => editor.updateSelectorList());
-        $w("#filterStatus").onChange(() => editor.updateSelectorList());
-        $w("#filterLodging").onChange(() => editor.updateSelectorList());
 
         wixData.query("pricesVisitor").ascending("order").find().then((results) => {
             let options = [];
@@ -255,45 +275,4 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
     }
 
     postMessageToDatePicker(message);
-}
-
-function cloneItem(item) {
-    originalItem = item ? structuredClone(item) : null;
-    console.log("originalItem now is", originalItem);
-}
-
-async function doQueryUpdate(searchText) {
-    const normalize = (str) => str?.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    // ignore empty entries
-    let q = wixData.query("guestReservations").isNotEmpty("searchField").descending("_updatedDate").limit(1000);
-
-    if (!$w('#filterAlsoPast').checked) q = q.ge("dateTo", incUTCDate(new Date(), 1));
-
-    const status = $w("#filterStatus").value;
-    if (status && status != "*") q = q.eq("state", status);
-
-    const lodging = $w("#filterLodging").value;
-    if (lodging && lodging != "*") { const [l, ls] = lodging.split("|"); q = q.and(wixData.query("guestReservations").eq("lodging", l).eq("lodgingSub", Number(ls))); }
-
-    const s = normalize(searchText).trim();
-    if (s) {
-        const sn = Number(s);
-        if (s == sn.toString()) { // user entered a number
-            const numFields = ["cntAdults", "cntChildren", "paidSum", "lodgingSub"];
-            let qOr = wixData.query("guestReservations").eq(numFields[0], sn);
-            for (let i = 1; i < numFields.length; i++)
-                qOr = qOr.or(wixData.query("guestReservations").eq(numFields[i], sn));
-            q = q.and(qOr);
-        } else // user entered a string
-            q = q.contains("searchField", s);
-    }
-
-    console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
-    try {
-        const res = await q.find();
-        return res.items;
-    } catch (err) {
-        console.error("Query failed", err);
-        return [];
-    }
 }

@@ -1,7 +1,5 @@
-import wixData from 'wix-data';
-
-import { CmsEditor, FieldType } from 'public/cms_edit.js';
-import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
+import { CmsEditor, FieldType, FilterType } from 'public/cms_edit.js';
+import { dateRangeToString, listAllRanges, printRanges, incUTCDate } from 'public/cms.js';
 
 let editor;
 
@@ -9,14 +7,21 @@ $w.onReady(function () {
     editor = new CmsEditor({
         cmsName: "events",
         dataSetName: "datasetEvents",
+
         cmsSchema: {
             "#titleField": { field: "title", type: FieldType.STRING, required: true },
             "#subTitleField": { field: "subTitle", type: FieldType.STRING },
-            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name },
-            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, required: true, readOnly: true },
-            "#galleryField": { field: "gallery", type: FieldType.IMAGES, required: true, readOnly: true },
+            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name, required: true },
+            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, required: true },
+            "#galleryField": { field: "gallery", type: FieldType.IMAGES },
             "#descriptionField": { field: "description", type: FieldType.RICH_TEXT, required: true },
-            "#priceField": { field: "price", type: FieldType.STRING },
+            "#priceField": {
+                field: "price", type: FieldType.STRING,
+                onCustomValidation: (value, reject) => {
+                    if (!new RegExp("^[0-9]{5}$").test(value))
+                        return reject("Bitte geben Sie eine gültige 5-stellige PLZ ein.")
+                }
+            },
             "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN },
             "#addressField": { field: "address", type: FieldType.ADDRESS },
             "#typeField": { field: "type", type: FieldType.SELECT, required: true },
@@ -26,8 +31,35 @@ $w.onReady(function () {
             "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING },
             "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING }
         },
+
+        filterSortField: "title",
+        filterSchema: {
+            "#filterSearch": {
+                type: FilterType.CONTAINS,
+                orCombined: true,
+                fields: ["title", "subTitle", "description", "price", "address", "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"],
+                skip: (val) => !val,
+                value: (val) => val.toString().trim(),
+            },
+            "#filterAlsoPast": {
+                type: FilterType.GE,
+                skip: (val) => val, // only apply if not checked
+                value: () => incUTCDate(new Date(), 1),
+                field: "dateTo",
+            },
+            "#filterType": {
+                type: FilterType.EQ,
+                skip: (val) => !val || val == "*",
+                field: "type"
+            },
+            "#filterSport": {
+                type: FilterType.HAS_SOME,
+                skip: (val) => !val || val == "*",
+                field: "sports"
+            },
+        },
+
         onRefreshUI: refreshDatesUI,
-        onQueryUpdate: doQueryUpdate
     });
 
     $w("#datesRepeater").onItemReady(($item, itemData, index) => {
@@ -72,10 +104,6 @@ $w.onReady(function () {
     $w("#btnDateAdd").onClick(() => { addDate() });
 
     editor.init();
-
-    $w("#filterAlsoPast").onChange(() => editor.updateSelectorList());
-    $w("#filterType").onChange(() => editor.updateSelectorList());
-    $w("#filterSport").onChange(() => editor.updateSelectorList());
 });
 
 function addDate() {
@@ -136,37 +164,4 @@ function refreshDateRangeText() {
         html += "<li>" + `${dateRangeToString(dr.start, dr.end)}`;
     });
     $w("#textDateRange").html = html + "</ul>";
-}
-
-async function doQueryUpdate(searchText) {
-    let q = wixData.query("events");
-
-    const type = $w("#filterType").value;
-    if (type && type !== "*") q = q.eq("type", type);
-
-    const sport = $w("#filterSport").value;
-    if (sport && sport !== "*") q = q.hasSome("sportarten", [sport]);
-
-    const s = searchText.toLowerCase().trim();
-    if (s) {
-        const fields = [
-            "title", "subTitle", "description", "price", "address",
-            "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"
-        ];
-        let qOr = wixData.query("events").contains(fields[0], s);
-        for (let i = 1; i < fields.length; i++)
-            qOr = qOr.or(wixData.query("events").contains(fields[i], s));
-        q = q.and(qOr);
-    }
-
-    console.log(`doQueryUpdate query:\n${JSON.stringify(q, null, 2)}`);
-
-    try {
-        const res = await q.ascending("title").limit(1000).find();
-        //console.log(`doQueryUpdate result:\n${JSON.stringify(res, null, 2)}`);
-        return res.items;
-    } catch (err) {
-        console.error("Query failed", err);
-        return [];
-    }
 }
