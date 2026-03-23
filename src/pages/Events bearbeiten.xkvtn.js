@@ -20,10 +20,21 @@ $w.onReady(function () {
                     "#pickerDatesStartTime": { field: "start", type: FieldType.TIME_OF_DATE },
                     "#pickerDatesEnd": { field: "end", type: FieldType.DATE },
                     "#pickerDatesEndTime": { field: "end", type: FieldType.TIME_OF_DATE },
-                    "#dropdownDatesType": { field: "recurrenceType", type: FieldType.SELECT },
                     "#dropdownDatesInterval": { field: "recurrenceInterval", type: FieldType.NUMBER },
-                    "#checkboxDatesWeekdays": { field: "recurrenceDays", type: FieldType.CHECKBOX_GROUP }
+                    "#dropdownMonthlyRepetition": { field: "monthlyRepetition", type: FieldType.SELECT },
+                    "#dropdownDatesType": { field: "recurrenceType", type: FieldType.SELECT },
+                    "#checkboxDatesWeekdays": { field: "recurrenceDays", type: FieldType.MULTI_SELECT }
                 },
+                default: { //TODO
+                    start: new Date(),
+                    end: new Date(),
+                    recurrenceInterval: 1,
+                    monthlyRepetition: "weekday",
+                    recurrenceType: "daily",
+                    recurrenceDays: [],
+                },
+                addButton: "#btnDateAdd", //TODO
+                removeButton: "#btnDateRemove", //TODO
                 onDisplayValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
                 onChanged: () => refreshDateRangeText(),
             },
@@ -72,80 +83,8 @@ $w.onReady(function () {
         onRefreshUI: refreshDateRangeText,
     });
 
-    if (false) $w("#datesRepeater").onItemReady(($item, itemData, index) => {
-        const togglePickers = () => {
-            const type = $item("#dropdownDatesType").value;
-            const interval = parseInt($item("#dropdownDatesInterval").value) || 0;
-            if (interval > 0 && type == "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
-            if (interval > 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
-            if (interval > 0 && type == "monthly") $item("#dropdownMonthlyRepetition").expand(); else $item("#dropdownMonthlyRepetition").collapse();
-        };
-
-        const setDateTime = (pickerDate, pickerTime, date) => {
-            pickerDate.value = date;
-            pickerTime.value = date ? date.getHours().toString().padStart(2, '0') + ":" + date.getMinutes().toString().padStart(2, '0') : "";
-        };
-        setDateTime($item("#pickerDatesStart"), $item("#pickerDatesStartTime"), itemData.start);
-        setDateTime($item("#pickerDatesEnd"), $item("#pickerDatesEndTime"), itemData.end);
-        $item("#dropdownDatesType").value = itemData.recurrenceType || "daily";
-        $item("#dropdownDatesInterval").value = itemData.recurrenceInterval || 0;
-        $item("#checkboxDatesWeekdays").value = itemData.recurrenceDays || [];
-        $item("#dropdownMonthlyRepetition").value = itemData.monthlyRepetition || "weekday";
-
-        $item("#pickerDatesStart").onChange(() => updateDatesArrayTime(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
-        $item("#pickerDatesEnd").onChange(() => updateDatesArrayTime(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
-        $item("#pickerDatesStartTime").onChange(() => updateDatesArrayTime(index, 'start', $item("#pickerDatesStart").value, $item("#pickerDatesStartTime").value));
-        $item("#pickerDatesEndTime").onChange(() => updateDatesArrayTime(index, 'end', $item("#pickerDatesEnd").value, $item("#pickerDatesEndTime").value));
-        $item("#dropdownDatesType").onChange(() => {
-            togglePickers();
-            updateDatesArray(index, 'recurrenceType', $item("#dropdownDatesType").value);
-        });
-        $item("#dropdownDatesInterval").onChange(() => {
-            togglePickers();
-            updateDatesArray(index, 'recurrenceInterval', $item("#dropdownDatesInterval").value);
-        });
-        $item("#checkboxDatesWeekdays").onChange(() => updateDatesArray(index, 'recurrenceDays', $item("#checkboxDatesWeekdays").value));
-        $item("#dropdownMonthlyRepetition").onChange(() => updateDatesArray(index, 'monthlyRepetition', $item("#dropdownMonthlyRepetition").value));
-
-        $item("#btnDateRemove").onClick(() => { removeDate(index) });
-
-        togglePickers();
-    });
-    if (false) $w("#btnDateAdd").onClick(() => { addDate() });
-
     editor.init();
 });
-
-function addDate() {
-    console.log("Adding new date to event");
-    $w("#datesRepeater").value.push({
-        start: new Date(),
-        end: new Date(),
-        recurrenceType: "daily",
-        recurrenceInterval: 1,
-        recurrenceDays: []
-    });
-    editor.updateDataFromUI("#datesRepeater");
-}
-
-function removeDate(index) {
-    console.log("Removing date from event");
-    $w("#datesRepeater").value.splice(index, 1);
-    editor.updateDataFromUI("#datesRepeater");
-}
-
-function updateDatesArray(index, field, value) {
-    $w("#datesRepeater").value[index][field] = value;
-    editor.updateDataFromUI("#datesRepeater");
-}
-
-function updateDatesArrayTime(index, field, date, time) {
-    let finalDate = new Date(date);
-    const [hours, minutes] = (time || "00:00").split(':');
-    finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-    $w("#datesRepeater").value[index][field] = finalDate;
-    editor.updateDataFromUI("#datesRepeater");
-}
 
 function refreshDateRangeText() {
     let allDates = new Map();

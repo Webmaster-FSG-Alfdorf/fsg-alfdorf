@@ -438,10 +438,6 @@ export class CmsEditor {
                 this.ds.setFieldValue(cfg.fields[1], dt1); //TODO not working if scoped
                 break;
             }
-            case FieldType.SELECT:
-            case FieldType.REFERENCE:
-                val = el.value;
-                break;
             case FieldType.MULTI_SELECT:
             case FieldType.MULTI_REFERENCE:
                 val = this.ensureArray(el.value);
