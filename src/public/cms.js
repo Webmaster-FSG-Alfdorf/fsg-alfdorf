@@ -133,10 +133,10 @@ export function dateRangeToString(
         if (hour != null) df.hour = hour;
         if (minute != null) df.minute = minute;
         if (second != null) df.second = second;
-        const dStart = toLocal(start);
+        const dStart = start; // toLocal(start);
         res += dStart.toLocaleString(locales, df);
         if (end) {
-            const dEnd = toLocal(end);
+            const dEnd = end; //toLocal(end);
             const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
             const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
             const showDay = weekday != null || day != null || month != null || year != null;
@@ -270,8 +270,8 @@ export function printRanges(eventDate) {
         minute: null
     });
 
-    const occNames = ["ersten", "zweiten", "dritten", "vierten", "fünften"];
     res += ` jeden `;
+    const occNames = ["ersten", "zweiten", "dritten", "vierten", "fünften"];
 
     switch (rct) {
         case "daily":
@@ -280,7 +280,7 @@ export function printRanges(eventDate) {
             break;
         case "weekly":
             res += itv == 1 ? "" : `${occNames[itv - 1] || itv + "."} `;
-            weekdays.forEach((wd, i) => { res += `${i == 0 ? " " : i == weekdays.length - 1 ? " und " : ", "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
+            weekdays.forEach((wd, i) => { res += `${i == 0 ? "" : i == weekdays.length - 1 ? " und " : ", "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
             break;
         case "monthly":
             switch (mr) {

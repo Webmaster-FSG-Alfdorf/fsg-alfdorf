@@ -4,6 +4,7 @@ import { dateRangeToString, listAllRanges, printRanges, incUTCDate } from 'publi
 let editor;
 
 $w.onReady(function () {
+    $w("#datesRepeater").value = {};
     editor = new CmsEditor({
         cmsName: "events",
         dataSetName: "datasetEvents",
@@ -11,17 +12,26 @@ $w.onReady(function () {
         cmsSchema: {
             "#titleField": { field: "title", type: FieldType.STRING, required: true },
             "#subTitleField": { field: "subTitle", type: FieldType.STRING },
+            "#datesRepeater": {
+                field: "dates",
+                type: FieldType.REPEATER,
+                inputs: {
+                    "#pickerDatesStart": { field: "start", type: FieldType.DATE },
+                    "#pickerDatesStartTime": { field: "start", type: FieldType.TIME_OF_DATE },
+                    "#pickerDatesEnd": { field: "end", type: FieldType.DATE },
+                    "#pickerDatesEndTime": { field: "end", type: FieldType.TIME_OF_DATE },
+                    "#dropdownDatesType": { field: "recurrenceType", type: FieldType.SELECT },
+                    "#dropdownDatesInterval": { field: "recurrenceInterval", type: FieldType.NUMBER },
+                    "#checkboxDatesWeekdays": { field: "recurrenceDays", type: FieldType.CHECKBOX_GROUP }
+                },
+                onDisplayValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
+                onChanged: () => refreshDateRangeText(),
+            },
             "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name, required: true },
             "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, required: true },
             "#galleryField": { field: "gallery", type: FieldType.IMAGES },
             "#descriptionField": { field: "description", type: FieldType.RICH_TEXT, required: true },
-            "#priceField": {
-                field: "price", type: FieldType.STRING,
-                onCustomValidation: (value, reject) => {
-                    if (!new RegExp("^[0-9]{5}$").test(value))
-                        return reject("Bitte geben Sie eine gültige 5-stellige PLZ ein.")
-                }
-            },
+            "#priceField": { field: "price", type: FieldType.STRING },
             "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN },
             "#addressField": { field: "address", type: FieldType.ADDRESS },
             "#typeField": { field: "type", type: FieldType.SELECT, required: true },
@@ -29,7 +39,7 @@ $w.onReady(function () {
             "#registrationField": { field: "registration", type: FieldType.DATE },
             "#responsibleField": { field: "responsible", type: FieldType.STRING },
             "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING },
-            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING }
+            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING },
         },
 
         filterSortField: "title",
@@ -59,10 +69,10 @@ $w.onReady(function () {
             },
         },
 
-        onRefreshUI: refreshDatesUI,
+        onRefreshUI: refreshDateRangeText,
     });
 
-    $w("#datesRepeater").onItemReady(($item, itemData, index) => {
+    if (false) $w("#datesRepeater").onItemReady(($item, itemData, index) => {
         const togglePickers = () => {
             const type = $item("#dropdownDatesType").value;
             const interval = parseInt($item("#dropdownDatesInterval").value) || 0;
@@ -101,67 +111,58 @@ $w.onReady(function () {
 
         togglePickers();
     });
-    $w("#btnDateAdd").onClick(() => { addDate() });
+    if (false) $w("#btnDateAdd").onClick(() => { addDate() });
 
     editor.init();
 });
 
 function addDate() {
     console.log("Adding new date to event");
-    let dates = editor.ds.getCurrentItem().dates || [];
-    dates.push({
+    $w("#datesRepeater").value.push({
         start: new Date(),
         end: new Date(),
         recurrenceType: "daily",
         recurrenceInterval: 1,
         recurrenceDays: []
     });
-    editor.ds.setFieldValue("dates", dates);
-    refreshDatesUI();
+    editor.updateDataFromUI("#datesRepeater");
 }
 
 function removeDate(index) {
     console.log("Removing date from event");
-    let dates = editor.ds.getCurrentItem().dates;
-    dates.splice(index, 1);
-    editor.ds.setFieldValue("dates", dates);
-    refreshDatesUI();
-}
-
-function refreshDatesUI() {
-    const item = editor.ds.getCurrentItem();
-    const dates = (item && item.dates) ? item.dates : [];
-    $w("#datesRepeater").data = dates.map((d, i) => ({ ...d, _id: i.toString() }));
-    refreshDateRangeText();
+    $w("#datesRepeater").value.splice(index, 1);
+    editor.updateDataFromUI("#datesRepeater");
 }
 
 function updateDatesArray(index, field, value) {
-    let dates = [...editor.ds.getCurrentItem().dates]; // use a copy
-    dates[index][field] = value;
-    editor.ds.setFieldValue("dates", dates);
-    refreshDateRangeText();
+    $w("#datesRepeater").value[index][field] = value;
+    editor.updateDataFromUI("#datesRepeater");
 }
 
 function updateDatesArrayTime(index, field, date, time) {
-    let dates = [...editor.ds.getCurrentItem().dates]; // use a copy
     let finalDate = new Date(date);
     const [hours, minutes] = (time || "00:00").split(':');
     finalDate.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-    dates[index][field] = finalDate;
-    editor.ds.setFieldValue("dates", dates);
-    refreshDateRangeText();
+    $w("#datesRepeater").value[index][field] = finalDate;
+    editor.updateDataFromUI("#datesRepeater");
 }
 
 function refreshDateRangeText() {
-    const item = editor.ds.getCurrentItem();
-    const dates = (item && item.dates) ? item.dates : [];
     let allDates = new Map();
-    (dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+    $w("#datesRepeater").value?.forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
     let html = "Übersicht:<ul>";
-    (dates || []).forEach(ed => { html += "<li>" + printRanges(ed); });
+    $w("#datesRepeater").value?.forEach(ed => { html += "<li>" + printRanges(ed); });
     html += `</ul><br><br>Detailierte Ausgabe:<ul>`;
     Array.from(allDates.values()).sort((dr0, dr1) => dr0.start - dr1.start).forEach(dr => {
         html += "<li>" + `${dateRangeToString(dr.start, dr.end)}`;
     });
     $w("#textDateRange").html = html + "</ul>";
+
+    $w("#datesRepeater").forEachItem(($item, itemData, index) => {
+        const type = $item("#dropdownDatesType").value;
+        const interval = parseInt($item("#dropdownDatesInterval").value) || 0;
+        if (interval > 0 && type == "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();
+        if (interval > 0) $item("#dropdownDatesType").expand(); else $item("#dropdownDatesType").collapse();
+        if (interval > 0 && type == "monthly") $item("#dropdownMonthlyRepetition").expand(); else $item("#dropdownMonthlyRepetition").collapse();
+    });
 }
