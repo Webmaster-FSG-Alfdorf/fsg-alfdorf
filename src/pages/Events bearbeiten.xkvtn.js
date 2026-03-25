@@ -20,12 +20,12 @@ $w.onReady(function () {
                     "#pickerDatesStartTime": { field: "start", type: FieldType.TIME_OF_DATE },
                     "#pickerDatesEnd": { field: "end", type: FieldType.DATE },
                     "#pickerDatesEndTime": { field: "end", type: FieldType.TIME_OF_DATE },
-                    "#dropdownDatesInterval": { field: "recurrenceInterval", type: FieldType.NUMBER },
+                    "#dropdownDatesInterval": { field: "recurrenceInterval", type: FieldType.NUMBER, onChanged: () => { } },
                     "#dropdownMonthlyRepetition": { field: "monthlyRepetition", type: FieldType.SELECT },
                     "#dropdownDatesType": { field: "recurrenceType", type: FieldType.SELECT },
                     "#checkboxDatesWeekdays": { field: "recurrenceDays", type: FieldType.MULTI_SELECT }
                 },
-                default: { //TODO
+                default: {
                     start: new Date(),
                     end: new Date(),
                     recurrenceInterval: 1,
@@ -33,10 +33,10 @@ $w.onReady(function () {
                     recurrenceType: "daily",
                     recurrenceDays: [],
                 },
-                addButton: "#btnDateAdd", //TODO
-                removeButton: "#btnDateRemove", //TODO
+                addButton: "#btnDateAdd",
+                removeButton: "#btnDateRemove",
                 onDisplayValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
-                onChanged: () => refreshDateRangeText(),
+                onChanged: (values) => refreshDateRangeText(values),
             },
             "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name, required: true },
             "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, required: true },
@@ -80,24 +80,25 @@ $w.onReady(function () {
             },
         },
 
-        onRefreshUI: refreshDateRangeText,
+        onRefreshUI: () => { refreshDateRangeText(editor.ds.getCurrentItem()?.dates || []) },
     });
 
     editor.init();
 });
 
-function refreshDateRangeText() {
+function refreshDateRangeText(values) {
+    console.log("refreshDateRangeText", values);
     let allDates = new Map();
-    $w("#datesRepeater").value?.forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+    values.forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
     let html = "Übersicht:<ul>";
-    $w("#datesRepeater").value?.forEach(ed => { html += "<li>" + printRanges(ed); });
+    values.forEach(ed => { html += "<li>" + printRanges(ed); });
     html += `</ul><br><br>Detailierte Ausgabe:<ul>`;
     Array.from(allDates.values()).sort((dr0, dr1) => dr0.start - dr1.start).forEach(dr => {
         html += "<li>" + `${dateRangeToString(dr.start, dr.end)}`;
     });
     $w("#textDateRange").html = html + "</ul>";
 
-    $w("#datesRepeater").forEachItem(($item, itemData, index) => {
+    $w("#datesRepeater").forEachItem(($item, itemData, index) => { //TDOO make part of CMSEditor?
         const type = $item("#dropdownDatesType").value;
         const interval = parseInt($item("#dropdownDatesInterval").value) || 0;
         if (interval > 0 && type == "weekly") $item("#checkboxDatesWeekdays").expand(); else $item("#checkboxDatesWeekdays").collapse();

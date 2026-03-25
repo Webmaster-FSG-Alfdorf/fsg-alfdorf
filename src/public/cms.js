@@ -184,7 +184,7 @@ export function listAllRanges(eventDate) {
     const end = new Date(eventDate.end || start);
 
     const rct = eventDate.recurrenceType;
-    const itv = parseInt(eventDate.recurrenceInterval) || 1;
+    const itv = eventDate.recurrenceInterval;
     const mr = eventDate.monthlyRepetition || "weekday";
     let weekdays = eventDate.recurrenceDays;
     if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[start.getDay()]]; // if no weekday specified, assume only the week day that the start date has

@@ -19,7 +19,7 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
  * @property {string} [linkButton] - ID of a button (e.g., "#btn") to link to the field's value.
  * @property {string} [linkPrefix] - Prefix for the URL in linkButton (e.g., "mailto:").
  * @property {Function} [onDisplayValue] - (item) => string: Custom logic to format the value for display/logs.
- * @property {Function} [onChanged] - (val) => void: Callback triggered after the field value has been updated.
+ * @property {Function} [onChanged] - (values, parentCfg, index) => void: Callback triggered after the field value has been updated.
  * @property {Function} [onFormatValue] - (item) => any: For FieldType.CUSTOM: Custom logic to extract data from the CMS item.
  * @property {Function} [onParseUserInput] - (val) => any: For FieldType.CUSTOM: Custom logic to clean/transform input before saving.
  * @property {number} [fractionDigits] - For FieldType.NUMBER: Number of decimals (default 0).
@@ -79,7 +79,6 @@ export class CmsEditor {
         this.filterSortField = config.filterSortField || "_id";
         this.filterSortAscending = config.filterSortAscending || true;
 
-        this.instanceId = Math.random().toString(36).substring(2, 9);
         this.ds = $w(`#${this.dataSetName}`);
         this.originalItem = null;
         this.messageTimer = null;
@@ -98,9 +97,9 @@ export class CmsEditor {
 
         this.ds.onReady(async () => {
             try {
-                for (const cfg of Object.values(this.cmsSchema)) this._initCMSElement(cfg, $w);
+                for (const cfg of Object.values(this.cmsSchema)) this._initCMSElement(cfg, $w, null, null);
                 const boundIDs = new Set();
-                for (const cfg of Object.values(this.filterSchema)) this._initFilterElement(cfg, $w, boundIDs);
+                for (const cfg of Object.values(this.filterSchema)) this._initFilterElement(cfg, $w, boundIDs, null, null);
                 await this.refreshUI();
                 const options = $w("#itemSelector").options;
                 if (options.length > 1) await this.navigateTo(options[1].value);
@@ -136,10 +135,10 @@ export class CmsEditor {
 
     _initCMSConfig(id, cfg) {
         cfg.id ??= id;
-        if (Array.isArray(cfg.fields)) {
-            cfg.field = cfg.fields[0];
-        } else
-            cfg.fields = null;
+        if (Array.isArray(cfg.fields) && cfg.fields.length >= 1)
+            cfg.field = cfg.fields[0]; // if we have fields defined, field points to the first one
+        else
+            cfg.fields = this.ensureArray(cfg.field); // we have none or only one field
         if (!cfg.label) cfg.label = $w(cfg.id)?.label || cfg.field;
         cfg.required ??= false;
         cfg.readOnly ??= false;
@@ -188,7 +187,7 @@ export class CmsEditor {
 
     _bind(trg, scope, cfg, parentCfg, index, events, delay, callback) {
         for (const s of events) if (typeof trg[s] == "function") {
-            //console.log("Binding", s, "to", cfg.id);
+            console.debug("Binding", s, "to", cfg.id);
             trg[s]((event) => {
                 if (s != "onKeyPress" || event.key == "Enter") {
                     console.log("Triggering", s, "on", cfg.id, "with delay", delay);
@@ -207,26 +206,27 @@ export class CmsEditor {
         }
     }
 
-    async _initCMSElement(cfg, scope) {
+    async _initCMSElement(cfg, scope, parentCfg, index) {
         const el = scope(cfg.id);
         if (!el) {
             console.warn("No such input element:", cfg.id);
             return;
         }
+        if (el._cmsInitialized) return;
+        el._cmsInitialized = true;
 
         if (cfg.type == FieldType.REPEATER) {
-            el.onItemReady(($item, itemData, index) => {
+            el.onItemReady(($item, itemData, itemIndex) => {
                 try {
-                    console.log("onItemReady", { id: cfg.id, index });
+                    console.log("onItemReady", { id: cfg.id, itemData, itemIndex });
                     for (const cfgSub of Object.values(cfg.inputs)) {
-                        this._initCMSElement(cfgSub, $item);
-                        this._updateUiFromData(cfgSub, $item, itemData, null);
-                        this._bind(
-                            $item(cfgSub.id), $item, cfgSub, cfg, index,
-                            ['onBlur', 'onKeyPress', 'onInput', 'onChange'],
-                            cfgSub.delay || 0,
-                            (() => this._updateDataFromUI(cfgSub, $item, cfg, index))
-                        );
+                        this._initCMSElement(cfgSub, $item, cfg, itemIndex);
+                        this._updateUiFromData(cfgSub, $item, itemData, null, itemIndex);
+                    }
+                    if (cfg.removeButton) {
+                        const el = $item(cfg.removeButton);
+                        if (el.id) el.onClick(async () => await this.removeRepeaterItem($item, cfg, itemIndex, index));
+                        else console.warn(cfg.removeButton, "not found in DOM");
                     }
                 } catch (e) {
                     console.error(e);
@@ -234,11 +234,16 @@ export class CmsEditor {
                 }
 
             });
+            if (cfg.addButton) {
+                const el = scope(cfg.addButton);
+                if (el.id) el.onClick(async () => await this.addRepeaterItem(scope, cfg, index));
+                else console.warn(cfg.addButton, "not found in DOM");
+            }
             return;
         }
 
-        this._bind(el, scope, cfg, null, null, ['onBlur', 'onKeyPress'], 0, () => this._updateDataFromUI(cfg, scope, null, null));
-        this._bind(el, scope, cfg, null, null, ['onInput', 'onChange'], cfg.delay, () => this._updateDataFromUI(cfg, scope, null, null));
+        this._bind(el, scope, cfg, parentCfg, index, ['onBlur', 'onKeyPress'], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, index));
+        this._bind(el, scope, cfg, parentCfg, index, ['onInput', 'onChange'], cfg.delay, () => this._updateDataFromUI(cfg, scope, parentCfg, index));
 
         let requiredApplied = false;
         let readOnlyApplied = false;
@@ -264,7 +269,7 @@ export class CmsEditor {
             if (gallery && !cfg.readOnly) gallery.onItemClicked((event) => {
                 cfg.selIdx = event.itemIndex;
                 console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
-                this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), null); // just to update selection marker
+                this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), null, null); // just to update selection marker
             });
 
             const updateMedia = async (action) => {
@@ -284,7 +289,7 @@ export class CmsEditor {
                 }
                 console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
                 this.ds.setFieldValue(cfg.field, val);
-                await this._updateUiFromData(cfg, scope, item, val);
+                await this._updateUiFromData(cfg, scope, item, [val], null);
                 await this.updateButtonStates();
             };
             for (const namePart of ['moveleft', 'moveright', 'remove']) {
@@ -303,7 +308,7 @@ export class CmsEditor {
                 }
             }
             const btn = this._findRecursive(el, "$w.UploadButton");
-            if (btn) this._bind(btn, scope, cfg, null, null, ['onChange'], 0, () => this._updateDataFromUI(cfg, scope, null, null));
+            if (btn) this._bind(btn, scope, cfg, parentCfg, index, ['onChange'], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, index));
             appplyAttrs(btn);
         }
 
@@ -330,14 +335,14 @@ export class CmsEditor {
         if (cfg.onCustomValidation && !customValidationApplied) console.error("Cannot assign onCustomValidation attribute to", cfg.id);
     }
 
-    _initFilterElement(cfg, scope, boundIDs) {
+    _initFilterElement(cfg, scope, boundIDs, parentCfg, index) {
         const el = scope(cfg.id);
         if (!el)
             console.warn("No such filter element:", cfg.id);
         else if (!boundIDs.has(cfg.id)) {
             boundIDs.add(cfg.id);
-            this._bind(el, scope, cfg, null, null, ['onBlur', 'onKeyPress'], 0, () => this.updateSelectorList());
-            this._bind(el, scope, cfg, null, null, ['onInput', 'onChange'], cfg.delay, () => this.updateSelectorList());
+            this._bind(el, scope, cfg, parentCfg, index, ['onBlur', 'onKeyPress'], 0, () => this.updateSelectorList());
+            this._bind(el, scope, cfg, parentCfg, index, ['onInput', 'onChange'], cfg.delay, () => this.updateSelectorList());
         }
     }
 
@@ -360,7 +365,7 @@ export class CmsEditor {
             }
         }));
 
-        await Promise.all(Object.keys(this.cmsSchema).map(id => this._updateUiFromData(this.cmsSchema[id], $w, item, null)));
+        await Promise.all(Object.keys(this.cmsSchema).map(id => this._updateUiFromData(this.cmsSchema[id], $w, item, null, null)));
         this.originalItem = item ? structuredClone(item) : null;
         for (const cfg of Object.values(this.cmsSchema)) if ("selIdx" in cfg) cfg.selIdx = -1;
         await this.onRefreshUI();
@@ -382,6 +387,7 @@ export class CmsEditor {
 
         let val = item?.[cfg.field];
         let needRefresh = false;
+        let multiField = false;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
                 val = el.checked;
@@ -428,14 +434,18 @@ export class CmsEditor {
                 break;
             }
             case FieldType.DATE_RANGE: { // update date with new value but keep hours
-                const range = stringToDateRange(el.value) || [];
-                const oldDate0 = val;
-                val = new Date(range[0]);
-                val.setUTCHours(oldDate0 ? new Date(oldDate0).getUTCHours() : 0, 0, 0, 0);
-                const dt1 = new Date(range[1]);
-                const oldDate1 = item?.[cfg.fields[1]];
-                dt1.setUTCHours(oldDate1 ? new Date(oldDate1).getUTCHours() : 0, 0, 0, 0);
-                this.ds.setFieldValue(cfg.fields[1], dt1); //TODO not working if scoped
+                multiField = true;
+                const fieldContent = cfg.fields.map(f => item?.[f]);
+                val = (stringToDateRange(el.value) || []).map((dt, i) => {
+                    if (!dt) return null;
+                    const newDate = new Date(dt);
+                    if (fieldContent[i]) {
+                        const prevDate = new Date(fieldContent[i]);
+                        newDate.setUTCHours(prevDate.getUTCHours(), prevDate.getUTCMinutes(), 0, 0);
+                    } else
+                        newDate.setUTCHours(0, 0, 0, 0);
+                    return newDate;
+                });
                 break;
             }
             case FieldType.MULTI_SELECT:
@@ -481,39 +491,89 @@ export class CmsEditor {
             default:
                 val = el.value;
         }
-        return { val, needRefresh };
+        return { values: multiField ? val : [val], needRefresh };
+    }
+
+    /**
+ * Resolves the data context for nested or top-level fields.
+ * Returns the current values, the row data (itemData), and the masterArray if nested.
+ */
+    _resolveContext(cfg, index, parentCfg) {
+        const item = this.ds.getCurrentItem();
+        const masterArray = parentCfg && index != null ? [...this.ensureArray(item[parentCfg.field])] : null;
+        const itemData = masterArray ? masterArray[index] : item;
+        const values = cfg.fields.map(f => itemData?.[f]);
+        return { itemData, masterArray, values };
+    }
+
+    /**
+     * Persists changes to the dataset and refreshes the UI.
+     */
+    async _persistAndRefresh(cfg, scope, itemData, masterArray, values, index, parentCfg, needRefresh) {
+        const targetCfg = parentCfg || cfg;
+
+        if (masterArray && index != null) {
+            masterArray[index] = { ...masterArray[index] };
+            cfg.fields.forEach((f, i) => masterArray[index][f] = values[i]);
+            await this.ds.setFieldValue(targetCfg.field, masterArray);
+        } else {
+            for (let i = 0; i < cfg.fields.length; i++)
+                await this.ds.setFieldValue(cfg.fields[i], values[i]);
+        }
+
+        if (cfg?.onChanged) {
+            console.log("Calling user onChanged(", values, ", ", parentCfg, ", ", index, ") on config")
+            await cfg.onChanged(values, parentCfg, index);
+        }
+        if (parentCfg?.onChanged) {
+            const wholeContent = masterArray || values[0];
+            console.log("Calling user onChanged(", wholeContent, ", ", null, ", ", null, ") on parent config")
+            await parentCfg.onChanged(wholeContent, null, null);
+        }
+
+        this._validate(cfg, scope, itemData);
+        await this.updateButtonStates();
+        if (needRefresh) await this._updateUiFromData(cfg, scope, itemData, values, index);
     }
 
     /**
      * Reads values from the UI and updates the dataset fields.
      */
     async _updateDataFromUI(cfg, scope, parentCfg, index) {
-        const item = this.ds.getCurrentItem();
-        const masterArray = parentCfg ? [...this.ensureArray(item[parentCfg.field])] : null;
-        const itemData = masterArray ? masterArray[index] : item;
-        const curVal = itemData?.[cfg.field];
-        const { val, needRefresh } = await this._getUiValue(cfg, scope, itemData);
-        if (JSON.stringify(val) == JSON.stringify(curVal)) {
-            console.log("No change in input of", cfg.id, "for", cfg.field, index == null ? "" : "at", index == null ? "" : index);
+        const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, index, parentCfg);
+        const { values, needRefresh } = await this._getUiValue(cfg, scope, itemData);
+        if (JSON.stringify(values ?? "") == JSON.stringify(curVal ?? "")) {
+            console.debug(`No change in UI ${cfg.id} for field ${cfg.field}${index == null ? "" : ` at ${index}`}`);
             return;
         }
-        if (masterArray) masterArray[index] = { ...masterArray[index], [cfg.field]: val };
-        console.log("Writing user input of", cfg.id, "to", cfg.field, index == null ? "" : "at", index == null ? "" : index, "with value:", val);
-        if (masterArray) {
-            this.ds.setFieldValue(parentCfg.field, masterArray);
-        } else {
-            this.ds.setFieldValue(cfg.field, val);
+
+        console.log(`Writing UI ${cfg.id} to field ${cfg.fields}${index == null ? "" : ` at ${index}`} with value:`, values);
+        await this._persistAndRefresh(cfg, scope, itemData, masterArray, values, index, parentCfg, needRefresh || masterArray);
+    }
+
+    async addRepeaterItem(scope, cfg, index) {
+        console.log("addRepeaterItem for", cfg.id);
+        const { itemData, masterArray, values } = this._resolveContext(cfg, index, null);
+        const newItem = { _id: `row-${values[0].length}-${Date.now()}` };
+        for (const subCfg of Object.values(cfg.inputs))
+            newItem[subCfg.field] = subCfg.default;
+        const newValues = [...values[0], newItem];
+        await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, index, null, true);
+    }
+
+    async removeRepeaterItem(scope, cfg, itemIndex, index) {
+        console.log("removeRepeaterItem from", cfg.id, "at itemIndex", itemIndex);
+        const { itemData, masterArray, values } = this._resolveContext(cfg, index, null);
+        if (itemIndex >= 0 && itemIndex < values[0].length) {
+            const newValues = values[0].filter((_, i) => i != itemIndex);
+            await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, index, null, true);
         }
-        if (cfg.onChanged) await cfg.onChanged(val, parentCfg, index);
-        this._validate(cfg, scope, itemData);
-        await this.updateButtonStates();
-        if (needRefresh || masterArray) await this._updateUiFromData(cfg, scope, itemData, val);
     }
 
     /**
      * Populates UI elements with data from an item or a given value.
      */
-    async _updateUiFromData(cfg, scope, item, val) {
+    async _updateUiFromData(cfg, scope, item, valuesToUse, index) {
         const el = scope(cfg.id);
         if (!cfg) {
             console.error("Cannot assign to input", cfg.id, ": CMS schema not found in configuration")
@@ -525,7 +585,9 @@ export class CmsEditor {
             return;
         }
 
-        val ??= item?.[cfg.field];
+        const { values: curValues } = await this._getUiValue(cfg, scope, item);
+        const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
+        let val = values[0];
         let done = false;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
@@ -556,7 +618,7 @@ export class CmsEditor {
                 if (val && isNaN(val.getTime())) val = null;
                 break;
             case FieldType.DATE_RANGE:
-                val = dateRangeToString(val, item?.[cfg.fields[1]], { hour: null, minute: null });
+                val = dateRangeToString(values[0], values[1], { hour: null, minute: null });
                 break;
             case FieldType.IMAGE:
                 val ||= TRANSPARENT_PIXEL;
@@ -585,17 +647,22 @@ export class CmsEditor {
                 break;
             case FieldType.REPEATER:
                 val = this.ensureArray(val);
-                el.data = val.map((d, i) => ({ ...d, _id: d._id || `row-${i}-${this.instanceId}` }));
+                const now = Date.now();
+                el.data = val.map((d, i) => ({ ...d, _id: d._id || `row-${i}-${now}` }));
+                done = true;
                 break;
         }
-        console.log("Updating user input", cfg.id, "from", cfg.field, "with value:", val);
         if (!done) {
             // if no special set function has been used, try to use the default 
             if ("value" in el)
                 el.value = val;
             else
-                console.error("Cannot assign to user input", cfg.id, "from field", cfg.field, ": No 'value' property")
+                console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property")
         }
+        if (JSON.stringify(values ?? "") == JSON.stringify(curValues ?? ""))
+            console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${index == null ? "" : ` at ${index}`}`);
+        else
+            console.log(`Updated UI ${cfg.id} from field ${cfg.field}${index == null ? "" : ` at ${index}`} with value:`, values, "was:", curValues);
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && btn.id) {
@@ -604,7 +671,7 @@ export class CmsEditor {
             btn.target = "_blank";
         }
 
-        this._validate(cfg, scope);
+        this._validate(cfg, scope, item);
     }
 
     _createMediaStruct(cfg, idx, v, namePart = null) {
@@ -687,10 +754,11 @@ export class CmsEditor {
         try {
             await this.updateButtonStates();
             await this.flushDebounce();
-            console.log(`saveItem:\n${JSON.stringify(this.ds.getCurrentItem(), null, 2)}`);
+            const item = this.ds.getCurrentItem();
+            console.debug(`saveItem:\n${JSON.stringify(item, null, 2)}`);
 
             let allValid = true;
-            for (const cfg of Object.values(this.cmsSchema)) if (!this._validate(cfg, $w)) allValid = false;
+            for (const cfg of Object.values(this.cmsSchema)) if (!this._validate(cfg, $w, item)) allValid = false;
             if (!allValid) {
                 this.showError("Bitte Eingaben auf Fehler prüfen");
                 return false;
@@ -780,7 +848,7 @@ export class CmsEditor {
                 await this.ds.setCurrentItemIndex(index);
                 await this.refreshUI();
             } else {
-                console.warn("navigateTo cannot find among", result.items.length, "items");
+                console.error("navigateTo cannot find among", result.items.length, "items");
             }
         } else
             console.warn("navigateTo will ignore entry", id);
@@ -832,9 +900,9 @@ export class CmsEditor {
         q = q.limit(this.filterLimit);
 
         try {
-            console.log(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
+            console.debug(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
             const res = await q.find();
-            //console.log(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
+            //console.debug(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
             $w("#itemSelector").options = [
                 { label: "➕ Neuer Eintrag", value: "--new--" },
                 ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
@@ -856,16 +924,16 @@ export class CmsEditor {
 
         const isUiValid = el.validity ? el.validity.valid : true;
         let isDataValid = true;
-        const val = cfg.required || cfg.onCustomValidation ? this.ds.getCurrentItem()?.[cfg.field] : null;
+        const val = cfg.required || cfg.onCustomValidation ? item?.[cfg.field] : null;
         if (cfg.required)
             isDataValid = val !== undefined && val !== null && val !== "" && val != TRANSPARENT_PIXEL && (!Array.isArray(val) || val.length > 0);
         if (cfg.onCustomValidation) cfg.onCustomValidation(val, (errorMessage) => {
             isDataValid = false;
             if (el.setCustomValidity) el.setCustomValidity(errorMessage);
-            console.warn(`Custom rejection for ${cfg.field}: ${errorMessage}`);
+            console.warn(`Custom rejection for UI ${cfg.id}: ${errorMessage}`);
         })
         if (!isUiValid || !isDataValid)
-            console.warn(`Validation failed for ${cfg.field}: UI Valid: ${isUiValid}, Data Valid: ${isDataValid}`);
+            console.warn(`Validation failed for UI ${cfg.id}: UI Valid: ${isUiValid}, Data Valid: ${isDataValid}`);
         if (el.updateValidityIndication)
             el.updateValidityIndication();
         else {
@@ -876,7 +944,7 @@ export class CmsEditor {
 
         if (cfg.type == FieldType.REPEATER) el.forEachItem(($item, itemData, index) => {
             for (const cfgSub of Object.values(cfg.inputs))
-                if (!this._validate(cfgSub, $item)) isDataValid = false;
+                if (!this._validate(cfgSub, $item, itemData)) isDataValid = false;
         });
 
 
