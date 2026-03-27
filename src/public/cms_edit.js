@@ -310,25 +310,24 @@ export class CmsEditor {
             });
 
             const updateMedia = async (action) => {
-                const item = this.ds.getCurrentItem();
-                const val = this.ensureArray(item?.[cfg.field]);
+                const { itemData, masterArray, values } = this._resolveContext(cfg, masterArrayID, parentCfg);
+                const val = this.ensureArray(values[0]);
                 console.log("Executing", action, "on", cfg.id, "with", val.length, "items for index", cfg.selIdx);
                 if (cfg.selIdx < 0 || cfg.selIdx >= val.length) return;
                 if (action == "moveleft" && cfg.selIdx > 0) {
                     [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
                     cfg.selIdx--;
+                    //TODO does not trigger diff so save buttons stays grayed
                 } else if (action == "moveright" && cfg.selIdx < val.length - 1) {
                     [val[cfg.selIdx + 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx + 1]];
                     cfg.selIdx++;
+                    //TODO does not trigger diff so save buttons stays grayed
                 } else if (action == "remove") {
                     val.splice(cfg.selIdx, 1);
                     cfg.selIdx = -1;
                 }
                 console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
-                this.ds.setFieldValue(cfg.field, val);
-                await this._updateUiFromData(cfg, scope, item, [val], masterArrayID);
-                await this.updateButtonStates();
-                //TODO needs to use _resolveContext and _persistAndRefresh
+                await this._persistAndRefresh(cfg, scope, itemData, masterArray, [val], masterArrayID, parentCfg, true);
             };
             for (const namePart of ['moveleft', 'moveright', 'remove']) {
                 const btn = this._findRecursive(el, "$w.Button", namePart);

@@ -291,14 +291,18 @@ export function printRanges(eventDate) {
             break;
         case "weekly":
             res += itv == 1 ? "" : `${occNames[itv - 1] || itv + "."} `;
-            weekdays.forEach((wd, i) => { res += `${i == 0 ? "" : i == weekdays.length - 1 ? " und " : ", "}${WEAKDAY_NAMES_HR[WEAKDAY_NAMES.indexOf(wd)]}` });
+            weekdays.forEach((wd, i) => {
+                const idx = WEAKDAY_NAMES.indexOf(wd);
+                res += `${i == 0 ? "" : i == weekdays.length - 1 ? " und " : ", "}${idx != null ? WEAKDAY_NAMES_HR[idx] : "???"}`
+            });
             break;
         case "monthly":
             switch (mr) {
                 case "weekday": {
                     res += occNames[Math.ceil(first.start.getUTCDate() / 7) - 1];
                     res += " ";
-                    res += WEAKDAY_NAMES_HR[first.start.getUTCDay()];
+                    const idx = first.start.getUTCDay();
+                    res += idx == null ? "???" : WEAKDAY_NAMES_HR[idx];
                     res += itv == 1 ? " im Monat" : ` in jedem ${occNames[itv - 1] || itv + "."} Monat`;
                     if (Math.ceil(first.start.getUTCDate() / 7) >= 5) res += " (soweit vorhanden)";
                     break;
