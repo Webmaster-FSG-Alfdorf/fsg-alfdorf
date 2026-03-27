@@ -63,6 +63,21 @@ export const FilterType = Object.freeze({
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export class CmsEditor {
+    /**
+     * @param {Object} config
+     * @param {string} config.cmsName
+     * @param {string} [config.dataSetName]
+     * @param {Object} [config.cmsSchema]
+     * @param {Object} [config.filterSchema]
+     * @param {number} [config.filterLimit]
+     * @param {string} [config.filterSortField]
+     * @param {boolean} [config.filterSortAscending]
+     * @param {function():Promise<boolean>} [config.onBeforeSave]
+     * @param {function(Object):void} [config.onAfterSave]
+     * @param {function():void} [config.onAfterReverted]
+     * @param {function(Object):void} [config.onAfterDelete]
+     * @param {function(Object):string} [config.generateTitle]
+     */
     constructor(config) {
         this.cmsName = config.cmsName;
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
@@ -88,6 +103,7 @@ export class CmsEditor {
 
     /**
      * Initializes the editor, sets default schema values, and binds UI events.
+     * @returns {void}
      */
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
@@ -133,6 +149,11 @@ export class CmsEditor {
         this.updateSelectorList().then(() => this.updateButtonStates());
     }
 
+    /**
+     * Ensures defaults for CMS schema field config.
+     * @param {string} id
+     * @param {CmsFieldConfig} cfg
+     */
     _initCMSConfig(id, cfg) {
         cfg.id ??= id;
         if (Array.isArray(cfg.fields) && cfg.fields.length >= 1)
@@ -175,6 +196,11 @@ export class CmsEditor {
         }
     }
 
+    /**
+     * Ensures defaults for filter schema config.
+     * @param {string} key
+     * @param {Object} cfg
+     */
     _initFilterConfig(key, cfg) {
         cfg.id ??= key;
         cfg.fields ??= this.ensureArray(cfg.field);
@@ -185,6 +211,17 @@ export class CmsEditor {
         cfg.delay ??= 500;
     }
 
+    /**
+     * Debounced binding helper for events on elements.
+     * @param {*} trg
+     * @param {*} scope
+     * @param {CmsFieldConfig} cfg
+     * @param {*} parentCfg
+     * @param {*} masterArrayID
+     * @param {string[]} events
+     * @param {number} delay
+     * @param {function():Promise<void>} callback
+     */
     _bind(trg, scope, cfg, parentCfg, masterArrayID, events, delay, callback) {
         for (const s of events) if (typeof trg[s] == "function") {
             console.debug("Binding", s, "to", cfg.id);
@@ -233,7 +270,6 @@ export class CmsEditor {
                     console.error(e);
                     throw e;
                 }
-
             });
             if (cfg.addButton) {
                 const el = scope(cfg.addButton);
@@ -337,6 +373,14 @@ export class CmsEditor {
         if (cfg.onCustomValidation && !customValidationApplied) console.error("Cannot assign onCustomValidation attribute to", cfg.id);
     }
 
+    /**
+     * Attach filter UI element event binding.
+     * @param {*} cfg
+     * @param {*} scope
+     * @param {Set<string>} boundIDs
+     * @param {*} parentCfg
+     * @param {*} masterArrayID
+     */
     _initFilterElement(cfg, scope, boundIDs, parentCfg, masterArrayID) {
         const el = scope(cfg.id);
         if (!el)
@@ -350,6 +394,7 @@ export class CmsEditor {
 
     /**
      * Synchronizes the UI with the current dataset item.
+     * @returns {Promise<void>}
      */
     async refreshUI() {
         const item = this.ds.getCurrentItem();
@@ -383,6 +428,13 @@ export class CmsEditor {
         await this.updateButtonStates();
     }
 
+    /**
+     * Reads values from UI form controls (for one cfg item).
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {Object} item
+     * @returns {Promise<{values:any[],needRefresh:boolean}>}
+     */
     async _getUiValue(cfg, scope, item) {
         const el = scope(cfg.id);
         if (!cfg) {
@@ -502,9 +554,12 @@ export class CmsEditor {
     }
 
     /**
- * Resolves the data context for nested or top-level fields.
- * Returns the current values, the row data (itemData), and the masterArray if nested.
- */
+     * Resolves editing item context for (repeater) nested fields.
+     * @param {CmsFieldConfig} cfg
+     * @param {string|null} masterArrayID
+     * @param {CmsFieldConfig|null} parentCfg
+     * @returns {{itemData:Object|null,masterArray:Array|null,values:any[]}}
+     */
     _resolveContext(cfg, masterArrayID, parentCfg) {
         const item = this.ds.getCurrentItem();
         if (parentCfg != null && masterArrayID != null) {
@@ -522,7 +577,15 @@ export class CmsEditor {
     }
 
     /**
-     * Persists changes to the dataset and refreshes the UI.
+     * Persist field changes to dataset and update UI+validation.
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {Object|null} itemData
+     * @param {Array|null} masterArray
+     * @param {Array} values
+     * @param {string|null} masterArrayID
+     * @param {CmsFieldConfig|null} parentCfg
+     * @param {boolean} needRefresh
      */
     async _persistAndRefresh(cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh) {
         console.info("_persistAndRefresh", { cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh });
@@ -564,7 +627,11 @@ export class CmsEditor {
     }
 
     /**
-     * Reads values from the UI and updates the dataset fields.
+     * Read UI values, detect change, and persist to dataset.
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {*} parentCfg
+     * @param {string|null} masterArrayID
      */
     async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID) {
         const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, masterArrayID, parentCfg);
@@ -578,6 +645,13 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh || masterArray);
     }
 
+    /**
+     * Reset field to default value and persist.
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {*} parentCfg
+     * @param {string|null} masterArrayID
+     */
     async resetField(cfg, scope, parentCfg, masterArrayID) {
         console.log("resetField for", cfg.id);
         const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, masterArrayID, parentCfg);
@@ -591,6 +665,12 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, true);
     }
 
+    /**
+     * Add row to repeater array and persist.
+     * @param {*} scope
+     * @param {CmsFieldConfig} cfg
+     * @param {string|null} masterArrayID
+     */
     async addRepeaterItem(scope, cfg, masterArrayID) {
         console.log("addRepeaterItem for", cfg.id);
         const { itemData, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
@@ -601,6 +681,13 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, masterArrayID, null, true);
     }
 
+    /**
+     * Remove row from repeater array and persist.
+     * @param {*} scope
+     * @param {CmsFieldConfig} cfg
+     * @param {string} id
+     * @param {string|null} masterArrayID
+     */
     async removeRepeaterItem(scope, cfg, id, masterArrayID) {
         console.log("removeRepeaterItem from", cfg.id, "with id", id);
         const { itemData, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
@@ -610,7 +697,12 @@ export class CmsEditor {
     }
 
     /**
-     * Populates UI elements with data from an item or a given value.
+     * Write values from model into UI controls.
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {Object} item
+     * @param {any[]} valuesToUse
+     * @param {string|null} masterArrayID
      */
     async _updateUiFromData(cfg, scope, item, valuesToUse, masterArrayID) {
         const el = scope(cfg.id);
@@ -715,6 +807,14 @@ export class CmsEditor {
         await this._validate(cfg, scope, item);
     }
 
+    /**
+     * Creates structure for media item for galleries.
+     * @param {CmsFieldConfig} cfg
+     * @param {number} idx
+     * @param {string|Object} v
+     * @param {string|null} namePart
+     * @returns {Object}
+     */
     _createMediaStruct(cfg, idx, v, namePart = null) {
         return typeof v != "string"
             ? { ...v, description: idx == cfg.selIdx ? "✅" : "" }
@@ -727,9 +827,9 @@ export class CmsEditor {
     }
 
     /**
-     * Returns the user-friendly string representation of an item's field, currently used only in diff.
-     * @param {Object} item - CMS Item.
-     * @param {CmsFieldConfig} cfg - Field configuration.
+     * Formats value for diff output.
+     * @param {Object} item
+     * @param {CmsFieldConfig} cfg
      * @returns {Promise<string>}
      */
     async _diffValue(item, cfg) {
@@ -754,9 +854,9 @@ export class CmsEditor {
     }
 
     /**
-      * Compares the original item with the current state to find changes.
-      * @returns {Promise<Object>} Object containing internal and user-facing diff arrays.
-      */
+     * Compare original item and current item for changed fields.
+     * @returns {Promise<{diffIntern:any[],diffUser:any[]}>}
+     */
     async getDiff() {
         const currentItem = this.ds.getCurrentItem();
         let diffIntern = [];
@@ -774,8 +874,8 @@ export class CmsEditor {
     }
 
     /**
-     * Immediately executes any pending debounced updates.
-     * @param {boolean} [update=true] - Whether to perform the data update.
+     * Executes pending debounced update timers.
+     * @param {boolean} [update=true]
      */
     async flushDebounce(update = true) {
         await Promise.all(Object.keys(this.debounceTimers).map(async (id) => {
@@ -788,6 +888,10 @@ export class CmsEditor {
         }));
     }
 
+    /**
+     * Saves the current item through dataset and handles references.
+     * @returns {Promise<Object|false>}
+     */
     async saveItem() {
         console.log("saveItem");
         this.isSaving = true;
@@ -828,6 +932,9 @@ export class CmsEditor {
         return savedItem;
     }
 
+    /**
+     * Revert changes on dataset item and refresh UI.
+     */
     async revertItem() {
         console.log("revertItem");
         await this.flushDebounce(false);
@@ -839,6 +946,9 @@ export class CmsEditor {
         await this.refreshUI();
     }
 
+    /**
+     * Create new item after saving current.
+     */
     async newItem() {
         console.log("newItem");
         const saveSuccessful = await this.saveItem();
@@ -852,6 +962,9 @@ export class CmsEditor {
             console.warn("New item aborted: Save failed.");
     }
 
+    /**
+     * Remove item and select next/previous.
+     */
     async removeItem() {
         console.log("removeItem");
         await this.flushDebounce();
@@ -869,6 +982,10 @@ export class CmsEditor {
         if (nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
     }
 
+    /**
+     * Change selector by offset.
+     * @param {number} offset
+     */
     navigateRelative(offset) {
         console.log("navigateRelative", offset);
         const currentId = this.ds.getCurrentItem()?._id;
@@ -878,6 +995,10 @@ export class CmsEditor {
         this.navigateTo(nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value);
     }
 
+    /**
+     * Navigate to item ID from selector.
+     * @param {string|null} id
+     */
     async navigateTo(id) {
         console.log("navigateTo", id);
         if (id && id != "--new--") {
@@ -894,6 +1015,9 @@ export class CmsEditor {
             console.warn("navigateTo will ignore entry", id);
     }
 
+    /**
+     * Query dataset based on filter inputs and update selector options.
+     */
     async updateSelectorList() {
         console.log("updateSelectorList");
 
@@ -953,6 +1077,13 @@ export class CmsEditor {
         }
     }
 
+    /**
+     * Validate field plus custom logic, repeater child files etc.
+     * @param {CmsFieldConfig} cfg
+     * @param {*} scope
+     * @param {Object} item
+     * @returns {Promise<boolean>}
+     */
     async _validate(cfg, scope, item) {
         // console.info("_validate", { cfg, scope, item });
         const el = scope(cfg.id);
@@ -1016,6 +1147,9 @@ export class CmsEditor {
         return isUiValid && isDataValid && subValid;
     }
 
+    /**
+     * Toggle buttons based on current item state.
+     */
     async updateButtonStates() {
         const selector = $w("#itemSelector");
         const currentIndex = selector.selectedIndex;
@@ -1042,6 +1176,10 @@ export class CmsEditor {
         }
     }
 
+    /**
+     * Display an error message in the UI.
+     * @param {*} error
+     */
     showError(error) {
         const errStr = (JSON.stringify(error) + String(error.stack) + String(error.message)).toLowerCase();
         console.error("Error saving item:", errStr);
@@ -1054,6 +1192,11 @@ export class CmsEditor {
         this.showMessage(msg, true);
     }
 
+    /**
+     * Display status or error message in response field.
+     * @param {string} message
+     * @param {boolean} [isError=false]
+     */
     showMessage(message, isError = false) {
         if (!$w("#textResponse").id) return;
         if (this.messageTimer) clearTimeout(this.messageTimer);
@@ -1063,6 +1206,9 @@ export class CmsEditor {
         this.messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
     }
 
+    /**
+     * Hide response message.
+     */
     collapseResponse() {
         if (!$w("#textResponse").id) return;
         $w("#textResponse").hide();
@@ -1076,8 +1222,8 @@ export class CmsEditor {
      * If val already is an array, returns it, 
      * if val is null, returns [],
      * else returns val as a single-length array.
-     * @param {any} val 
-     * @returns any[] 
+     * @param {*} val
+     * @returns {*[]}
      */
     ensureArray(val) {
         if (Array.isArray(val)) return val;
@@ -1085,6 +1231,13 @@ export class CmsEditor {
         return [val];
     }
 
+    /**
+     * Recursively find child element by type/id content.
+     * @param {*} element
+     * @param {string|null} type
+     * @param {string|null} namePart
+     * @returns {*}
+     */
     _findRecursive(element, type = null, namePart = null) {
         if (!element.children) return null;
         let found = element.children.find(c => (!type || c.type === type) && (!namePart || c.id.toLowerCase().includes(namePart)));
