@@ -3,7 +3,7 @@ import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
 import { CmsEditor, FieldType, FilterType } from 'public/cms_edit.js';
-import { dateRangeToString, FormatTypesMonth, toUTC, toLocal, incUTCDate, nightsBetween } from 'public/cms.js';
+import { dateRangeToString, FormatTypesMonth, toUTC, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let currentDateOccupied = "";
@@ -33,6 +33,21 @@ $w.onReady(function () {
         if (editor) editor.updateUiFromData();
     });
 
+    $w("#htmlDate").onMessage(async (event) => {
+        console.log("received message", event.data);
+        if (event.data?.selectedDates?.length == 2) {
+            $w("#inputDate").value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
+            await editor.updateDataFromUi("#inputDate");
+        }
+        if (event.data?.displayedMonth && event.data?.displayedYear) {
+            occupationsRange = [
+                new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
+                new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
+            ];
+            syncUI(false, false);
+        }
+    });
+
     $w("#datasetReservations").onReady(async () => {
         console.log("#datasetReservations onReady");
         const dt = toUTC(new Date());
@@ -44,21 +59,6 @@ $w.onReady(function () {
             await $w("#datasetReservations").setFieldValue("lodging", query.lodging);
             $w("#inputLodging").scrollTo()
         }
-
-        $w("#htmlDate").onMessage(async (event) => {
-            console.log("received message", event.data);
-            if (event.data?.selectedDates?.length == 2) {
-                $w("#inputDate").value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
-                await editor.updateDataFromUi("#inputDate");
-            }
-            if (event.data?.displayedMonth && event.data?.displayedYear) {
-                occupationsRange = [
-                    new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
-                    new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
-                ];
-                syncUI(false, false);
-            }
-        });
 
         // special block below only for Management site -- all above shall be identical with Guest site
 
@@ -75,7 +75,7 @@ $w.onReady(function () {
                         return [lodging[0], Number(lodging[1] || 0)];
                     },
                     onFormatValue: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
-                    onDisplayValue: async (item) => item ? await generateLodgingName(item) : null,
+                    onDiffValue: async (item) => item ? await generateLodgingName(item) : null,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
@@ -84,12 +84,18 @@ $w.onReady(function () {
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom", type: FieldType.HOURS_OF_DATE,
-                    onDisplayValue: (item) => $w("#inputArrivalTime").options.find(o => o.value == toLocal(item?.dateFrom).getHours().toString())?.label,
+                    onDiffValue: (item) => {
+                        const hour = new Date(item?.dateFrom).getUTCHours().toString();
+                        return $w("#inputArrivalTime").options.find(o => o.value == hour)?.label;
+                    },
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDepartureTime": {
                     field: "dateTo", type: FieldType.HOURS_OF_DATE,
-                    onDisplayValue: (item) => $w("#inputDepartureTime").options.find(o => o.value == toLocal(item?.dateTo).getHours().toString())?.label,
+                    onDiffValue: (item) => {
+                        const hour = new Date(item?.dateFrom).getUTCHours().toString();
+                        return $w("#inputDepartureTime").options.find(o => o.value == hour)?.label;
+                    },
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, onChanged: () => updateCostsTable() },
@@ -132,12 +138,10 @@ $w.onReady(function () {
                 },
                 "#filterStatus": {
                     type: FilterType.EQ,
-                    skip: (val) => !val || val == "*",
                     field: "state"
                 },
                 "#filterLodging": {
                     type: FilterType.EQ,
-                    skip: (val) => [!val || val == "*"],
                     value: (val) => [val.split("|").map((v, i) => i == 0 ? v : Number(v))],
                     fields: ["lodging", "lodgingSub"],
                 }

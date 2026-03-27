@@ -124,8 +124,8 @@ export function dateRangeToString(
         second = FormatTypesNumeric.none
     } = {}) {
     let res = "";
+    let df = { timeZone: "Europe/Berlin" };
     if (start) {
-        let df = { timeZone: "Europe/Berlin" };
         if (weekday != null) df.weekday = weekday;
         if (day != null) df.day = day;
         if (month != null) df.month = month;
@@ -137,8 +137,8 @@ export function dateRangeToString(
         res += dStart.toLocaleString(locales, df);
         if (end) {
             const dEnd = end; //toLocal(end);
-            const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
-            const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
+            const sameDay = dStart.getUTCDate() == dEnd.getUTCDate() && dStart.getUTCMonth() == dEnd.getUTCMonth() && dStart.getUTCFullYear() == dEnd.getUTCFullYear();
+            const sameTime = dStart.getUTCHours() == dEnd.getUTCHours() && dStart.getUTCMinutes() == dEnd.getUTCMinutes() && dStart.getUTCSeconds() == dEnd.getUTCSeconds();
             const showDay = weekday != null || day != null || month != null || year != null;
             const showTime = hour != null || minute != null || second != null;
             if ((showDay && !sameDay) || (showTime && !sameTime)) {
@@ -183,53 +183,64 @@ export function listAllRanges(eventDate) {
     const start = new Date(eventDate.start);
     const end = new Date(eventDate.end || start);
 
-    const rct = eventDate.recurrenceType;
     const itv = eventDate.recurrenceInterval;
-    const mr = eventDate.monthlyRepetition || "weekday";
-    let weekdays = eventDate.recurrenceDays;
-    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[start.getDay()]]; // if no weekday specified, assume only the week day that the start date has
-
-    let duration = end.getTime() - start.getTime();
-    if (itv > 0) {
-        // duration shall only contain the *time* difference between end and start
-        let e = new Date(end);
-        e.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
-        duration = e.getTime() - start.getTime();
-        if (duration < 0) duration += 24 * 3600 * 1000;
+    if (itv <= 0) {
+        // no repetition, one-time event: this can also span over multiple days
+        res.push({ start, end });
+        return res;
     }
 
+    const rct = eventDate.recurrenceType;
+    const mr = eventDate.monthlyRepetition || "weekday";
+    let weekdays = eventDate.recurrenceDays;
+    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[start.getUTCDay()]]; // if no weekday specified, assume only the week day that the start date has
+
+    // duration shall only contain the *time* difference between end and start
+    let duration = end.getTime() - start.getTime();
+    let e = new Date(end);
+    e.setUTCFullYear(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+    duration = e.getTime() - start.getTime();
+    if (duration < 0) duration += 24 * 3600 * 1000;
+    //console.info({ start, end, rct, itv, mr, weekdays, duration });
+
     let cur = new Date(start);
+    cur.setUTCHours(0, 0, 0, 0);
     let count = 0;
     while (count < 1000) { // safety measure against dead loops
+        //console.info({ cur, count, results: res.length });
         ++count;
-        if (cur > end) return res; // end reached
-        if ((rct != "weekly" || weekdays.includes(WEAKDAY_NAMES[cur.getDay()])) &&
-            (rct != "monthly" || (mr == "weekday" ? cur.getDay() == start.getDay() : cur.getDate() == start.getDate())))
-            res.push({ start: new Date(cur), end: duration > 0 ? new Date(cur.getTime() + duration) : null });
-        if (itv <= 0) return res; // no repetition, one-time event
+        if (cur.getTime() > end.getTime()) return res; // end reached
+        if ((rct != "weekly" || weekdays.includes(WEAKDAY_NAMES[cur.getUTCDay()])) &&
+            (rct != "monthly" || (mr == "weekday" ? cur.getUTCDay() == start.getUTCDay() : cur.getUTCDate() == start.getUTCDate()))) {
+            const dt0 = new Date(cur);
+            const dt1 = duration > 0 ? new Date(cur) : null;
+            dt0.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), 0);
+            dt1?.setHours(end.getHours(), end.getMinutes(), end.getSeconds(), 0);
+            res.push({ start: dt0, end: dt1 });
+        }
         switch (rct) {
             case "daily":
-                cur.setDate(cur.getDate() + itv);
+                cur.setUTCDate(cur.getUTCDate() + itv);
                 break;
             case "weekly":
                 // check each day, but respect itv after having processed all weekdays
-                cur.setDate(cur.getDate() + 1);
-                if (cur.getDay() === start.getDay()) cur.setDate(cur.getDate() + (itv - 1) * 7);
+                cur.setUTCDate(cur.getUTCDate() + 1);
+                if (cur.getUTCDay() === start.getUTCDay()) cur.setUTCDate(cur.getUTCDate() + (itv - 1) * 7);
                 break;
             case "monthly":
                 switch (mr) {
                     case "weekday": { // like every second Monday of the month, based on the weekday of the start date
-                        cur.setMonth(cur.getMonth() + itv, 1);
-                        cur.setDate(1 + (start.getDay() - cur.getDay() + 7) % 7 + (Math.ceil(start.getDate() / 7) - 1) * 7);
+                        cur.setUTCMonth(cur.getUTCMonth() + itv, 1);
+                        cur.setUTCDate(1 + (start.getUTCDay() - cur.getUTCDay() + 7) % 7 + (Math.ceil(start.getUTCDate() / 7) - 1) * 7);
                         // if the calculated day does not exist in this month (like 5th Monday), it will be skipped during the next iteration
-                        if (cur.getMonth() != (start.getMonth() + count * itv) % 12) cur.setDate(0);
+                        if (cur.getUTCMonth() != (start.getUTCMonth() + count * itv) % 12) cur.setUTCDate(0);
                         break;
                     }
                     case "dayOfMonth": { // like every 15th of the month, based on the day of the month of the start date
-                        const targetDay = start.getDate();
-                        cur.setMonth(cur.getMonth() + itv, targetDay);
+                        const targetUTCDay = start.getUTCDate();
+                        cur.setUTCMonth(cur.getUTCMonth() + itv, targetUTCDay);
                         // if the day does not exist in this month (like 30th in February), it will be skipped during the next iteration
-                        if (cur.getDate() != targetDay) cur.setDate(0);
+                        if (cur.getUTCDate() != targetUTCDay) cur.setUTCDate(0);
                         break;
                     }
                 }
@@ -257,11 +268,11 @@ export function printRanges(eventDate) {
     const itv = parseInt(eventDate.recurrenceInterval) || 1;
     const mr = eventDate.monthlyRepetition || "weekday";
     let weekdays = eventDate.recurrenceDays;
-    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[first.start.getDay()]]; // if no weekday specified, assume only the week day that the start date has
+    if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[first.start.getUTCDay()]]; // if no weekday specified, assume only the week day that the start date has
     let res = "Ab ";
 
-    let sameYear = first.start.getFullYear() == last.end.getFullYear();
-    let sameMonth = sameYear && first.start.getMonth() == last.end.getMonth();
+    let sameYear = first.start.getUTCFullYear() == last.end.getUTCFullYear();
+    let sameMonth = sameYear && first.start.getUTCMonth() == last.end.getUTCMonth();
     res += dateRangeToString(first.start, first.end, {
         year: sameYear ? FormatTypesNumeric.none : FormatTypesNumeric.numeric,
         month: sameMonth ? FormatTypesMonth.none : FormatTypesMonth.long,
@@ -285,18 +296,18 @@ export function printRanges(eventDate) {
         case "monthly":
             switch (mr) {
                 case "weekday": {
-                    res += occNames[Math.ceil(first.start.getDate() / 7) - 1];
+                    res += occNames[Math.ceil(first.start.getUTCDate() / 7) - 1];
                     res += " ";
-                    res += WEAKDAY_NAMES_HR[first.start.getDay()];
+                    res += WEAKDAY_NAMES_HR[first.start.getUTCDay()];
                     res += itv == 1 ? " im Monat" : ` in jedem ${occNames[itv - 1] || itv + "."} Monat`;
-                    if (Math.ceil(first.start.getDate() / 7) >= 5) res += " (soweit vorhanden)";
+                    if (Math.ceil(first.start.getUTCDate() / 7) >= 5) res += " (soweit vorhanden)";
                     break;
                 }
                 case "dayOfMonth": {
-                    res += first.start.getDate();
+                    res += first.start.getUTCDate();
                     res += ". ";
                     res += itv == 1 ? "des Monats" : `jeden ${occNames[itv - 1] || itv + "."} Monats`;
-                    if (first.start.getDate() > 28) res += " (soweit vorhanden)";
+                    if (first.start.getUTCDate() > 28) res += " (soweit vorhanden)";
                     break;
                 }
             }
@@ -477,8 +488,8 @@ export function nightsBetween(dateFrom, dateTo) {
     if (dateFrom && dateTo) {
         const d1 = new Date(dateFrom);
         const d2 = new Date(dateTo);
-        d1.setHours(0, 0, 0, 0);
-        d2.setHours(0, 0, 0, 0);
+        d1.setUTCHours(0, 0, 0, 0);
+        d2.setUTCHours(0, 0, 0, 0);
         return Math.max(0, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
     } else return 0;
 }

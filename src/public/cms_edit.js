@@ -1,6 +1,6 @@
 import wixData from 'wix-data';
 
-import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms.js';
+import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -18,7 +18,7 @@ import { dateRangeToString, stringToDateRange, toUTC, toLocal } from 'public/cms
  * @property {boolean} [showToUser] - Whether to show changes in this field to the end user (default true).
  * @property {string} [linkButton] - ID of a button (e.g., "#btn") to link to the field's value.
  * @property {string} [linkPrefix] - Prefix for the URL in linkButton (e.g., "mailto:").
- * @property {Function} [onDisplayValue] - (item) => string: Custom logic to format the value for display/logs.
+ * @property {Function} [onDiffValue] - (item) => string: Custom logic to format the value for display/logs.
  * @property {Function} [onChanged] - (values, parentCfg, index) => void: Callback triggered after the field value has been updated.
  * @property {Function} [onFormatValue] - (item) => any: For FieldType.CUSTOM: Custom logic to extract data from the CMS item.
  * @property {Function} [onParseUserInput] - (val) => any: For FieldType.CUSTOM: Custom logic to clean/transform input before saving.
@@ -215,6 +215,12 @@ export class CmsEditor {
         if (el._cmsInitialized) return;
         el._cmsInitialized = true;
 
+        if (cfg.resetButton) {
+            const el = scope(cfg.resetButton);
+            if (el.id) el.onClick(async () => await this.resetField(cfg, scope, parentCfg, index));
+            else console.warn(cfg.resetButton, "not found in DOM");
+        }
+
         if (cfg.type == FieldType.REPEATER) {
             el.onItemReady(($item, itemData, itemIndex) => {
                 try {
@@ -225,7 +231,7 @@ export class CmsEditor {
                     }
                     if (cfg.removeButton) {
                         const el = $item(cfg.removeButton);
-                        if (el.id) el.onClick(async () => await this.removeRepeaterItem($item, cfg, itemIndex, index));
+                        if (el.id) el.onClick(async () => await this.removeRepeaterItem($item, cfg, itemData._id, index));
                         else console.warn(cfg.removeButton, "not found in DOM");
                     }
                 } catch (e) {
@@ -291,6 +297,7 @@ export class CmsEditor {
                 this.ds.setFieldValue(cfg.field, val);
                 await this._updateUiFromData(cfg, scope, item, [val], null);
                 await this.updateButtonStates();
+                //TODO needs to use _resolveContext and _persistAndRefresh
             };
             for (const namePart of ['moveleft', 'moveright', 'remove']) {
                 const btn = this._findRecursive(el, "$w.Button", namePart);
@@ -403,10 +410,9 @@ export class CmsEditor {
                 if (isNaN(dt.getTime()))
                     val = null;
                 else {
-                    dt = toLocal(dt);
-                    const [hours, minutes] = (el.value.toString() || "00:00").split(':');
-                    dt.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-                    val = toUTC(dt);
+                    const [hours, minutes] = (el.value?.toString() || "00:00").split(':');
+                    dt.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0); // local time
+                    val = dt;
                 }
                 break;
             }
@@ -415,10 +421,8 @@ export class CmsEditor {
                 if (isNaN(dt.getTime()))
                     val = null;
                 else {
-                    dt.setUTCHours(0, 0, 0, 0);
-                    dt = toLocal(dt);
-                    dt.setHours(Number(el.value ?? 0), 0, 0, 0);
-                    val = toUTC(dt);
+                    dt.setUTCHours(Number(el.value ?? 0), 0, 0, 0);
+                    val = dt;
                 }
                 break;
             }
@@ -486,7 +490,7 @@ export class CmsEditor {
                 }
                 break;
             case FieldType.REPEATER:
-                val = this.ensureArray(item?.[cfg.field]);
+                val = this.ensureArray(val);
                 break;
             default:
                 val = el.value;
@@ -510,20 +514,21 @@ export class CmsEditor {
      * Persists changes to the dataset and refreshes the UI.
      */
     async _persistAndRefresh(cfg, scope, itemData, masterArray, values, index, parentCfg, needRefresh) {
-        const targetCfg = parentCfg || cfg;
-
+        console.info("_persistAndRefresh", { cfg, scope, itemData, masterArray, values, index, parentCfg, needRefresh });
         if (masterArray && index != null) {
             masterArray[index] = { ...masterArray[index] };
-            cfg.fields.forEach((f, i) => masterArray[index][f] = values[i]);
-            await this.ds.setFieldValue(targetCfg.field, masterArray);
+            for (let i = 0; i < cfg.fields.length; i++)
+                masterArray[index][cfg.fields[i]] = values[i];
+            itemData = masterArray[index];
+            await this.ds.setFieldValue((parentCfg || cfg).field, masterArray);
         } else {
             for (let i = 0; i < cfg.fields.length; i++)
                 await this.ds.setFieldValue(cfg.fields[i], values[i]);
         }
 
         if (cfg?.onChanged) {
-            console.log("Calling user onChanged(", values, ", ", parentCfg, ", ", index, ") on config")
-            await cfg.onChanged(values, parentCfg, index);
+            console.log("Calling user onChanged(", values[0], ", ", parentCfg, ", ", index, ") on config")
+            await cfg.onChanged(values[0], parentCfg, index);
         }
         if (parentCfg?.onChanged) {
             const wholeContent = masterArray || values[0];
@@ -531,9 +536,15 @@ export class CmsEditor {
             await parentCfg.onChanged(wholeContent, null, null);
         }
 
-        this._validate(cfg, scope, itemData);
+        if (needRefresh)
+            await this._updateUiFromData(cfg, scope, itemData, values, index);
+        else
+            await this._validate(cfg, scope, itemData);
+
+        for (const subCfg of parentCfg ? Object.values(parentCfg.inputs) : [cfg])
+            await this._validate(subCfg, scope, itemData);
+
         await this.updateButtonStates();
-        if (needRefresh) await this._updateUiFromData(cfg, scope, itemData, values, index);
     }
 
     /**
@@ -551,23 +562,35 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, itemData, masterArray, values, index, parentCfg, needRefresh || masterArray);
     }
 
+    async resetField(cfg, scope, parentCfg, index) {
+        console.log("resetField for", cfg.id);
+        const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, index, parentCfg);
+        const values = [cfg.default];
+        if (JSON.stringify(values ?? "") == JSON.stringify(curVal ?? "")) {
+            console.debug(`Already in reset state ${cfg.id} for field ${cfg.field}${index == null ? "" : ` at ${index}`}`);
+            return;
+        }
+
+        console.log(`Resetting UI ${cfg.id} to field ${cfg.fields}${index == null ? "" : ` at ${index}`} with value:`, values);
+        await this._persistAndRefresh(cfg, scope, itemData, masterArray, values, index, parentCfg, true);
+    }
+
     async addRepeaterItem(scope, cfg, index) {
         console.log("addRepeaterItem for", cfg.id);
         const { itemData, masterArray, values } = this._resolveContext(cfg, index, null);
+        console.info({ scope, cfg, index, itemData, masterArray, values });
         const newItem = { _id: `row-${values[0].length}-${Date.now()}` };
-        for (const subCfg of Object.values(cfg.inputs))
-            newItem[subCfg.field] = subCfg.default;
-        const newValues = [...values[0], newItem];
+        for (const subCfg of Object.values(cfg.inputs)) newItem[subCfg.field] ??= subCfg.default;
+        const newValues = [[...values[0], newItem]];
         await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, index, null, true);
     }
 
-    async removeRepeaterItem(scope, cfg, itemIndex, index) {
-        console.log("removeRepeaterItem from", cfg.id, "at itemIndex", itemIndex);
+    async removeRepeaterItem(scope, cfg, id, index) {
+        console.log("removeRepeaterItem from", cfg.id, "with id", id);
         const { itemData, masterArray, values } = this._resolveContext(cfg, index, null);
-        if (itemIndex >= 0 && itemIndex < values[0].length) {
-            const newValues = values[0].filter((_, i) => i != itemIndex);
-            await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, index, null, true);
-        }
+        console.info({ scope, cfg, id, index, itemData, masterArray, values });
+        const newValues = [values[0].filter(v => v._id != id)];
+        await this._persistAndRefresh(cfg, scope, itemData, masterArray, newValues, index, null, true);
     }
 
     /**
@@ -587,78 +610,82 @@ export class CmsEditor {
 
         const { values: curValues } = await this._getUiValue(cfg, scope, item);
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
-        let val = values[0];
+        let val0 = values[0];
         let done = false;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
-                val = !!val;
+                val0 = !!val0;
                 if ("checked" in el) {
-                    el.checked = val;
+                    el.checked = val0;
                     done = true;
                 }
                 break;
             case FieldType.ADDRESS:
-                val = val && typeof val == 'object' ? val : { formatted: "" };
+                val0 = val0 && typeof val0 == 'object' ? val0 : { formatted: "" };
                 break;
             case FieldType.TIME_OF_DATE:
-                if (val != null) {
-                    const dt = new Date(val);
-                    val = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
+                if (val0 != null) {
+                    const dt = new Date(val0);
+                    // local time
+                    val0 = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
                 } else
-                    val = "";
+                    val0 = "";
                 break;
             case FieldType.HOURS_OF_DATE:
-                if (!val && "selectedIndex" in el) {
+                if (!val0 && "selectedIndex" in el) {
                     el.selectedIndex = 0;
                     done = true;
                 }
                 break;
             case FieldType.DATE:
-                if (val) val = new Date(val);
-                if (val && isNaN(val.getTime())) val = null;
+                if (val0) val0 = new Date(val0);
+                if (val0 && isNaN(val0.getTime())) val0 = null;
                 break;
             case FieldType.DATE_RANGE:
-                val = dateRangeToString(values[0], values[1], { hour: null, minute: null });
+                val0 = dateRangeToString(values[0], values[1], { hour: null, minute: null });
                 break;
             case FieldType.IMAGE:
-                val ||= TRANSPARENT_PIXEL;
+                val0 ||= TRANSPARENT_PIXEL;
                 const img = this._findRecursive(el, "$w.Image");
                 if (img && "src" in img) {
-                    img.src = val;
+                    img.src = val0;
                     done = true;
                 }
                 break;
             case FieldType.IMAGES:
-                val = this.ensureArray(val).map((v, i) => this._createMediaStruct(cfg, i, v));
+                val0 = this.ensureArray(val0).map((v, i) => this._createMediaStruct(cfg, i, v));
                 const gallery = this._findRecursive(el, "$w.Gallery");
                 if (gallery && "items" in gallery) {
-                    gallery.items = val;
+                    gallery.items = val0;
                     if (gallery.items.length == 0) gallery.collapse(); else gallery.expand();
                     done = true;
                 }
                 break;
             case FieldType.CUSTOM:
                 try {
-                    val = await cfg.onFormatValue(item);
+                    val0 = await cfg.onFormatValue(item);
                 } catch (e) {
                     console.warn("Error in onFormatValue for", cfg.id, ":", e);
-                    val = null;
+                    val0 = null;
                 }
                 break;
             case FieldType.REPEATER:
-                val = this.ensureArray(val);
                 const now = Date.now();
-                el.data = val.map((d, i) => ({ ...d, _id: d._id || `row-${i}-${now}` }));
+                val0 = this.ensureArray(val0);
+                val0 = val0.map((d, i) => ({ ...d, _id: d._id || `row-${i}-${now}` }));
+                el.data = []; // force refresh
+                el.data = val0;
                 done = true;
                 break;
         }
         if (!done) {
             // if no special set function has been used, try to use the default 
             if ("value" in el)
-                el.value = val;
+                el.value = val0;
             else
                 console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property")
         }
+        values[0] = val0;
         if (JSON.stringify(values ?? "") == JSON.stringify(curValues ?? ""))
             console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${index == null ? "" : ` at ${index}`}`);
         else
@@ -666,12 +693,12 @@ export class CmsEditor {
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && btn.id) {
-            if (val) btn.link = `${cfg.linkPrefix ?? ""}${val}`;
-            if (val) btn.enable(); else btn.disable();
+            if (val0) btn.link = `${cfg.linkPrefix ?? ""}${val0}`;
+            if (val0) btn.enable(); else btn.disable();
             btn.target = "_blank";
         }
 
-        this._validate(cfg, scope, item);
+        await this._validate(cfg, scope, item);
     }
 
     _createMediaStruct(cfg, idx, v, namePart = null) {
@@ -691,9 +718,9 @@ export class CmsEditor {
      * @param {CmsFieldConfig} cfg - Field configuration.
      * @returns {Promise<string>}
      */
-    async _displayValue(item, cfg) {
+    async _diffValue(item, cfg) {
         if (!cfg) return "";
-        if (cfg.onDisplayValue) return await cfg.onDisplayValue(item);
+        if (cfg.onDiffValue) return await cfg.onDiffValue(item);
         if (!item) return "";
         const v = item[cfg.field];
         const formatters = {
@@ -702,8 +729,8 @@ export class CmsEditor {
             [FieldType.ADDRESS]: () => v.formatted || String(v),
             [FieldType.DATE]: () => dateRangeToString(v, null, cfg.format),
             [FieldType.DATE_RANGE]: () => dateRangeToString(v, item[cfg.fields[1]], cfg.format),
-            [FieldType.HOURS_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:00` : "",
-            [FieldType.TIME_OF_DATE]: () => v ? `${toLocal(new Date(v)).getHours()}:${toLocal(new Date(v)).getMinutes()}` : "",
+            [FieldType.HOURS_OF_DATE]: () => v ? `${new Date(v).getUTCHours()}:00` : "",
+            [FieldType.TIME_OF_DATE]: () => v ? `${new Date(v).getUTCHours()}:${new Date(v).getUTCMinutes()}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(v).join(", "),
             [FieldType.IMAGES]: () => `${this.ensureArray(v).length} Bilder`,
             [FieldType.CUSTOM]: () => cfg.onFormatValue(item),
@@ -723,7 +750,7 @@ export class CmsEditor {
 
         await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
             if (!cfg.collectDiff) return;
-            const [vOrg, vCur] = await Promise.all([this._displayValue(this.originalItem, cfg), this._displayValue(currentItem, cfg)]);
+            const [vOrg, vCur] = await Promise.all([this._diffValue(this.originalItem, cfg), this._diffValue(currentItem, cfg)]);
             if (vOrg != vCur) {
                 diffIntern.push([cfg.label, vOrg, vCur]);
                 if (cfg.showToUser) diffUser.push([cfg.label, vOrg, vCur]);
@@ -750,7 +777,7 @@ export class CmsEditor {
     async saveItem() {
         console.log("saveItem");
         this.isSaving = true;
-        let savedItem = false;
+        let savedItem = null;
         try {
             await this.updateButtonStates();
             await this.flushDebounce();
@@ -758,7 +785,7 @@ export class CmsEditor {
             console.debug(`saveItem:\n${JSON.stringify(item, null, 2)}`);
 
             let allValid = true;
-            for (const cfg of Object.values(this.cmsSchema)) if (!this._validate(cfg, $w, item)) allValid = false;
+            for (const cfg of Object.values(this.cmsSchema)) if (!await this._validate(cfg, $w, item)) allValid = false;
             if (!allValid) {
                 this.showError("Bitte Eingaben auf Fehler prüfen");
                 return false;
@@ -775,7 +802,6 @@ export class CmsEditor {
                     const val = this.ensureArray($w(cfg.id)?.value);
                     console.log("saveItem replaceReferences", cfg.field, savedItem._id, val);
                     await wixData.replaceReferences(this.cmsName, cfg.field, savedItem._id, val);
-                    //TODO need recursion for REPETAER type
                 }
             console.log("item saved");
             this.onAfterSave(diff, beforeSafeResult);
@@ -785,7 +811,7 @@ export class CmsEditor {
             this.isSaving = false;
             await this.updateButtonStates();
         }
-        return savedItem; //TODO or always true?
+        return savedItem;
     }
 
     async revertItem() {
@@ -913,27 +939,46 @@ export class CmsEditor {
         }
     }
 
-    _validate(cfg, scope, item) {
+    async _validate(cfg, scope, item) {
+    // console.info("_validate", { cfg, scope, item });
         const el = scope(cfg.id);
         if (!cfg) {
             console.error("Cannot assign to input", cfg.id, ": CMS schema not found in configuration")
             return;
         }
+        if (!el || !el.id) return true; // treat non-existing as valid so don't block saving
 
-        if (!el || !el.id || cfg.readOnly) return true; // treat non-existing and readonly as valid so don't block saving
+        if (cfg.isVisible) {
+            console.log("Calling user isVisible(", item, ")")
+            const visible = await cfg.isVisible(item);
+            if (visible) el.expand(); else el.collapse();
+            if (!visible) return true; // treat invisible as valid 
+        }
+        if (cfg.readOnly) return true;  // treat readonly as valid 
+        if (cfg.isEnabled) {
+            console.log("Calling user isEnabled(", item, ")")
+            const enabled = await cfg.isEnabled(item);
+            if (enabled) el.enable(); else el.disable();
+            if (!enabled) return true; // treat disabled as valid 
+        }
 
         const isUiValid = el.validity ? el.validity.valid : true;
+        if (!isUiValid) console.warn("UI Validation failed for UI", cfg.id, ":", el.validity);
         let isDataValid = true;
-        const val = cfg.required || cfg.onCustomValidation ? item?.[cfg.field] : null;
-        if (cfg.required)
-            isDataValid = val !== undefined && val !== null && val !== "" && val != TRANSPARENT_PIXEL && (!Array.isArray(val) || val.length > 0);
-        if (cfg.onCustomValidation) cfg.onCustomValidation(val, (errorMessage) => {
+        const { values } = await this._getUiValue(cfg, scope, item);
+        if (cfg.required && (values === undefined || values === null || values === "" || values == TRANSPARENT_PIXEL || (Array.isArray(values) && values.length === 0))) {
             isDataValid = false;
-            if (el.setCustomValidity) el.setCustomValidity(errorMessage);
-            console.warn(`Custom rejection for UI ${cfg.id}: ${errorMessage}`);
-        })
-        if (!isUiValid || !isDataValid)
-            console.warn(`Validation failed for UI ${cfg.id}: UI Valid: ${isUiValid}, Data Valid: ${isDataValid}`);
+            console.warn("Data Validation failed for UI", cfg.id, ":", values, "is undefined or empty");
+        }
+        if (cfg.onCustomValidation) await new Promise(resolve => {
+            cfg.onCustomValidation(values, (errorMessage) => {
+                isDataValid = false;
+                if (el.setCustomValidity) el.setCustomValidity(errorMessage);
+                console.warn("Custom rejection for UI", cfg.id, ":", errorMessage);
+                resolve();
+            });
+        });
+
         if (el.updateValidityIndication)
             el.updateValidityIndication();
         else {
@@ -942,13 +987,19 @@ export class CmsEditor {
             if (lbl) lbl.html = `<p style="color: ${isUiValid && isDataValid ? "#000000" : "#FF0000"}; font-size: 16px;">${lbl.text}</p>`;
         }
 
-        if (cfg.type == FieldType.REPEATER) el.forEachItem(($item, itemData, index) => {
-            for (const cfgSub of Object.values(cfg.inputs))
-                if (!this._validate(cfgSub, $item, itemData)) isDataValid = false;
-        });
+        let subValid = true;
+        if (cfg.type == FieldType.REPEATER) {
+            const promises = [];
+            el.forEachItem(($item, itemData) => {
+                for (const cfgSub of Object.values(cfg.inputs))
+                    promises.push(this._validate(cfgSub, $item, itemData).then(valid => { if (!valid) subValid = false; }));
+            });
+            await Promise.all(promises);
+            if (!subValid) console.warn("Subitem Validation failed for UI", cfg.id);
+        }
 
-
-        return isUiValid && isDataValid;
+        // console.info("_validate result", { cfg, scope, item, isUiValid, isDataValid, subValid });
+        return isUiValid && isDataValid && subValid;
     }
 
     async updateButtonStates() {
