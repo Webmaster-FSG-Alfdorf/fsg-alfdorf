@@ -60,6 +60,13 @@ export const FilterType = Object.freeze({
     IS_NOT_EMPTY: 'IS_NOT_EMPTY'
 });
 
+export const FilterCombine = Object.freeze({
+    OR: 'OR',
+    AND: 'AND',
+    PARALLEL_AND: 'PARALLEL_AND',
+});
+
+
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export class CmsEditor {
@@ -1029,21 +1036,30 @@ export class CmsEditor {
             if (cfg.skip(val)) continue;
 
             const pVal = cfg.value(val);
-            if (cfg.orCombined) {
-                // ONE value vs MANY fields (OR)
-                let qOr = null;
-                for (let i = 0; i < cfg.fields.length; i++) {
-                    const qI = applyOp(wixData.query(this.cmsName), cfg.fields[i], pVal);
-                    qOr = i == 0 ? qI : qOr.or(qI);
-                }
-                if (qOr) q = q.and(qOr);
-            }
-            else if (cfg.fields.length > 1 && Array.isArray(pVal) && pVal.length == cfg.fields.length)
+            switch (cfg.combine) {
+                case FilterCombine.OR:
+                    // ONE value vs MANY fields (OR)
+                    let qOr = null;
+                    for (let i = 0; i < cfg.fields.length; i++) {
+                        const qI = applyOp(wixData.query(this.cmsName), cfg.fields[i], pVal);
+                        qOr = i == 0 ? qI : qOr.or(qI);
+                    }
+                    if (qOr) q = q.and(qOr);
+                    break;
+                case FilterCombine.PARALLEL_AND:
                 // Parallel Mapping (Many-to-Many)
-                q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, pVal[i]), q);
-            else
-                // Broadcasting (One-to-Many) or Standard (One-to-One)
-                q = cfg.fields.reduce((q0, f) => applyOp(q0, f, pVal), q);
+                    if (!Array.isArray(pVal) || cfg.fields.length != pVal.length) {
+                        console.error("Unexpected result from val() function: Expected array of equal length as cfg.fields", { pVal, cfg });
+                    } else
+                        q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, pVal[i]), q);
+                    break;
+                case FilterCombine.AND:
+                default:
+                    // Broadcasting (One-to-Many) or Standard (One-to-One)
+                    q = cfg.fields.reduce((q0, f) => applyOp(q0, f, pVal), q);
+                    break;
+            }
+            if (cfg.fields.length > 1 && Array.isArray(pVal) && pVal.length == cfg.fields.length) { }
         }
 
         q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
@@ -1058,6 +1074,7 @@ export class CmsEditor {
                 ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
             $w("#itemSelector").value = this.ds.getCurrentItem()?._id;
+            await this.updateButtonStates();
         } catch (err) {
             console.error("updateSelectorList failed", err);
         }

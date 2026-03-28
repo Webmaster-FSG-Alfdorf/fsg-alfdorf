@@ -1,4 +1,4 @@
-import { CmsEditor, FieldType, FilterType } from 'public/cms_edit.js';
+import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 import { dateRangeToString, listAllRanges, printRanges, incUTCDate } from 'public/cms.js';
 
 let editor;
@@ -87,7 +87,7 @@ $w.onReady(function () {
         filterSchema: {
             "#filterSearch": {
                 type: FilterType.CONTAINS,
-                orCombined: true,
+                combine: FilterCombine.OR,
                 fields: ["title", "subTitle", "description", "price", "address", "dates", "registration", "responsible", "responsibleMail", "responsiblePhone"],
                 value: (val) => val.toString().trim(),
             },

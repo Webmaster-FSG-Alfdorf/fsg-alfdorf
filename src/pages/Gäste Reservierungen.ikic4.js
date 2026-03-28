@@ -2,7 +2,7 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 import wixWindow from 'wix-window';
 
-import { CmsEditor, FieldType, FilterType } from 'public/cms_edit.js';
+import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, toUTC, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
@@ -125,9 +125,9 @@ $w.onReady(function () {
                 "#filterSearch   numeric": {
                     id: "#filterSearch",
                     type: FilterType.EQ,
-                    orCombined: true,
+                    combine: FilterCombine.OR,
                     fields: ["cntAdults", "cntChildren", "paidSum", "lodgingSub"],
-                    skip: (val) => isNaN(Number(val)),
+                    skip: (val) => val === "" || val == null || isNaN(Number(val)),
                     value: (val) => Number(val)
                 },
                 "#filterAlsoPast": {
@@ -142,7 +142,8 @@ $w.onReady(function () {
                 },
                 "#filterLodging": {
                     type: FilterType.EQ,
-                    value: (val) => [val.split("|").map((v, i) => i == 0 ? v : Number(v))],
+                    combine: FilterCombine.PARALLEL_AND,
+                    value: (val) => val.split("|").map((v, i) => i == 0 ? v : Number(v)),
                     fields: ["lodging", "lodgingSub"],
                 }
             },
