@@ -100,7 +100,7 @@ export class CmsEditor {
 
         this._messageTimer = null;
         this._debounceTimers = {};
-        this._imageUploadInProgress = new Set();
+        this._uploading = new Set();
     }
 
     /**
@@ -498,25 +498,25 @@ export class CmsEditor {
                 break;
             case FieldType.IMAGE:
                 const btn = this._findRecursive(el, "$w.UploadButton");
-                if (btn?.value?.length > 0 && !this._imageUploadInProgress.has(cfg.id)) try {
-                    this._imageUploadInProgress.add(cfg.id);
+                if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
+                    this._uploading.add(cfg.id);
                     const files = this.ensureArray(await btn.uploadFiles());
                     val = files[0].fileUrl;
                     btn.reset();
                     needRefresh = true;
                 } finally {
-                    this._imageUploadInProgress.delete(cfg.id);
+                    this._uploading.delete(cfg.id);
                 }
                 break;
             case FieldType.IMAGES: {
                 const btn = this._findRecursive(el, "$w.UploadButton");
-                if (btn?.value?.length > 0 && !this._imageUploadInProgress.has(cfg.id)) try {
+                if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
                     const files = this.ensureArray(await btn.uploadFiles());
                     val = [...val, ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
                     btn.reset();
                     needRefresh = true;
                 } finally {
-                    this._imageUploadInProgress.delete(cfg.id);
+                    this._uploading.delete(cfg.id);
                 }
                 break;
             }
