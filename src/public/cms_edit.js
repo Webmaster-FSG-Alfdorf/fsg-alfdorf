@@ -96,9 +96,11 @@ export class CmsEditor {
 
         this.ds = $w(`#${this.dataSetName}`);
         this.originalItem = null;
-        this.messageTimer = null;
-        this.debounceTimers = {};
         this.isSaving = false;
+
+        this._messageTimer = null;
+        this._debounceTimers = {};
+        this._imageUploadInProgress = new Set();
     }
 
     /**
@@ -228,9 +230,9 @@ export class CmsEditor {
             trg[s]((event) => {
                 if (s != "onKeyPress" || event.key == "Enter") {
                     console.log("Triggering", s, "on", cfg.id, "with delay", delay);
-                    if (this.debounceTimers[cfg.id]) clearTimeout(this.debounceTimers[cfg.id].timer);
+                    if (this._debounceTimers[cfg.id]) clearTimeout(this._debounceTimers[cfg.id].timer);
                     const timer = setTimeout(callback, delay);
-                    this.debounceTimers[cfg.id] = { timer, scope, cfg, parentCfg, masterArrayID };
+                    this._debounceTimers[cfg.id] = { timer, scope, cfg, parentCfg, masterArrayID };
                 }
             });
         } else {
@@ -317,11 +319,9 @@ export class CmsEditor {
                 if (action == "moveleft" && cfg.selIdx > 0) {
                     [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
                     cfg.selIdx--;
-                    //TODO does not trigger diff so save buttons stays grayed
                 } else if (action == "moveright" && cfg.selIdx < val.length - 1) {
                     [val[cfg.selIdx + 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx + 1]];
                     cfg.selIdx++;
-                    //TODO does not trigger diff so save buttons stays grayed
                 } else if (action == "remove") {
                     val.splice(cfg.selIdx, 1);
                     cfg.selIdx = -1;
@@ -465,7 +465,7 @@ export class CmsEditor {
                     val = null;
                 else {
                     const [hours, minutes] = (el.value?.toString() || "00:00").split(':');
-                    dt.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0); // local time
+                    dt.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
                     val = dt;
                 }
                 break;
@@ -475,35 +475,18 @@ export class CmsEditor {
                 if (isNaN(dt.getTime()))
                     val = null;
                 else {
-                    dt.setUTCHours(Number(el.value ?? 0), 0, 0, 0);
+                    dt.setHours(Number(el.value ?? 0), 0, 0, 0);
                     val = dt;
                 }
                 break;
             }
-            case FieldType.DATE: { // update date with new value but keep hours
-                const local = el.value;
-                if (!local || isNaN(new Date(local).getTime())) {
-                    val = null;
-                } else {
-                    const oldDate = val;
-                    val = new Date(local.getFullYear(), local.getMonth(), local.getDate());
-                    val.setHours(oldDate ? new Date(oldDate).getHours() : 0, 0, 0, 0);
-                }
+            case FieldType.DATE: { // update date with new value but keep time part
+                val = this._updateDateKeepTime(el.value, val);
                 break;
             }
-            case FieldType.DATE_RANGE: { // update date with new value but keep hours
+            case FieldType.DATE_RANGE: { // update date with new value but time part
                 multiField = true;
-                const fieldContent = cfg.fields.map(f => item?.[f]);
-                val = (stringToDateRange(el.value) || []).map((dt, i) => {
-                    if (!dt) return null;
-                    const newDate = new Date(dt);
-                    if (fieldContent[i]) {
-                        const prevDate = new Date(fieldContent[i]);
-                        newDate.setUTCHours(prevDate.getUTCHours(), prevDate.getUTCMinutes(), 0, 0);
-                    } else
-                        newDate.setUTCHours(0, 0, 0, 0);
-                    return newDate;
-                });
+                val = (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]]));
                 break;
             }
             case FieldType.MULTI_SELECT:
@@ -515,24 +498,25 @@ export class CmsEditor {
                 break;
             case FieldType.IMAGE:
                 const btn = this._findRecursive(el, "$w.UploadButton");
-                if (btn?.value?.length > 0) {
+                if (btn?.value?.length > 0 && !this._imageUploadInProgress.has(cfg.id)) try {
+                    this._imageUploadInProgress.add(cfg.id);
                     const files = this.ensureArray(await btn.uploadFiles());
                     val = files[0].fileUrl;
                     btn.reset();
                     needRefresh = true;
-                } else
-                    // keep existing image
-                    break;
+                } finally {
+                    this._imageUploadInProgress.delete(cfg.id);
+                }
+                break;
             case FieldType.IMAGES: {
                 const btn = this._findRecursive(el, "$w.UploadButton");
-                const currentImages = this.ensureArray(val);
-                if (btn?.value?.length > 0) {
+                if (btn?.value?.length > 0 && !this._imageUploadInProgress.has(cfg.id)) try {
                     const files = this.ensureArray(await btn.uploadFiles());
-                    val = [...currentImages, ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
+                    val = [...val, ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
                     btn.reset();
                     needRefresh = true;
-                } else {
-                    val = currentImages;
+                } finally {
+                    this._imageUploadInProgress.delete(cfg.id);
                 }
                 break;
             }
@@ -588,7 +572,7 @@ export class CmsEditor {
      */
     async _persistAndRefresh(cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh) {
         console.info("_persistAndRefresh", { cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh });
-        if (masterArray && masterArrayID != null) {
+        if (masterArray != null && masterArrayID != null) {
             const idx = masterArray.findIndex(v => v._id == masterArrayID);
             if (idx == -1)
                 console.error("Cannot find masterArrayID", { cfg, scope, itemData, masterArray, values, masterArrayID, parentCfg, needRefresh });
@@ -750,6 +734,7 @@ export class CmsEditor {
                 break;
             case FieldType.DATE_RANGE:
                 val0 = dateRangeToString(values[0], values[1], { hour: null, minute: null });
+                //TODO really assign to val0?
                 break;
             case FieldType.IMAGE:
                 val0 ||= TRANSPARENT_PIXEL;
@@ -791,10 +776,12 @@ export class CmsEditor {
                 console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property")
         }
         values[0] = val0;
-        if (JSON.stringify(values ?? "") == JSON.stringify(curValues ?? ""))
-            console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
+        const s0 = JSON.stringify(curValues ?? "");
+        const s1 = JSON.stringify(values ?? "");
+        if (s0 == s1)
+            console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`, s0);
         else
-            console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, values, "was:", curValues);
+            console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, values, "was:", curValues, { s0, s1 });
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && btn.id) {
@@ -845,7 +832,7 @@ export class CmsEditor {
             [FieldType.HOURS_OF_DATE]: () => v ? `${new Date(v).getUTCHours()}:00` : "",
             [FieldType.TIME_OF_DATE]: () => v ? `${new Date(v).getUTCHours()}:${new Date(v).getUTCMinutes()}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(v).join(", "),
-            [FieldType.IMAGES]: () => `${this.ensureArray(v).length} Bilder`,
+            [FieldType.IMAGES]: () => this.ensureArray(v).map((img) => img?.src || img?.fileUrl || "").join("|"),
             [FieldType.CUSTOM]: () => cfg.onFormatValue(item),
         };
         const res = v == null || v === "" ? null : (formatters[cfg.type] || (() => String(v)))();
@@ -877,11 +864,11 @@ export class CmsEditor {
      * @param {boolean} [update=true]
      */
     async flushDebounce(update = true) {
-        await Promise.all(Object.keys(this.debounceTimers).map(async (id) => {
-            const ctx = this.debounceTimers[id];
+        await Promise.all(Object.keys(this._debounceTimers).map(async (id) => {
+            const ctx = this._debounceTimers[id];
             if (ctx) {
                 clearTimeout(ctx.timer);
-                this.debounceTimers[id] = null;
+                this._debounceTimers[id] = null;
                 if (update) await this._updateDataFromUI(ctx.cfg, ctx.scope, ctx.parentCfg, ctx.masterArrayID);
             }
         }));
@@ -1198,11 +1185,11 @@ export class CmsEditor {
      */
     showMessage(message, isError = false) {
         if (!$w("#textResponse").id) return;
-        if (this.messageTimer) clearTimeout(this.messageTimer);
+        if (this._messageTimer) clearTimeout(this._messageTimer);
         const color = isError ? "#E74C3C" : "#2ECC71";
         $w("#textResponse").html = `<p style="color: ${color}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${message}</p>`;
         $w("#textResponse").show();
-        this.messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
+        this._messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
     }
 
     /**
@@ -1211,9 +1198,9 @@ export class CmsEditor {
     collapseResponse() {
         if (!$w("#textResponse").id) return;
         $w("#textResponse").hide();
-        if (this.messageTimer) {
-            clearTimeout(this.messageTimer);
-            this.messageTimer = null;
+        if (this._messageTimer) {
+            clearTimeout(this._messageTimer);
+            this._messageTimer = null;
         }
     }
 
@@ -1246,6 +1233,21 @@ export class CmsEditor {
             if (found) return found;
         }
         return null;
+    }
+
+    /**
+     * Update date keeping time part from old value.
+     * @param {Date} local
+     * @param {Date} oldVal
+     * @returns {Date|null}
+     */
+    _updateDateKeepTime(local, oldVal) {
+        if (!local || isNaN(new Date(local).getTime())) return null;
+        const prev = oldVal ? new Date(oldVal) : null;
+        const res = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate(), 0, 0, 0, 0));
+        if (prev)
+            res.setUTCHours(prev.getUTCHours(), prev.getUTCMinutes(), prev.getUTCSeconds(), 0);
+        return res;
     }
 
 }
