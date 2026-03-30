@@ -67,9 +67,13 @@ $w.onReady(function () {
             dataSetName: "datasetReservations",
 
             cmsSchema: {
-                "#inputState": { field: "state", type: FieldType.STRING },
+                "#inputState": {
+                    field: "state",
+                    type: FieldType.STRING
+                },
                 "#inputLodging": {
-                    fields: ["lodging", "lodgingSub"], type: FieldType.CUSTOM,
+                    fields: ["lodging", "lodgingSub"],
+                    type: FieldType.CUSTOM,
                     onParseUserInput: (input) => {
                         const lodging = input.split("|");
                         return [lodging[0], Number(lodging[1] || 0)];
@@ -79,11 +83,13 @@ $w.onReady(function () {
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDate": {
-                    fields: ["dateFrom", "dateTo"], type: FieldType.DATE_RANGE,
+                    fields: ["dateFrom", "dateTo"],
+                    type: FieldType.DATE_RANGE,
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputArrivalTime": {
-                    field: "dateFrom", type: FieldType.HOURS_OF_DATE,
+                    field: "dateFrom",
+                    type: FieldType.HOURS_OF_DATE,
                     onDiffValue: (item) => {
                         const hour = new Date(item?.dateFrom).getUTCHours().toString();
                         return $w("#inputArrivalTime").options.find(o => o.value == hour)?.label;
@@ -91,26 +97,78 @@ $w.onReady(function () {
                     onChanged: () => syncUI(true, false)
                 },
                 "#inputDepartureTime": {
-                    field: "dateTo", type: FieldType.HOURS_OF_DATE,
+                    field: "dateTo",
+                    type: FieldType.HOURS_OF_DATE,
                     onDiffValue: (item) => {
                         const hour = new Date(item?.dateFrom).getUTCHours().toString();
                         return $w("#inputDepartureTime").options.find(o => o.value == hour)?.label;
                     },
                     onChanged: () => syncUI(true, false)
                 },
-                "#inputAdults": { field: "cntAdults", type: FieldType.NUMBER, onChanged: () => updateCostsTable() },
-                "#inputChildren": { field: "cntChildren", type: FieldType.NUMBER, onChanged: () => updateCostsTable() },
-                "#inputFirstName": { field: "firstName", type: FieldType.STRING },
-                "#inputLastName": { field: "lastName", type: FieldType.STRING },
-                "#inputMail": { field: "email", type: FieldType.STRING, linkButton: "#buttonSendMail", linkPrefix: "mailto:" },
-                "#inputPhone": { field: "phoneNumber", type: FieldType.STRING, linkButton: "#buttonPhone", linkPrefix: "tel:" },
-                "#inputAddress": { field: "address", type: FieldType.ADDRESS },
-                "#inputNotes": { field: "notes", type: FieldType.STRING },
-                "#inputPrivacyPolicy": { field: "privacyPolicy", type: FieldType.BOOLEAN },
-                "#inputDeposit": { field: "deposit", type: FieldType.MULTI_SELECT, onChanged: () => updateCostsTable() },
-                "#inputPaidSum": { field: "paidSum", type: FieldType.NUMBER, onChanged: () => updateCostsTable(), fractionDigits: 2, suffix: "€" },
-                "#inputPaidSumup": { field: "paidSumup", type: FieldType.STRING, showToUser: false },
-                "#inputComment": { field: "comment", type: FieldType.STRING, showToUser: false },
+                "#inputAdults": {
+                    field: "cntAdults",
+                    type: FieldType.NUMBER,
+                    onChanged: () => updateCostsTable()
+                },
+                "#inputChildren": {
+                    field: "cntChildren",
+                    type: FieldType.NUMBER,
+                    onChanged: () => updateCostsTable()
+                },
+                "#inputFirstName": {
+                    field: "firstName",
+                    type: FieldType.STRING
+                },
+                "#inputLastName": {
+                    field: "lastName",
+                    type: FieldType.STRING
+                },
+                "#inputMail": {
+                    field: "email",
+                    type: FieldType.STRING,
+                    linkButton: "#buttonSendMail",
+                    linkPrefix: "mailto:"
+                },
+                "#inputPhone": {
+                    field: "phoneNumber",
+                    type: FieldType.STRING,
+                    linkButton: "#buttonPhone",
+                    linkPrefix: "tel:"
+                },
+                "#inputAddress": {
+                    field: "address",
+                    type: FieldType.ADDRESS
+                },
+                "#inputNotes": {
+                    field: "notes",
+                    type: FieldType.STRING
+                },
+                "#inputPrivacyPolicy": {
+                    field: "privacyPolicy",
+                    type: FieldType.BOOLEAN
+                },
+                "#inputDeposit": {
+                    field: "deposit",
+                    type: FieldType.MULTI_SELECT,
+                    onChanged: () => updateCostsTable()
+                },
+                "#inputPaidSum": {
+                    field: "paidSum",
+                    type: FieldType.NUMBER,
+                    onChanged: () => updateCostsTable(),
+                    fractionDigits: 2,
+                    suffix: "€"
+                },
+                "#inputPaidSumup": {
+                    field: "paidSumup",
+                    type: FieldType.STRING,
+                    showToUser: false
+                },
+                "#inputComment": {
+                    field: "comment",
+                    type: FieldType.STRING,
+                    showToUser: false
+                },
             },
 
             filterSortField: "_updatedDate",
