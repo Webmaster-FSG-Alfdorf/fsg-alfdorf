@@ -110,6 +110,18 @@ export class CmsEditor {
         this.isSaving = false;
         this.lastDiff = { diffUser: {}, diffIntern: {} };
 
+        this.emailIds = {
+            itemSaved: "",
+            itemReverted: "",
+            itemCreated: "",
+            itemRemoved: "",
+            itemSaveError: "",
+            generalError: "",
+
+            // must be the last line
+            ...config.emailIds
+        };
+
         this.translatedMessages = {
             booolean_yes: "Ja",
             booolean_no: "Nein",
@@ -117,18 +129,6 @@ export class CmsEditor {
             itemSelector_createNew: "➕ Neuer Eintrag",
             error_no_config: "Konfiguration nicht gefunden",
             itemName: "Eintrag",
-
-            emailIds: {
-                itemSaved: "",
-                itemReverted: "",
-                itemCreated: "",
-                itemRemoved: "",
-                itemSaveError: "",
-                generalError: "",
-
-                // must be the last line
-                ...config.translatedMessages?.emailIds
-            },
 
             messageIds: {
                 itemSaved: "Änderungen wurden gespeichert.",
@@ -152,22 +152,22 @@ export class CmsEditor {
             customValidation: "{label}: {message}",
 
             validityChecks: {
-                badInput: "{label} hat ungültige Eingabe",
+                badInput: "{label}: hat ungültige Eingabe",
                 customError: "{label}: {message}",
-                exceedsFilesLimit: "{label} überschreitet Dateilimit",
-                fileNotUploaded: "{label} Datei nicht hochgeladen",
-                fileSizeExceedsLimit: "{label} Dateigröße überschreitet Limit",
-                fileTypeNotAllowed: "{label} Dateityp nicht erlaubt",
-                invalidDate: "{label} hat ungültiges Datum",
-                invalidTime: "{label} hat ungültige Zeit",
-                patternMismatch: "{label} entspricht nicht dem erwarteten Muster",
-                rangeOverflow: "{label} ist zu groß",
-                rangeUnderflow: "{label} ist zu klein",
-                stepMismatch: "{label} entspricht nicht dem Schritt",
-                tooLong: "{label} ist zu lang",
-                tooShort: "{label} ist zu kurz",
-                typeMismatch: "{label} hat ungültigen Typ",
-                valueMissing: "{label} ist erforderlich",
+                exceedsFilesLimit: "{label}: überschreitet Dateilimit",
+                fileNotUploaded: "{label}: Datei nicht hochgeladen",
+                fileSizeExceedsLimit: "{label}: Dateigröße überschreitet Limit",
+                fileTypeNotAllowed: "{label}: Dateityp nicht erlaubt",
+                invalidDate: "{label}: hat ungültiges Datum",
+                invalidTime: "{label}: hat ungültige Zeit",
+                patternMismatch: "{label}: entspricht nicht dem erwarteten Muster",
+                rangeOverflow: "{label}: ist zu groß",
+                rangeUnderflow: "{label}: ist zu klein",
+                stepMismatch: "{label}: entspricht nicht dem Schritt",
+                tooLong: "{label}: ist zu lang",
+                tooShort: "{label}: ist zu kurz",
+                typeMismatch: "{label}: hat ungültigen Typ",
+                valueMissing: "{label}: ist erforderlich",
 
                 // must be the last line
                 ...config.translatedMessages?.validityChecks
@@ -367,7 +367,6 @@ export class CmsEditor {
 
         let requiredApplied = false;
         let readOnlyApplied = false;
-        let customValidationApplied = false;
         const appplyAttrs = (el) => {
             if (cfg.required && "required" in el) {
                 el.required = cfg.required;
@@ -376,10 +375,6 @@ export class CmsEditor {
             if (cfg.readOnly && typeof el.disable == "function") {
                 el.disable();
                 readOnlyApplied = true;
-            }
-            if (cfg.onCustomValidation && "onCustomValidation" in el) {
-                el.onCustomValidation(cfg.onCustomValidation);
-                customValidationApplied = true;
             }
         };
         appplyAttrs(el);
@@ -450,7 +445,6 @@ export class CmsEditor {
 
         if (cfg.required && !requiredApplied) console.error("Cannot assign required attribute to", cfg.id);
         if (cfg.readOnly && !readOnlyApplied) console.error("Cannot assign readonly attribute to", cfg.id);
-        if (cfg.onCustomValidation && !customValidationApplied) console.error("Cannot assign onCustomValidation attribute to", cfg.id);
     }
 
     /**
@@ -480,7 +474,7 @@ export class CmsEditor {
         const item = this.ds.getCurrentItem();
         console.log("refreshUI", item);
 
-        if (item) {
+        if (item) try {
             await Promise.all((Object.values(this.cmsSchema).filter(cfg => cfg.type == FieldType.MULTI_REFERENCE)).map(async (cfg) => {
                 try {
                     const refResult = await wixData.queryReferenced(this.cmsName, item._id, cfg.field);
@@ -497,9 +491,15 @@ export class CmsEditor {
                 item[cfg.field] = (item[cfg.field] || []).map((d, i) => ({ ...d, _id: d._id || `row-${i}-${now}` }));
                 await this.ds.setFieldValue(cfg.field, item[cfg.field]);
             }
+        } catch (e) {
+            console.error(e);
         }
 
-        await Promise.all(Object.keys(this.cmsSchema).map(id => this._updateUiFromData(this.cmsSchema[id], $w, item, null, null)));
+        try {
+            await Promise.all(Object.keys(this.cmsSchema).map(id => this._updateUiFromData(this.cmsSchema[id], $w, item, null, null)));
+        } catch (e) {
+            console.error(e);
+        }
         console.log("refreshUI now", item);
         this.originalItem = item ? structuredClone(item) : null;
         for (const cfg of Object.values(this.cmsSchema)) if ("selIdx" in cfg) cfg.selIdx = -1;
@@ -527,94 +527,109 @@ export class CmsEditor {
             return;
         }
 
-        const { val, needRefresh = false } = await this._parseUiValue(cfg, item, el);
-
-        // if only one field is defined, we expect a single value, othweise we expected values for each defined field
-        const values = cfg.fields.length > 1 ? val : [val];
-        if (values.length != cfg.fields.length) {
-            console.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
-        }
+        const { values, needRefresh = false } = await this._parseUiValue(cfg, scope, item);
         return { values, needRefresh };
     }
 
     /**
-     * Reads values from UI form controls (for one cfg item).
+     * Reads a value from a UI form control.
      * @private
      * @async
      * @param {CmsFieldConfig} cfg - The field config.
      * @param {function(string):$w.Element} scope - The scope function.
      * @param {Object} item - The current item.
-     * @returns {Promise<{values:any[],needRefresh:boolean}>}
+     * @returns {Promise<{values:any[],needRefresh:boolean}>} the value converted to format suitable for CMS assignment
      */
-    async _parseUiValue(cfg, item, el) {
-        switch (cfg.type) {
-            case FieldType.BOOLEAN:
-                return { val: el.checked };
-            case FieldType.NUMBER:
-                return { val: Number(el.value ?? 0) };
-            case FieldType.ADDRESS:
-                return { val: el.value };
-            case FieldType.TIME_OF_DATE: {
-                let val = new Date(item?.[cfg.field]);
-                if (isNaN(val.getTime())) return { val: null };
-                const [hours, minutes] = (el.value?.toString() || "00:00").split(":");
-                val.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-                return { val };
-            }
-            case FieldType.HOURS_OF_DATE: {
-                let val = new Date(item?.[cfg.field]);
-                if (isNaN(val.getTime())) return { val: null };
-                val.setHours(Number(el.value ?? 0), 0, 0, 0);
-                return { val };
-            }
-            case FieldType.DATE: {
-                return { val: this._updateDateKeepTime(el.value, item?.[cfg.field]) };
-            }
-            case FieldType.DATE_RANGE: {
-                return { val: (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]])) };
-            }
-            case FieldType.MULTI_SELECT:
-            case FieldType.MULTI_REFERENCE:
-                return { val: this.ensureArray(el.value) };
-            case FieldType.STRING:
-                return { val: cfg.trim ? String(el.value).trim() : String(el.value) };
-            case FieldType.IMAGE: {
-                const btn = this._findRecursive(el, "$w.UploadButton");
-                if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
-                    this._uploading.add(cfg.id);
-                    const files = this.ensureArray(await btn.uploadFiles());
-                    const val = files[0].fileUrl;
-                    btn.reset();
-                    return { val, needRefresh: true };
-                } finally {
-                    this._uploading.delete(cfg.id);
+    async _parseUiValue(cfg, scope, item) {
+        if (!cfg) {
+            console.error("Cannot assign from input: CMS schema not found in configuration")
+            return { values: null, needRefresh: false };
+        }
+
+        const el = scope(cfg.id);
+        if (!el || !el.id) {
+            console.error("Cannot assign from input", cfg.id, ": Input element not found")
+            return { values: null, needRefresh: false };
+        }
+
+        const parse = async () => {
+            switch (cfg.type) {
+                case FieldType.BOOLEAN:
+                    return { val: el.checked };
+                case FieldType.NUMBER:
+                    return { val: Number(el.value ?? 0) };
+                case FieldType.ADDRESS:
+                    return { val: el.value };
+                case FieldType.TIME_OF_DATE: {
+                    let val = new Date(item?.[cfg.field]);
+                    if (isNaN(val.getTime())) return { val: null };
+                    const [hours, minutes] = (el.value?.toString() || "00:00").split(":");
+                    val.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
+                    return { val };
                 }
-                return { val: item?.[cfg.field] };
-            }
-            case FieldType.IMAGES: {
-                const btn = this._findRecursive(el, "$w.UploadButton");
-                if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
-                    const files = this.ensureArray(await btn.uploadFiles());
-                    const val = [...this.ensureArray(item?.[cfg.field]), ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
-                    btn.reset();
-                    return { val, needRefresh: true };
-                } finally {
-                    this._uploading.delete(cfg.id);
+                case FieldType.HOURS_OF_DATE: {
+                    let val = new Date(item?.[cfg.field]);
+                    if (isNaN(val.getTime())) return { val: null };
+                    val.setHours(Number(el.value ?? 0), 0, 0, 0);
+                    return { val };
                 }
-                return { val: item?.[cfg.field] };
-            }
-            case FieldType.CUSTOM:
-                try {
-                    return { val: await cfg.onParseUserInput(el.value) };
-                } catch (e) {
-                    console.warn("Error in onParseUserInput for", cfg.id, ":", e);
+                case FieldType.DATE: {
+                    return { val: this._updateDateKeepTime(el.value, item?.[cfg.field]) };
+                }
+                case FieldType.DATE_RANGE: {
+                    return { val: (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]])) };
+                }
+                case FieldType.MULTI_SELECT:
+                case FieldType.MULTI_REFERENCE:
+                    return { val: this.ensureArray(el.value) };
+                case FieldType.STRING:
+                    return { val: cfg.trim ? String(el.value).trim() : String(el.value) };
+                case FieldType.IMAGE: {
+                    const btn = this._findRecursive(el, "$w.UploadButton");
+                    if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
+                        this._uploading.add(cfg.id);
+                        const files = this.ensureArray(await btn.uploadFiles());
+                        const val = files[0].fileUrl;
+                        btn.reset();
+                        return { val, needRefresh: true };
+                    } finally {
+                        this._uploading.delete(cfg.id);
+                    }
                     return { val: item?.[cfg.field] };
                 }
-            //            case FieldType.REPEATER:
-            //                return { val: this.ensureArray(item?.[cfg.field]) };
-            default:
-                return { val: el.value };
+                case FieldType.IMAGES: {
+                    const btn = this._findRecursive(el, "$w.UploadButton");
+                    if (btn?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
+                        const files = this.ensureArray(await btn.uploadFiles());
+                        const val = [...this.ensureArray(item?.[cfg.field]), ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
+                        btn.reset();
+                        return { val, needRefresh: true };
+                    } finally {
+                        this._uploading.delete(cfg.id);
+                    }
+                    return { val: item?.[cfg.field] };
+                }
+                case FieldType.CUSTOM:
+                    try {
+                        return { val: await cfg.onParseUserInput(el.value) };
+                    } catch (e) {
+                        console.warn("Error in onParseUserInput for", cfg.id, ":", e);
+                        return { val: item?.[cfg.field] };
+                    }
+                //            case FieldType.REPEATER:
+                //                return { val: this.ensureArray(item?.[cfg.field]) };
+                default:
+                    return { val: el.value };
+            }
+        };
+
+        // if only one field is defined, we expect a single value, othweise we expected values for each defined field
+        const { val, needRefresh = false } = await parse();
+        const values = cfg.fields.length > 1 ? val : [val];
+        if (values.length != cfg.fields.length) {
+            console.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
         }
+        return { values, needRefresh };
     }
 
     /**
@@ -684,10 +699,14 @@ export class CmsEditor {
         else
             await this._validate(cfg, scope, itemData);
 
-        for (const subCfg of parentCfg ? Object.values(parentCfg.inputs) : [cfg])
-            await this._validate(subCfg, scope, itemData);
+        for (const sameLevelCfg of parentCfg ? Object.values(parentCfg.inputs) : Object.values(this.cmsSchema))
+            await this._validate(sameLevelCfg, scope, itemData);
 
         await this.updateButtonStates();
+    }
+
+    async updateDataFromUI(id) {
+        await this._updateDataFromUI(this.cmsSchema[id], $w, null, null);
     }
 
     /**
@@ -699,7 +718,7 @@ export class CmsEditor {
      */
     async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID) {
         const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, masterArrayID, parentCfg);
-        const { values, needRefresh } = await this._getUiValue(cfg, scope, itemData);
+        const { values, needRefresh } = await this._parseUiValue(cfg, scope, itemData);
         if (JSON.stringify(values ?? "") == JSON.stringify(curVal ?? "")) {
             console.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
             return;
@@ -780,7 +799,8 @@ export class CmsEditor {
             return;
         }
 
-        const { values: curValues } = await this._getUiValue(cfg, scope, item);
+        const prevValue = el.value;
+        //const { values: prevValue } = await this._getUiValue(cfg, scope, item);
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
         let val0 = values[0];
         let done = false;
@@ -861,13 +881,14 @@ export class CmsEditor {
             else
                 console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property")
         }
-        values[0] = val0;
-        const s0 = JSON.stringify(curValues ?? "");
-        const s1 = JSON.stringify(values ?? "");
+        //values[0] = val0; TOODO needed as a side effect? hopefully not
+        const newValue = el.value;
+        const s0 = JSON.stringify(prevValue);
+        const s1 = JSON.stringify(newValue);
         if (s0 == s1)
-            console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`, s0);
+            console.debug(`No change in data of UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}:`, s0);
         else
-            console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, values, "was:", curValues, { s0, s1 });
+            console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, newValue, "was:", prevValue, { s0, s1 });
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && btn.id) {
@@ -1002,7 +1023,7 @@ export class CmsEditor {
             let allErrors = [];
             for (const cfg of Object.values(this.cmsSchema)) allErrors.push(...await this._validate(cfg, $w, item));
             if (allErrors.length > 0) {
-                await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("\n") });
+                await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("<br/>") });
                 return false;
             }
 
@@ -1048,8 +1069,8 @@ export class CmsEditor {
      */
     async newItem() {
         console.log("newItem");
-        const saveSuccessful = await this.saveItem();
-        if (saveSuccessful) {
+        await this.getDiff($w);
+        if (this.lastDiff.diffIntern.length == 0 || await this.saveItem()) {
             console.log("item saved before creating new item");
             const newItem = await this.ds.new();
             console.log("item created", await this.getSummary($w));
@@ -1217,26 +1238,27 @@ export class CmsEditor {
             if (!enabled) return []; // treat disabled as valid 
         }
 
-        const { values } = await this._getUiValue(cfg, scope, item);
+        const { values } = await this._parseUiValue(cfg, scope, item);
 
         const validity = el.validity;
-        const valueMissing = cfg.required && (values.some((v) => v == null || v == "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
+        const valueMissing = cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
         if ((validity && !validity.valid) || valueMissing) {
-            console.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, missingData: valueMissing });
+            console.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, valueMissing });
             // Provide specific error messages based on validity flags
             for (const attr of Object.keys(this.translatedMessages.validityChecks))
                 if (validity?.[attr] || (attr == "valueMissing" && valueMissing))
-                    errors.push(this.getTranslatedMessage(attr, cfg, item, { message: el.validationMessage || this.getTranslatedMessage("message_no_validationMessage", cfg, item) }));
+                    errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, { message: el.validationMessage || this.getTranslatedMessage("message_no_validationMessage", cfg, item) }));
         }
 
-        if (cfg.onCustomValidation) await new Promise(resolve => {
-            cfg.onCustomValidation(values, (errorMessage) => {
-                if (el.setCustomValidity) el.setCustomValidity(errorMessage);
+        if (cfg.onCustomValidation) {
+            const errorMessage = await cfg.onCustomValidation(values);
+            if (el.setCustomValidity) el.setCustomValidity(errorMessage);
+            if (el.onCustomValidation) el.onCustomValidation((value, reject) => { if (errorMessage) reject(errorMessage) });
+            if (errorMessage) {
                 console.warn("Custom rejection for UI", cfg.id, ":", errorMessage);
-                errors.push(this.getTranslatedMessage("customValidation", cfg, item, { message: errorMessage }));
-                resolve();
-            });
-        });
+                errors.push(this.getTranslatedMessage("customValidation", cfg, item, null, { message: errorMessage }));
+            }
+        }
 
         if (el.updateValidityIndication)
             el.updateValidityIndication();
@@ -1299,24 +1321,23 @@ export class CmsEditor {
         if (!$w("#textResponse").id) return;
         if (this._messageTimer) clearTimeout(this._messageTimer);
 
-        const sMsg = this.getTranslatedMessage(msgId, {}, item, replacements);
-        const sDetails = this.getTranslatedMessage(msgId + "Details", {}, item, replacements);
+        const sMsg = this.getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements);
+        const sDetails = this.getTranslatedMessage(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements);
 
-        const msg = `<p style="color: ${isError ? "#E74C3C" : "#2ECC71"}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${sMsg}</p>`;
-        const details = `<p style="font-size: 16px; text-align: center;">${sDetails}</p>`;
-        const emailId = this.translatedMessages?.emailIds[msgId];
+        const data = {
+            emailId: this.emailIds[msgId],
+            item,
+            msg: `<p style="color: ${isError ? "#E74C3C" : "#2ECC71"}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${sMsg}</p>`,
+            details: `<p style="font-size: 16px; text-align: left;">${sDetails}</p>`,
+        };
+        data.emailOptions = data.emailId && item.email ? await this.onGenerateEmailOptions(item, data.emailId) : {}
 
-        $w("#textResponse").html = msg;
+        $w("#textResponse").html = data.msg;
         $w("#textResponse").show();
         this._messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
-        wixWindow.openLightbox("CMSEditorLightbox", {
-            msg,
-            details,
-            item,
-            emailId,
-            isError,
-            emailOptions: emailId && item.email ? await this.onGenerateEmailOptions(item, emailId) : {}
-        });
+
+        console.log("showMessage", data);
+        wixWindow.openLightbox("CMSEditorLightbox", data);
     }
 
     /**
@@ -1394,10 +1415,11 @@ export class CmsEditor {
      * @param {Object} [replacements={}] - Object with placeholder keys and values.
      * @returns {string}
      */
-    getTranslatedMessage(key, cfg = {}, item = {}, replacements = {}) {
-        let msg = this.translatedMessages[key] || this.translatedMessages.validityChecks[key];
-        if (msg == null) console.error(`Missing key in translation matrix: ${key}`, this.translatedMessages);
-        msg ||= "";
+    getTranslatedMessage(key, cfg = {}, item = {}, source = null, replacements = {}) {
+        source ??= this.translatedMessages;
+        let msg = source[key];
+        if (msg == null) console.error(`Missing key in translation matrix: ${key}`, source);
+        msg ??= "";
 
         msg = msg.replace("{itemName}", this.translatedMessages.itemName);
         msg = msg.replace("{diff}", this.lastDiff.diffUser);
@@ -1411,30 +1433,6 @@ export class CmsEditor {
         for (const [placeholder, value] of Object.entries(replacements))
             msg = msg.replace(`{${placeholder}}`, value);
         return msg;
-    }
-
-    /**
-     * Generates an HTML table from rows and column definitions.
-     * @param {Array<Array>} rows - Array of row arrays.
-     * @param {Array<{label: string, align?: string, bold?: boolean}>} columns - Column definitions.
-     * @returns {string} - HTML table string.
-     */
-    generateHTMLTable(rows, columns) {
-        let html = '<table style="border-collapse: collapse; width: 100%;">';
-        html += '<thead><tr>';
-        for (const col of columns) {
-            html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: ${col.align || 'left'}; font-weight: ${col.bold ? 'bold' : 'normal'};">${col.label}</th>`;
-        }
-        html += '</tr></thead><tbody>';
-        for (const row of rows) {
-            html += '<tr>';
-            for (let i = 0; i < columns.length; i++) {
-                html += `<td style="border: 1px solid #ddd; padding: 8px; text-align: ${columns[i].align || 'left'};">${row[i] || ''}</td>`;
-            }
-            html += '</tr>';
-        }
-        html += '</tbody></table>';
-        return html;
     }
 
 }

@@ -5,8 +5,7 @@ import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit
 import { dateRangeToString, FormatTypesMonth, toUTC, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
-let currentDateOccupied = "";
-let occupationsRange = [new Date(), new Date()];
+let occupationsRange = [new Date(), new Date()]; //TODO remove
 let editor;
 
 $w.onReady(function () {
@@ -33,17 +32,17 @@ $w.onReady(function () {
     });
 
     $w("#htmlDate").onMessage(async (event) => {
-        console.log("received message", event.data);
+        console.log("received message from #htmlDate", event.data);
         if (event.data?.selectedDates?.length == 2) {
             $w("#inputDate").value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
-            await editor.updateDataFromUi("#inputDate");
+            await editor.updateDataFromUI("#inputDate");
         }
         if (event.data?.displayedMonth && event.data?.displayedYear) {
             occupationsRange = [
                 new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                 new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
             ];
-            await syncUI(false, false);
+            await syncUI();
         }
     });
 
@@ -72,14 +71,14 @@ $w.onReady(function () {
                 ]);
             },
 
+            emailIds: {
+                itemSaved: "ReservationUpdated",
+                itemRemoved: "ReservationRemoved",
+            },
+
             translatedMessages: {
                 itemName: "Reservierung",
-                itemRemoved: "Ihre Reservierungsanfrage wurde storniert.",
-
-                emailIds: {
-                    itemSaved: "ReservationUpdated",
-                    itemRemoved: "ReservationRemoved",
-                }
+                itemRemoved: "Die Reservierungsanfrage wurde storniert.",
             },
 
             cmsSchema: {
@@ -95,25 +94,36 @@ $w.onReady(function () {
                     onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
                     onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
-                    onChanged: async () => await syncUI(true, false)
+                    onCustomValidation: async (values) => {
+                        const item = editor.ds.getCurrentItem();
+                        if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
+                        const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
+                        console.log("onCustomValidation", { values, valRes, item });
+                        if (valRes.occupied) return (
+                            valRes.suggestedArrival ? `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.` :
+                                valRes.suggestedDeparture ? `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.` :
+                                    `Der Zeitraum ist in dieser Unterkunft bereits belegt.`);
+                        return "";
+                    },
+                    onChanged: async () => await syncUI()
                 },
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
                     type: FieldType.DATE_RANGE,
                     required: true,
-                    onChanged: async () => await syncUI(true, false)
+                    onChanged: async () => await syncUI()
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await syncUI(true, false)
+                    onChanged: async () => await syncUI()
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await syncUI(true, false)
+                    onChanged: async () => await syncUI()
                 },
                 "#inputAdults": {
                     field: "cntAdults",
@@ -219,7 +229,8 @@ $w.onReady(function () {
             },
 
             onRefreshUI: async (item) => {
-                await syncUI(true, true);
+                await syncUI();
+                postMessageToDatePicker({ utcDates: item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : [null, null] });
             },
 
             generateTitle: (item) => {
@@ -232,18 +243,15 @@ $w.onReady(function () {
             },
 
             onBeforeSave: async (item) => {
-                await syncUI(true, false);
-                if (currentDateOccupied) {
-                    editor.translatedMessagError = currentDateOccupied;
-                    return false;
-                }
-                editor.translatedMessageItemSaved = editor.originalItem && item && editor.originalItem.state != item.state ? {
+                await syncUI();
+                const msg = editor.originalItem && item && editor.originalItem.state != item.state ? {
                     "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
                     "Reserviert": "Ihre Anfrage wurde akzeptiert.",
                     "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
                     "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
                 }[item.state] || "" :
                     "";
+                editor.translatedMessages.messageIds.itemSavedDetails = `${msg}${msg ? "<br>" : ""}{diff}`;
                 return true;
             },
         });
@@ -279,47 +287,17 @@ function postMessageToDatePicker(message) {
     $w("#htmlDate").postMessage(message);
 }
 
-async function syncUI(checkValidation = true, resetCalendarView = false) {
-    console.log("syncUI", checkValidation, resetCalendarView);
+async function syncUI() {
+    console.log("syncUI");
     const item = editor.ds.getCurrentItem();
     if (!item) return;
 
     await updateCostsTable();
 
-    let message = { capacity: 0, occupations: [] };
-    let valRes = { noLodging: !item.lodging };
-
-    if (item.lodging) {
-        const [occ, checkRes] = await Promise.all([
-            getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id),
-            checkValidation ?
-                isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id) :
-                Promise.resolve({ occupied: false })
-        ]);
-
-        if (item.lodgingSub > 0 && occ.capacity >= 1) {
-            occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
-            occ.capacity = 1;
-        }
-        message = { capacity: occ.capacity, occupations: occ.occupations };
-        valRes = checkRes;
+    const occ = item.lodging ? await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id) : { capacity: 0, occupations: [] };
+    if (item.lodgingSub > 0 && occ.capacity >= 1) {
+        occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
+        occ.capacity = 1;
     }
-
-    if (resetCalendarView) message.utcDates = item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : [null, null];
-    if (checkValidation) {
-        if (valRes?.noLodging)
-            currentDateOccupied = "Bitte zuerst eine Unterkunft wählen.";
-        else if (!valRes || !valRes.occupied)
-            currentDateOccupied = "";
-        else if (valRes.suggestedArrival)
-            currentDateOccupied = `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.`;
-        else if (valRes.suggestedDeparture)
-            currentDateOccupied = `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.`;
-        else
-            currentDateOccupied = "Der Zeitraum ist in dieser Unterkunft bereits belegt.";
-
-        ["#inputDate", "#inputArrivalTime", "#inputDepartureTime"].forEach(id => $w(id).updateValidityIndication());
-    }
-
-    postMessageToDatePicker(message);
+    postMessageToDatePicker({ capacity: occ.capacity, occupations: occ.occupations });
 }
