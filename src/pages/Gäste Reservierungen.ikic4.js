@@ -94,11 +94,10 @@ $w.onReady(function () {
                     onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
                     onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
-                    onCustomValidation: async (values) => {
-                        const item = editor.ds.getCurrentItem();
+                    onCustomValidation: async (item) => {
                         if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
                         const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
-                        console.log("onCustomValidation", { values, valRes, item });
+                        console.log("onCustomValidation", { valRes, item });
                         if (valRes.occupied) return (
                             valRes.suggestedArrival ? `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.` :
                                 valRes.suggestedDeparture ? `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.` :

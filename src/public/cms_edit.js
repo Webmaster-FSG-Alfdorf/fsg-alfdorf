@@ -1251,7 +1251,7 @@ export class CmsEditor {
         }
 
         if (cfg.onCustomValidation) {
-            const errorMessage = await cfg.onCustomValidation(values);
+            const errorMessage = await cfg.onCustomValidation(item, values);
             if (el.setCustomValidity) el.setCustomValidity(errorMessage);
             if (el.onCustomValidation) el.onCustomValidation((value, reject) => { if (errorMessage) reject(errorMessage) });
             if (errorMessage) {
