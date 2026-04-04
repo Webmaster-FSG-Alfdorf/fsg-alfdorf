@@ -1,6 +1,5 @@
 import wixData from 'wix-data';
 import wixLocation from 'wix-location';
-import wixWindow from 'wix-window';
 
 import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, toUTC, incUTCDate, nightsBetween } from 'public/cms.js';
@@ -30,7 +29,7 @@ $w.onReady(function () {
         }
         $w("#inputLodging").options = options;
         $w("#filterLodging").options = [{ label: "(Alle)", value: "*" }, ...options];
-        if (editor) editor.updateUiFromData();
+        //if (editor) editor._updateUiFromData(); TODO
     });
 
     $w("#htmlDate").onMessage(async (event) => {
@@ -44,7 +43,7 @@ $w.onReady(function () {
                 new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                 new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
             ];
-            syncUI(false, false);
+            await syncUI(false, false);
         }
     });
 
@@ -65,55 +64,68 @@ $w.onReady(function () {
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
+            onGenerateEmailOptions: async (item, emailId) => {
+                return await generateHTMLTable(this.lastDiff.diffIntern, [
+                    { label: "Änderung", align: "right", bold: true },
+                    { label: "Von", align: "left" },
+                    { label: "Nach", align: "left" },
+                ]);
+            },
+
+            translatedMessages: {
+                itemName: "Reservierung",
+                itemRemoved: "Ihre Reservierungsanfrage wurde storniert.",
+
+                emailIds: {
+                    itemSaved: "ReservationUpdated",
+                    itemRemoved: "ReservationRemoved",
+                }
+            },
 
             cmsSchema: {
                 "#inputState": {
                     field: "state",
-                    type: FieldType.STRING
+                    type: FieldType.STRING,
+                    required: true,
                 },
                 "#inputLodging": {
                     fields: ["lodging", "lodgingSub"],
                     type: FieldType.CUSTOM,
-                    onParseUserInput: (input) => {
-                        const lodging = input.split("|");
-                        return [lodging[0], Number(lodging[1] || 0)];
-                    },
-                    onFormatValue: (item) => item && item.lodging ? `${item.lodging}|${item.lodgingSub ?? 0}` : "",
-                    onDiffValue: async (item) => item ? await generateLodgingName(item) : null,
-                    onChanged: () => syncUI(true, false)
+                    required: true,
+                    onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
+                    onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
+                    onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
+                    onChanged: async () => await syncUI(true, false)
                 },
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
                     type: FieldType.DATE_RANGE,
-                    onChanged: () => syncUI(true, false)
+                    required: true,
+                    onChanged: async () => await syncUI(true, false)
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
+                    required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onDiffValue: (item) => {
-                        const hour = new Date(item?.dateFrom).getUTCHours().toString();
-                        return $w("#inputArrivalTime").options.find(o => o.value == hour)?.label;
-                    },
-                    onChanged: () => syncUI(true, false)
+                    onChanged: async () => await syncUI(true, false)
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
+                    required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onDiffValue: (item) => {
-                        const hour = new Date(item?.dateFrom).getUTCHours().toString();
-                        return $w("#inputDepartureTime").options.find(o => o.value == hour)?.label;
-                    },
-                    onChanged: () => syncUI(true, false)
+                    onChanged: async () => await syncUI(true, false)
                 },
                 "#inputAdults": {
                     field: "cntAdults",
                     type: FieldType.NUMBER,
-                    onChanged: () => updateCostsTable()
+                    required: true,
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputChildren": {
                     field: "cntChildren",
                     type: FieldType.NUMBER,
-                    onChanged: () => updateCostsTable()
+                    required: true,
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputFirstName": {
                     field: "firstName",
@@ -150,12 +162,12 @@ $w.onReady(function () {
                 "#inputDeposit": {
                     field: "deposit",
                     type: FieldType.MULTI_SELECT,
-                    onChanged: () => updateCostsTable()
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputPaidSum": {
                     field: "paidSum",
                     type: FieldType.NUMBER,
-                    onChanged: () => updateCostsTable(),
+                    onChanged: async () => await updateCostsTable(),
                     fractionDigits: 2,
                     suffix: "€"
                 },
@@ -201,12 +213,12 @@ $w.onReady(function () {
                 "#filterLodging": {
                     type: FilterType.EQ,
                     combine: FilterCombine.PARALLEL_AND,
-                    value: (val) => val.split("|").map((v, i) => i == 0 ? v : Number(v)),
+                    value: (val) => val.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)),
                     fields: ["lodging", "lodgingSub"],
                 }
             },
 
-            onRefreshUI: async () => {
+            onRefreshUI: async (item) => {
                 await syncUI(true, true);
             },
 
@@ -219,43 +231,20 @@ $w.onReady(function () {
                     return "(Neue Reservierung)";
             },
 
-            onBeforeSave: async () => {
+            onBeforeSave: async (item) => {
                 await syncUI(true, false);
                 if (currentDateOccupied) {
-                    wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Speichern nicht möglich", customMessage: currentDateOccupied });
-                    return null;
+                    editor.translatedMessagError = currentDateOccupied;
+                    return false;
                 }
-                const item = editor.ds.getCurrentItem();
-                return editor.originalItem && item && editor.originalItem.state != item.state ? {
+                editor.translatedMessageItemSaved = editor.originalItem && item && editor.originalItem.state != item.state ? {
                     "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
                     "Reserviert": "Ihre Anfrage wurde akzeptiert.",
                     "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
                     "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
                 }[item.state] || "" :
                     "";
-            },
-
-            onAfterSave: (diff, customMessage) => {
-                if (diff.diffUser.length > 0)
-                    wixWindow.openLightbox("CMSSuccessLightbox", {
-                        msg: "Änderungen wurden gespeichert",
-                        item: editor.ds.getCurrentItem(),
-                        diff: diff.diffIntern,
-                        diffUser: diff.diffUser,
-                        customMessage
-                    });
-            },
-
-            onAfterReverted: () => {
-                wixWindow.openLightbox("CMSSuccessLightbox", { msg: "Änderungen wurden zurückgesetzt" });
-            },
-
-            onAfterDelete: (deletedItem) => {
-                wixWindow.openLightbox("CMSSuccessLightbox", {
-                    msg: "Reservierung wurde gelöscht",
-                    item: deletedItem,
-                    customMessage: "Ihre Reservierungsanfrage wurde storniert."
-                });
+                return true;
             },
         });
 
@@ -273,21 +262,16 @@ $w.onReady(function () {
     });
 });
 
-function updateCostsTable() {
+async function updateCostsTable() {
     const item = editor.ds.getCurrentItem();
-    if (item)
-        generateCostsTable(item).then(costs => {
-            generateHTMLTable(costs, [
-                "Leistung",
-                { label: "Anzahl Erw.", align: "right" },
-                { label: "Nächte", align: "right" },
-                { label: "Einzelpreis", align: "right" },
-                { label: "Gesamt", align: "right" },
-            ]).then(html => $w("#textReservationPrice").html = html);
-        });
-    else
-        $w("#textReservationPrice").html = "";
-    return true;
+    $w("#textReservationPrice").html = item ?
+        await generateHTMLTable((await generateCostsTable(item)), [
+            "Leistung",
+            { label: "Anzahl Erw.", align: "right" },
+            { label: "Nächte", align: "right" },
+            { label: "Einzelpreis", align: "right" },
+            { label: "Gesamt", align: "right" },
+        ]) : "";
 }
 
 function postMessageToDatePicker(message) {
@@ -300,7 +284,7 @@ async function syncUI(checkValidation = true, resetCalendarView = false) {
     const item = editor.ds.getCurrentItem();
     if (!item) return;
 
-    updateCostsTable();
+    await updateCostsTable();
 
     let message = { capacity: 0, occupations: [] };
     let valRes = { noLodging: !item.lodging };

@@ -10,8 +10,15 @@ $w.onReady(function () {
         dataSetName: "datasetEvents",
 
         cmsSchema: {
-            "#titleField": { field: "title", type: FieldType.STRING, required: true },
-            "#subTitleField": { field: "subTitle", type: FieldType.STRING },
+            "#titleField": {
+                field: "title",
+                type: FieldType.STRING,
+                required: true
+            },
+            "#subTitleField": {
+                field: "subTitle",
+                type: FieldType.STRING
+            },
             "#datesRepeater": {
                 field: "dates",
                 type: FieldType.REPEATER,
@@ -30,8 +37,7 @@ $w.onReady(function () {
                     "#dropdownDatesInterval": {
                         field: "recurrenceInterval",
                         type: FieldType.NUMBER,
-                        default: 0,
-                        onChanged: () => { }
+                        default: 0
                     },
                     "#dropdownDatesType": {
                         field: "recurrenceType",
@@ -68,19 +74,65 @@ $w.onReady(function () {
                 onDiffValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
                 onChanged: (values) => refreshDateRangeText(values),
             },
-            "#sportsField": { field: "sports", type: FieldType.MULTI_REFERENCE, dataSet: "sports", onGenerateLabel: (item) => item.name, required: true },
-            "#mainImageField": { field: "mainImage", type: FieldType.IMAGE, required: true },
-            "#galleryField": { field: "gallery", type: FieldType.IMAGES },
-            "#descriptionField": { field: "description", type: FieldType.RICH_TEXT, required: true },
-            "#priceField": { field: "price", type: FieldType.STRING },
-            "#onGroundField": { field: "onGround", type: FieldType.BOOLEAN },
-            "#addressField": { field: "address", type: FieldType.ADDRESS },
-            "#typeField": { field: "type", type: FieldType.SELECT, required: true },
-            "#youthField": { field: "youth", type: FieldType.BOOLEAN, },
-            "#registrationField": { field: "registration", type: FieldType.DATE, resetButton: "#registrationFieldReset" },
-            "#responsibleField": { field: "responsible", type: FieldType.STRING },
-            "#responsibleMailField": { field: "responsibleMail", type: FieldType.STRING },
-            "#responsiblePhoneField": { field: "responsiblePhone", type: FieldType.STRING },
+            "#sportsField": {
+                field: "sports",
+                type: FieldType.MULTI_REFERENCE,
+                dataSet: "sports",
+                onGenerateLabel: (item) => item.name,
+                required: true
+            },
+            "#mainImageField": {
+                field: "mainImage",
+                type: FieldType.IMAGE,
+                required: true
+            },
+            "#galleryField": {
+                field: "gallery",
+                type: FieldType.IMAGES
+            },
+            "#descriptionField": {
+                field: "description",
+                type: FieldType.RICH_TEXT,
+                required: true
+            },
+            "#priceField": {
+                field: "price",
+                type: FieldType.STRING
+            },
+            "#onGroundField": {
+                field: "onGround",
+                type: FieldType.BOOLEAN
+            },
+            "#addressField": {
+                field: "address",
+                type: FieldType.ADDRESS
+            },
+            "#typeField": {
+                field: "type",
+                type: FieldType.SELECT,
+                required: true
+            },
+            "#youthField": {
+                field: "youth",
+                type: FieldType.BOOLEAN,
+            },
+            "#registrationField": {
+                field: "registration",
+                type: FieldType.DATE,
+                resetButton: "#registrationFieldReset"
+            },
+            "#responsibleField": {
+                field: "responsible",
+                type: FieldType.STRING
+            },
+            "#responsibleMailField": {
+                field: "responsibleMail",
+                type: FieldType.STRING
+            },
+            "#responsiblePhoneField": {
+                field: "responsiblePhone",
+                type: FieldType.STRING
+            },
         },
 
         filterSortField: "title",
@@ -107,7 +159,7 @@ $w.onReady(function () {
             },
         },
 
-        onRefreshUI: () => { refreshDateRangeText(editor.ds.getCurrentItem()?.dates || []) },
+        onRefreshUI: (item) => { refreshDateRangeText(item?.dates || []) },
     });
 
     editor.init();

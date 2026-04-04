@@ -2,7 +2,7 @@ import wixData from 'wix-data';
 import wixUsers from 'wix-users-backend';
 import { currentMember } from 'wix-members-backend';
 
-import { isDateOccupied, sendMails, generateLodgingName } from 'backend/common.jsw';
+import { isDateOccupied, sendMail, generateLodgingName, generateTriggerMailTable, generateCostsTable } from 'backend/common.jsw';
 import { dateRangeToString } from 'public/cms.js';
 
 async function accessToGuests() {
@@ -91,15 +91,31 @@ async function buildSearchField(item) {
     ].map(normalize).join(" ");
 }
 
+async function generateItemDiff(item) {
+    return [
+        ["Status", item.state],
+        ["Unterkunft", await generateLodgingName(item)],
+        ["Datum", dateRangeToString(item.dateFrom, item.dateTo)],
+        ["Erwachsene", item.cntAdults],
+        ["Kinder", item.cntChildren],
+        ["Name", item.firstName + " " + item.lastName],
+        ["Email", item.email],
+        ["Telefon", item.phoneNumber],
+        ["Adresse", item.address?.formatted],
+        ["Notiz", item.note],
+        ["Pfand", item.deposit],
+        ["Bezahlt", item.paidSumup],
+    ];
+}
+
 export async function guestReservations_afterInsert(item, context) {
-    console.log("guestReservations_afterInsert", item);
+    console.log("guestReservations_afterInsert", item, context);
     updateDisabledStates(item, true);
-    sendMails(item, true, "<html>" + //FIXME rework
-        "<p>Vielen Dank, [[firstName]] [[lastName]], für Ihre Anfrage!</p>" +
-        "<p>Wir haben [[lodging]] vom [[dateFrom]] bis zum [[dateTo]] für Sie vorgemerkt.</p>" +
-        "<p>Wir werden uns zeitnah bei Ihnen melden um Ihre Buchung zu bestätigen.</p>" +
-        "<p>Voraussichtliche Kosten:</p>[[costs]]" +
-        "</html>"); //TODO send all details like cntAdults, ...?
+    const options = {};
+    generateTriggerMailTable(options, "a", await generateItemDiff(item));
+    generateTriggerMailTable(options, "b", await generateCostsTable(item));
+    sendMail("ReservationRequested", item, options);
+    sendMail("ReservationAttention", { firstName: "web", lastName: "master", email: "webmaster@fsg-alfdorf.de" }, options);
     return item;
 }
 

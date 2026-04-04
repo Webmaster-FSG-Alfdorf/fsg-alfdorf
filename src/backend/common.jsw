@@ -103,37 +103,26 @@ export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, sugg
     return { occupied: false };
 }
 
-export async function sendMails(item, informGuestManager, customMessage = "", diff = []) {
-    try {
-        const options = {
-            firstName: item.firstName,
-            lastName: item.lastName,
-            email: item.email,
-            lodging: await generateLodgingName(item),
-            dateFrom: convertToDate(item.dateFrom),
-            dateTo: convertToDate(item.dateTo),
-            customMessage
-        };
-        generateTriggerMailTable(options, "a", diff);
-        generateTriggerMailTable(options, "b", await generateCostsTable(item));
-        console.log("sendMails", item.firstName, item.lastName, item.email, options);
-        sendMail("ReservationRequested", item, options);
-        if (informGuestManager) sendMail("ReservationAttention", { firstName: "web", lastName: "master", email: "webmaster@fsg-alfdorf.de" }, options);
-    } catch (err) {
-        console.error("sendMails", err);
-    }
-}
+export async function sendMail(mailId, item, options = {}) {
+    const variables = {
+        firstName: item.firstName || "",
+        lastName: item.lastName || "",
+        email: item.email || "",
+        lodging: await generateLodgingName(item),
+        dateFrom: item.dateFrom ? convertToDate(item.dateFrom) : "",
+        dateTo: item.dateTo ? convertToDate(item.dateTo) : "",
 
-export function sendMail(mailId, item, options) {
+        ...options
+    };
     contacts.appendOrCreateContact({
         name: { first: item.firstName, last: item.lastName, },
         emails: [{ email: item.email },]
     }).then((contactInfo) => {
-        triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables: options }).catch((err) => {
-            console.error(`Cannot send e-mail ${mailId}`, err);
+        triggeredEmails.emailContact(mailId, contactInfo.contactId, { variables }).catch((err) => {
+            console.error("Cannot send e-mail", { mailId, item, variables, contactInfo, err });
         });
     }).catch((err) => {
-        console.error("Cannot create contact", err);
+        console.error("Cannot create contact", { mailId, item, variables, err });
     });
 }
 
@@ -252,10 +241,10 @@ function convertToDate(v) {
  * Generates a table in HTML format from the given parameters.
  * @param rows {any[][]} a list of rows with each a list of cells a either 
  * a dict { value, align="left"|"right"|"center", bold=true|false, italic=true|false }, or
+ * null to merge this cell with it's previous one(s), or
  * any kind of data that will be converted to a string
  * @param header {any[]} a list of column headers each as either
  * a dict { label, align="left"|"right"|"center", bold=true|false, italic=true|false }, or
- * null to merge this cell with it's previous one(s), or
  * any kind of data that will be converted to a string
  * @returns {string} the <table> string
  */
