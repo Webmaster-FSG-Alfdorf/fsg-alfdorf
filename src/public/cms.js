@@ -125,7 +125,8 @@ export function dateRangeToString(
     } = {}) {
     let res = "";
     let df = { timeZone: "Europe/Berlin" };
-    if (start) {
+    const dStart = start ? new Date(start) : null;
+    if (dStart && !isNaN(dStart.getTime())) {
         if (weekday != null) df.weekday = weekday;
         if (day != null) df.day = day;
         if (month != null) df.month = month;
@@ -133,10 +134,9 @@ export function dateRangeToString(
         if (hour != null) df.hour = hour;
         if (minute != null) df.minute = minute;
         if (second != null) df.second = second;
-        const dStart = start;
         res += dStart.toLocaleString(locales, df);
-        if (end) {
-            const dEnd = end;
+        const dEnd = new Date(end);
+        if (dEnd && !isNaN(dEnd.getTime())) {
             // Use local methods for comparisons to match display timezone
             const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
             const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
