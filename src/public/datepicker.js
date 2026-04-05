@@ -15,7 +15,7 @@ let pickStart = 0;
 let dateRange = [null, null];
 let daysOfPrevMonth = 0;
 let occupations = [];
-let capacity = 0;
+let capacity = 10000;
 let minDate = new Date(new Date(1900, 0, 1));
 let maxDate = new Date(new Date(3000, 0, 1));
 
@@ -27,7 +27,7 @@ window.addEventListener("message", (event) => {
                 dateRange = [new Date(event.data.utcDates[0]), new Date(event.data.utcDates[1])];
                 dateRange[0].setUTCHours(0, 0, 0, 0);
                 dateRange[1].setUTCHours(0, 0, 0, 0);
-                console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+                console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
                 if (!sameMonth(current, dateRange[0])) {
                     // go to the beginning of our selected range, if we not already show this month
                     current.setUTCFullYear(dateRange[0].getUTCFullYear());
@@ -87,7 +87,7 @@ function pickDay(year, month, date) {
             parent.postMessage({ selectedDates: dateRange }, "*");
         }
     }
-    console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+    console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
     pickStart = 1 - pickStart;
     document.getElementById("tooltip").textContent = pickStart == 0 ? "Zum Ändern neues Datum wählen." : "Jetzt Abreisedatum wählen.";
 }
@@ -104,14 +104,14 @@ function selDay(year, month, date) {
                 // stop selection before first / after last blocked day
                 incUTCDate(dt, forward ? -1 : 1);
                 dateRange[1] = new Date(dt);
-                //console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+                //console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
                 updateSel();
                 return false;
             }
             incUTCDate(dt, forward ? 1 : -1);
         }
         dateRange[1] = dtSel;
-        //console.log("dateRange now is (", debugStr(dateRange[0]), ",", debugStr(dateRange[1]), ")");
+        //console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
         updateSel();
         return true;
     }
@@ -138,7 +138,7 @@ function updateSel() {
 }
 
 function changeMonth(delta) {
-    console.log("changeMonth current", debugStr(current), "+", delta);
+    console.log("changeMonth current", current, "+", delta);
     current.setUTCMonth(current.getUTCMonth() + delta);
     generateDatePicker();
     parent.postMessage({ displayedMonth: current.getUTCMonth(), displayedYear: current.getUTCFullYear() }, "*");
@@ -147,7 +147,7 @@ function changeMonth(delta) {
 function generateDatePicker() {
     startDate = new Date(current);
     startDate.setUTCDate(1);
-    incUTCDate(startDate, -(((startDate.getUTCDay() - 1) + 7) % 7));
+    startDate = incUTCDate(startDate, -(((startDate.getUTCDay() - 1) + 7) % 7));
     startDate.setUTCHours(0, 0, 0, 0);
 
     const endDate = new Date(startDate);
@@ -158,7 +158,7 @@ function generateDatePicker() {
     const canPrev = minDate <= startDate;
     const canNext = maxDate >= endDate;
 
-    console.log("generateDatePicker for", debugStr(current), "displaying", debugStr(startDate), "to", debugStr(endDate));
+    console.log("generateDatePicker for", current, "displaying", startDate, "to", endDate);
 
     let html = `<table><thead>`;
     html += `<tr>`;
@@ -172,8 +172,7 @@ function generateDatePicker() {
 
     let dt = new Date();
     for (let i = 0; i < 6 * 7; ++i) {
-        const dt = new Date(current);
-        incUTCDate(dt, -daysOfPrevMonth + i);
+        const dt = incUTCDate(current, -daysOfPrevMonth + i);
         dt.setUTCHours(0, 0, 0, 0);
 
         // wrap into new row before printing Mondays
@@ -234,10 +233,9 @@ function generateDatePicker() {
 }
 
 function getCalendarWeek(date) {
-    const tempDate = new Date(date);
-    incUTCDate(tempDate, 3 - ((tempDate.getUTCDay() + 6) % 7));
-    const firstThursday = new Date(tempDate.getUTCFullYear(), 0, 4);
-    incUTCDate(firstThursday, 3 - ((firstThursday.getUTCDay() + 6) % 7));
+    const tempDate = incUTCDate(date, 3 - ((tempDate.getUTCDay() + 6) % 7));
+    let firstThursday = new Date(tempDate.getUTCFullYear(), 0, 4);
+    firstThursday = incUTCDate(firstThursday, 3 - ((firstThursday.getUTCDay() + 6) % 7));
     return 1 + Math.round(((tempDate - firstThursday) / 86400000 - 3) / 7);
 }
 
@@ -249,22 +247,9 @@ function getHSLColorFromOccupation(count, capacity) {
 }
 
 function incUTCDate(date, delta) {
-    date.setUTCDate(date.getUTCDate() + delta);
-    return date;
-}
-
-function debugStr(dt) {
-    return dt ? toLocal(dt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "null";
-}
-
-function toUTC(localDate) {
-    const dt = new Date(localDate);
-    return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000);
-}
-
-function toLocal(utcDate) {
-    const dt = new Date(utcDate);
-    return new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
+    const res = new Date(date);
+    res.setUTCDate(date.getUTCDate() + delta);
+    return res;
 }
 
 function sameMonth(utc1, utc2) {

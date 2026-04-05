@@ -454,10 +454,6 @@ export function insertContact(html, contact, mail, phone) {
     return html;
 }
 
-export function debugStr(dt) {
-    return dt ? toLocal(dt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "null";
-}
-
 /**
  * @param {Date}   localDate
  * @returns {Date}
@@ -479,8 +475,9 @@ export function toLocal(utcDate) {
 }
 
 export function incUTCDate(date, delta) {
-    date.setUTCDate(date.getUTCDate() + delta);
-    return date;
+    const res = new Date(date);
+    res.setUTCDate(date.getUTCDate() + delta);
+    return res;
 }
 
 /**

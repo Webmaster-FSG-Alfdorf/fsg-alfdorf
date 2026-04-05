@@ -2,7 +2,7 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
-import { dateRangeToString, FormatTypesMonth, toUTC, incUTCDate, nightsBetween } from 'public/cms.js';
+import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
 let occupationsRange = [new Date(), new Date()]; //TODO remove
@@ -31,26 +31,8 @@ $w.onReady(function () {
         //if (editor) editor._updateUiFromData(); TODO
     });
 
-    $w("#htmlDate").onMessage(async (event) => {
-        console.log("received message from #htmlDate", event.data);
-        if (event.data?.selectedDates?.length == 2) {
-            $w("#inputDate").value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
-            await editor.updateDataFromUI("#inputDate");
-        }
-        if (event.data?.displayedMonth && event.data?.displayedYear) {
-            occupationsRange = [
-                new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
-                new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
-            ];
-            await syncUI();
-        }
-    });
-
     $w("#datasetReservations").onReady(async () => {
         console.log("#datasetReservations onReady");
-        const dt = toUTC(new Date());
-        dt.setUTCHours(0, 0, 0);
-        postMessageToDatePicker({ minDate: new Date(dt), maxDate: incUTCDate(dt, 365) });
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
@@ -109,7 +91,10 @@ $w.onReady(function () {
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
                     type: FieldType.DATE_RANGE,
+                    datePicker: "#htmlDate",
                     required: true,
+                    daysPickablePast: 31,
+                    daysPickableFuture: 93,
                     onChanged: async () => await syncUI()
                 },
                 "#inputArrivalTime": {
@@ -227,10 +212,7 @@ $w.onReady(function () {
                 }
             },
 
-            onRefreshUI: async (item) => {
-                await syncUI();
-                postMessageToDatePicker({ utcDates: item.dateFrom && item.dateTo ? [new Date(item.dateFrom), new Date(item.dateTo)] : [null, null] });
-            },
+            onRefreshUI: async (item) => { await syncUI(); },
 
             generateTitle: (item) => {
                 if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging)) {
@@ -281,11 +263,6 @@ async function updateCostsTable() {
         ]) : "";
 }
 
-function postMessageToDatePicker(message) {
-    console.log("postMessage to #htmlDate", message);
-    $w("#htmlDate").postMessage(message);
-}
-
 async function syncUI() {
     console.log("syncUI");
     const item = editor.ds.getCurrentItem();
@@ -293,10 +270,14 @@ async function syncUI() {
 
     await updateCostsTable();
 
-    const occ = item.lodging ? await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id) : { capacity: 0, occupations: [] };
+    return;
+
+    const occ = item.lodging ?
+        await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id) :
+        { capacity: 0, occupations: [] };
     if (item.lodgingSub > 0 && occ.capacity >= 1) {
         occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
         occ.capacity = 1;
     }
-    postMessageToDatePicker({ capacity: occ.capacity, occupations: occ.occupations });
+    editor._postMessageToDatePicker(null, null, occ);
 }

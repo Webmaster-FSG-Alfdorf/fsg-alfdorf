@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 import { triggeredEmails, contacts } from 'wix-crm-backend';
 
-import { nightsBetween, toLocal, debugStr } from 'public/cms.js';
+import { nightsBetween } from 'public/cms.js';
 
 /**
  * Checks if given date range is (partially) occupied while respecting lodging based capacities.
@@ -20,7 +20,7 @@ export async function getOccupations(lodging, lodgingSub, dateFrom, dateTo, excl
     if (lodgings.length > 1) console.error(`Have multiple matches from #lodgings with lodgingID == ${lodging}: ${lodgings}`);
     const capacity = lodgings.length == 0 ? 0 : lodgings[0].capacity;
 
-    //console.log("getOccupations for", lodging, lodgingSub, "capacity", capacity, debugStr(dateFrom), "to", debugStr(dateTo));
+    //console.log("getOccupations for", lodging, lodgingSub, "capacity", capacity, dateFrom, "to", dateTo);
     if (capacity <= 0) return { capacity: 0, occupations: [] }; // cannot check availability if lodging field is empty / invalid
 
     const disabledDates = simulation ? simulation.disabledDates.filter(dd => dd.lodging == lodging && dd.dateFrom <= dateTo && dd.dateTo >= dateFrom) :
@@ -63,11 +63,11 @@ export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, sugg
         oc.occupations.forEach((oc) => {
             if (dt > oc.start && dt < oc.end) ocSum += oc.count;
         });
-        //console.log("isDateOccupied", debugStr(dt), "has occupation sum", ocSum);
+        //console.log("isDateOccupied", dt, "has occupation sum", ocSum);
         return ocSum >= oc.capacity;
     };
 
-    //console.log("isDateOccupied for", lodging, "sub", lodgingSub, debugStr(dateFrom), "to", debugStr(dateTo), "suggest", suggest, "got", oc);
+    //console.log("isDateOccupied for", lodging, "sub", lodgingSub, dateFrom, "to", dateTo, "suggest", suggest, "got", oc);
     if (oc.capacity <= 0) return { occupied: true } // not possible to find anything
 
     //FIXME loop does not work if only one day selected 
@@ -167,7 +167,7 @@ export async function generateCostsTable(item) {
 
     const dateFrom = new Date(item.dateFrom);
     const dateTo = new Date(item.dateTo);
-    console.log("generateCostsTable for", item.lodging, debugStr(dateFrom), "to", debugStr(dateTo), "adults", item.cntAdults);
+    console.log("generateCostsTable for", item.lodging, dateFrom, "to", dateTo, "adults", item.cntAdults);
     let costs = [];
     let sum = 0;
     let sumDeposit = 0;

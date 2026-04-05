@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 import wixWindow from 'wix-window';
 
-import { dateRangeToString, stringToDateRange } from 'public/cms.js';
+import { dateRangeToString, stringToDateRange, incUTCDate } from 'public/cms.js';
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -262,6 +262,10 @@ export class CmsEditor {
             case FieldType.DATE:
                 cfg.format ??= { hour: null, minute: null };
                 break;
+            case FieldType.DATE_RANGE:
+                cfg.daysPickablePast ??= 0;
+                cfg.daysPickableFuture ??= 365;
+                break;
             case FieldType.STRING:
                 cfg.trim ??= true;
                 break;
@@ -440,6 +444,31 @@ export class CmsEditor {
                     elFilter.options = [{ label: "(Alle)", value: "*" }, ...options];
                 else
                     console.error("Cannot assign options list to", fCfg.id);
+            }
+        }
+
+        if (cfg.type == FieldType.DATE_RANGE) {
+            if (cfg.datePicker) {
+                const cur = new Date();
+                const curUTC = new Date(Date.UTC(cur.getFullYear(), cur.getMonth(), cur.getDate(), 0, 0, 0, 0));
+                this._postMessageToDatePicker(cfg, scope, { minDate: incUTCDate(curUTC, -cfg.daysPickablePast), maxDate: incUTCDate(curUTC, cfg.daysPickableFuture) });
+                const elPicker = scope(cfg.datePicker);
+                if (elPicker) elPicker.onMessage(async (event) => {
+                    console.log("received message from picker for ", cfg.id, ":", event.data);
+                    if (event.data?.selectedDates?.length == 2) {
+                        el.value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
+                        await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
+                    }
+                    if (event.data?.displayedMonth && event.data?.displayedYear) {
+                        //occupationsRange = [
+                        //    new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
+                        //   new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
+                        //];
+                        //await syncUI();
+                    }
+                });
+                else
+                    console.error("Cannot find datePicker element", cfg.datePicker);
             }
         }
 
@@ -841,6 +870,7 @@ export class CmsEditor {
             case FieldType.DATE_RANGE:
                 val0 = dateRangeToString(values[0], values[1], { hour: null, minute: null });
                 //TODO really assign to val0?
+                this._postMessageToDatePicker(cfg, scope, { utcDates: values[0] && values[1] ? [new Date(values[0]), new Date(values[1])] : [null, null] });
                 break;
             case FieldType.IMAGE:
                 val0 ||= TRANSPARENT_PIXEL;
@@ -1433,6 +1463,15 @@ export class CmsEditor {
         for (const [placeholder, value] of Object.entries(replacements))
             msg = msg.replace(`{${placeholder}}`, value);
         return msg;
+    }
+
+    _postMessageToDatePicker(cfg, scope, message) {
+        const elPicker = scope(cfg.datePicker);
+        if (elPicker) {
+            console.log("postMessage to", cfg.datePicker, ":", message);
+            elPicker.postMessage(message);
+        } else
+            console.error("Cannot find datePicker element", cfg.datePicker);
     }
 
 }
