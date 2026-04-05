@@ -233,10 +233,20 @@ function generateDatePicker() {
 }
 
 function getCalendarWeek(date) {
-    const tempDate = incUTCDate(date, 3 - ((tempDate.getUTCDay() + 6) % 7));
-    let firstThursday = new Date(tempDate.getUTCFullYear(), 0, 4);
+    // 1. Find the Thursday of the current week (ISO weeks start on Monday)
+    // Formula: date - (dayOfWeek - 1) + 3  => date + (3 - ((day + 6) % 7))
+    const currentThursday = incUTCDate(date, 3 - ((date.getUTCDay() + 6) % 7));
+
+    // 2. Find the first Thursday of the year
+    // ISO 8601 rule: The first week is the one with the first Thursday of the year.
+    let firstThursday = new Date(Date.UTC(currentThursday.getUTCFullYear(), 0, 4));
     firstThursday = incUTCDate(firstThursday, 3 - ((firstThursday.getUTCDay() + 6) % 7));
-    return 1 + Math.round(((tempDate - firstThursday) / 86400000 - 3) / 7);
+
+    // 3. Calculate weeks between Thursdays
+    const diffInMs = currentThursday - firstThursday;
+    const diffInDays = diffInMs / 86400000;
+
+    return 1 + Math.round(diffInDays / 7);
 }
 
 function getHSLColorFromOccupation(count, capacity) {
@@ -248,7 +258,7 @@ function getHSLColorFromOccupation(count, capacity) {
 
 function incUTCDate(date, delta) {
     const res = new Date(date);
-    res.setUTCDate(date.getUTCDate() + delta);
+    res.setUTCDate(res.getUTCDate() + delta);
     return res;
 }
 

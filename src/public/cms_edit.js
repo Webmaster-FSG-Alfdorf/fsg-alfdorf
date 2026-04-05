@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 import wixWindow from 'wix-window';
 
-import { dateRangeToString, stringToDateRange, incUTCDate } from 'public/cms.js';
+import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -26,10 +26,11 @@ import { dateRangeToString, stringToDateRange, incUTCDate } from 'public/cms.js'
  * @property {number} [fractionDigits] - For FieldType.NUMBER: Number of decimals (default 0).
  * @property {string} [boolTrue] - For FieldType.BOOLEAN: Label for true (default "Ja").
  * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
- * @property {Object} [format] - For FieldType.DATE: Options for dateRangeToString.
+ * @property {Object} [format] - For FieldType.DATE/DATE_RANGE: Options for dateRangeToString.
  * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
  * @property {boolean} [dataSet] - For FieldType.REFERENCE/MULTI_REFERENCE: Name of the dataset to which the references shall point.
  * @property {boolean} [onGenerateLabel] - (item) => string: For FieldType.REFERENCE/MULTI_REFERENCE: Label for entries of the dataset.
+ * //TODO needs update as some are missing
  */
 
 export const FieldType = Object.freeze({
@@ -258,13 +259,16 @@ export class CmsEditor {
                 break;
             case FieldType.NUMBER:
                 cfg.fractionDigits ??= 0;
+                cfg.minAllowed ??= null;
+                cfg.maxAllowed ??= null;
                 break;
             case FieldType.DATE:
                 cfg.format ??= { hour: null, minute: null };
                 break;
             case FieldType.DATE_RANGE:
-                cfg.daysPickablePast ??= 0;
-                cfg.daysPickableFuture ??= 365;
+                cfg.format ??= { hour: null, minute: null };
+                cfg.minAllowed ??= null;
+                cfg.maxAllowed ??= null;
                 break;
             case FieldType.STRING:
                 cfg.trim ??= true;
@@ -447,16 +451,23 @@ export class CmsEditor {
             }
         }
 
+        if (cfg.type == FieldType.NUMBER || cfg.type == FieldType.DATE_RANGE) {
+            if (cfg.minAllowed != null) {
+                if ("min" in el) el.min = cfg.minAllowed; else console.error("Cannot assign min to ", cfg.id);
+            }
+            if (cfg.maxAllowed != null) {
+                if ("max" in el) el.max = cfg.maxAllowed; else console.error("Cannot assign max to ", cfg.id);
+            }
+        }
+
         if (cfg.type == FieldType.DATE_RANGE) {
             if (cfg.datePicker) {
-                const cur = new Date();
-                const curUTC = new Date(Date.UTC(cur.getFullYear(), cur.getMonth(), cur.getDate(), 0, 0, 0, 0));
-                this._postMessageToDatePicker(cfg, scope, { minDate: incUTCDate(curUTC, -cfg.daysPickablePast), maxDate: incUTCDate(curUTC, cfg.daysPickableFuture) });
+                this._postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed, capacity: 10000 }); //TODO remove cap
                 const elPicker = scope(cfg.datePicker);
                 if (elPicker) elPicker.onMessage(async (event) => {
                     console.log("received message from picker for ", cfg.id, ":", event.data);
                     if (event.data?.selectedDates?.length == 2) {
-                        el.value = dateRangeToString(event.data.selectedDates[0], event.data.selectedDates[1], { hour: null, minute: null });
+                        await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), event.data.selectedDates, masterArrayID);
                         await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
                     }
                     if (event.data?.displayedMonth && event.data?.displayedYear) {
@@ -464,7 +475,7 @@ export class CmsEditor {
                         //    new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
                         //   new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
                         //];
-                        //await syncUI();
+                        //await syncUI(); TODO
                     }
                 });
                 else
@@ -868,7 +879,7 @@ export class CmsEditor {
                 if (val0 && isNaN(val0.getTime())) val0 = null;
                 break;
             case FieldType.DATE_RANGE:
-                val0 = dateRangeToString(values[0], values[1], { hour: null, minute: null });
+                val0 = dateRangeToString(values[0], values[1], cfg.format);
                 //TODO really assign to val0?
                 this._postMessageToDatePicker(cfg, scope, { utcDates: values[0] && values[1] ? [new Date(values[0]), new Date(values[1])] : [null, null] });
                 break;

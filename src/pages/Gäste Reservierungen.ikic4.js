@@ -42,6 +42,8 @@ $w.onReady(function () {
 
         // special block below only for Management site -- all above shall be identical with Guest site
 
+        const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
+
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
@@ -93,8 +95,8 @@ $w.onReady(function () {
                     type: FieldType.DATE_RANGE,
                     datePicker: "#htmlDate",
                     required: true,
-                    daysPickablePast: 31,
-                    daysPickableFuture: 93,
+                    minAllowed: incUTCDate(curUTC, -31),
+                    maxAllowed: incUTCDate(curUTC, 62),
                     onChanged: async () => await syncUI()
                 },
                 "#inputArrivalTime": {
@@ -112,6 +114,8 @@ $w.onReady(function () {
                 "#inputAdults": {
                     field: "cntAdults",
                     type: FieldType.NUMBER,
+                    minAllowed: 1, //TODO
+                    maxAllowed: 4, //TODO
                     required: true,
                     onChanged: async () => await updateCostsTable()
                 },
