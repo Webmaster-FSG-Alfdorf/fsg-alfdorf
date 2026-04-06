@@ -19,6 +19,8 @@ let capacity = 10000;
 let minDate = new Date(new Date(1900, 0, 1));
 let maxDate = new Date(new Date(3000, 0, 1));
 
+const STEPS = 8; //FIXME 24? 12? 8? 6? 4?
+
 window.addEventListener("message", (event) => {
     if (event.data) {
         console.log("message received", event.data);
@@ -172,27 +174,25 @@ function generateDatePicker() {
 
     for (let i = 0; i < 6 * 7; ++i) {
         const dt = incUTCDate(startDate, i);
-        dt.setUTCHours(0, 0, 0, 0);
 
         // wrap into new row before printing Mondays
         if (dt.getUTCDay() == 1) html += `</tr><tr><td>${getCalendarWeek(dt)}</td>\n`;
 
         // generate different background based on occupation of the day
-        const steps = 8; //FIXME 24? 12? 8? 6? 4?
-        let ocSums = Array(steps).fill(0);
-        for (let h = 0; h < steps; ++h) {
+        let ocSums = Array(STEPS).fill(0);
+        for (let h = 0; h < STEPS; ++h) {
             let dt0 = new Date(dt);
-            dt0.setUTCHours(h * 24 / steps, 0, 0, 0);
+            dt0.setUTCHours(h * 24 / STEPS, 0, 0, 0);
             let dt1 = new Date(dt);
-            dt1.setUTCHours((h + 1) * 24 / steps - 1, 59, 59, 999);
+            dt1.setUTCHours((h + 1) * 24 / STEPS - 1, 59, 59, 999);
             if (occupations.length <= 100)
                 occupations.forEach((oc) => { if (oc.start < dt0 && oc.end > dt1) ocSums[h] += oc.count; });
         }
         const ocMin = Math.min(...ocSums);
 
-        const perc = 100.0 / steps;
+        const perc = 100.0 / STEPS;
         let style = "background: linear-gradient(to right";
-        for (let h = 0; h < steps; ++h) {
+        for (let h = 0; h < STEPS; ++h) {
             //const bg = ocSums[h] >= capacity ? "#f8d7da" : ocSums[h] > capacity / 4 * 3 ? "#ffe5b4" : ocSums[h] > capacity / 3 ? "#fff3cd" : "#d4edda";
             const bg = getHSLColorFromOccupation(ocSums[h], capacity);
             style += `, ${bg} ${(perc * h).toFixed(2)}% ${(perc * (h + 1)).toFixed(2)}%`;
