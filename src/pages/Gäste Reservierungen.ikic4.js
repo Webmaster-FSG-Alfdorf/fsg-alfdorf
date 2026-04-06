@@ -5,7 +5,6 @@ import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit
 import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
-let occupationsRange = [new Date(), new Date()]; //TODO remove
 let editor;
 
 $w.onReady(function () {
@@ -78,17 +77,8 @@ $w.onReady(function () {
                     onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
                     onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
-                    onCustomValidation: async (item) => {
-                        if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
-                        const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
-                        console.log("onCustomValidation", { valRes, item });
-                        if (valRes.occupied) return (
-                            valRes.suggestedArrival ? `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.` :
-                                valRes.suggestedDeparture ? `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.` :
-                                    `Der Zeitraum ist in dieser Unterkunft bereits belegt.`);
-                        return "";
-                    },
-                    onChanged: async () => await syncUI()
+                    onCustomValidation: async (item) => await validateLodging(item),
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
@@ -97,19 +87,20 @@ $w.onReady(function () {
                     required: true,
                     minAllowed: incUTCDate(curUTC, -31),
                     maxAllowed: incUTCDate(curUTC, 62),
-                    onChanged: async () => await syncUI()
+                    onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await syncUI()
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await syncUI()
+                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputAdults": {
                     field: "cntAdults",
@@ -216,7 +207,7 @@ $w.onReady(function () {
                 }
             },
 
-            onRefreshUI: async (item) => { await syncUI(); },
+            onRefreshUI: async (item) => { await updateCostsTable(); },
 
             generateTitle: (item) => {
                 if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging)) {
@@ -228,7 +219,7 @@ $w.onReady(function () {
             },
 
             onBeforeSave: async (item) => {
-                await syncUI();
+                await updateCostsTable();
                 const msg = editor.originalItem && item && editor.originalItem.state != item.state ? {
                     "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
                     "Reserviert": "Ihre Anfrage wurde akzeptiert.",
@@ -255,6 +246,48 @@ $w.onReady(function () {
     });
 });
 
+async function validateLodging(item) {
+    //TODO only send if there's any change in config
+    const cfg = editor.cmsSchema["#inputDate"];
+    const toSend = {
+        id: item._id,
+        lodging: item.lodging,
+        lodgingSub: item.lodgingSub,
+        displayedYear: cfg.displayedYear,
+        displayedMonth: cfg.displayedMonth,
+    };
+    console.log("validateLodging", toSend);
+    if (cfg.lastSent != toSend) {
+        cfg.lastSent = toSend;
+        const occ = toSend.lodging && toSend.displayedYear != null && toSend.displayedMonth != null ?
+            await getOccupations(
+                toSend.lodging,
+                toSend.lodgingSub,
+                new Date(toSend.displayedYear, toSend.displayedMonth - 1, 21),
+                new Date(toSend.displayedYear, toSend.displayedMonth + 1, 7),
+                toSend.id
+            ) :
+            { capacity: 0, occupations: [] };
+        if (toSend.lodgingSub > 0 && occ.capacity >= 1) {
+            occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
+            occ.capacity = 1;
+        }
+        editor.postMessageToDatePicker(cfg, $w, occ);
+    }
+
+    //TODO test:
+    if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
+    const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
+    console.log("onCustomValidation", { valRes, item });
+    if (valRes.occupied) return (
+        valRes.suggestedArrival ? `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.` :
+            valRes.suggestedDeparture ? `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.` :
+                `Der Zeitraum ist in dieser Unterkunft bereits belegt.`);
+
+    return null;
+}
+
+
 async function updateCostsTable() {
     const item = editor.ds.getCurrentItem();
     $w("#textReservationPrice").html = item ?
@@ -265,23 +298,4 @@ async function updateCostsTable() {
             { label: "Einzelpreis", align: "right" },
             { label: "Gesamt", align: "right" },
         ]) : "";
-}
-
-async function syncUI() {
-    console.log("syncUI");
-    const item = editor.ds.getCurrentItem();
-    if (!item) return;
-
-    await updateCostsTable();
-
-    return;
-
-    const occ = item.lodging ?
-        await getOccupations(item.lodging, item.lodgingSub, new Date(occupationsRange[0]), new Date(occupationsRange[1]), item._id) :
-        { capacity: 0, occupations: [] };
-    if (item.lodgingSub > 0 && occ.capacity >= 1) {
-        occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
-        occ.capacity = 1;
-    }
-    editor._postMessageToDatePicker(null, null, occ);
 }

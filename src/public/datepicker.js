@@ -170,9 +170,8 @@ function generateDatePicker() {
     html += `<tr><th>KW</th><th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th></tr>`;
     html += `</thead><tbody><tr>\n`;
 
-    let dt = new Date();
     for (let i = 0; i < 6 * 7; ++i) {
-        const dt = incUTCDate(current, -daysOfPrevMonth + i);
+        const dt = incUTCDate(startDate, i);
         dt.setUTCHours(0, 0, 0, 0);
 
         // wrap into new row before printing Mondays
@@ -186,7 +185,8 @@ function generateDatePicker() {
             dt0.setUTCHours(h * 24 / steps, 0, 0, 0);
             let dt1 = new Date(dt);
             dt1.setUTCHours((h + 1) * 24 / steps - 1, 59, 59, 999);
-            occupations.forEach((oc) => { if (oc.start < dt0 && oc.end > dt1) ocSums[h] += oc.count; });
+            if (occupations.length <= 100)
+                occupations.forEach((oc) => { if (oc.start < dt0 && oc.end > dt1) ocSums[h] += oc.count; });
         }
         const ocMin = Math.min(...ocSums);
 

@@ -149,8 +149,7 @@ export class CmsEditor {
                 ...config.translatedMessages?.messageIds
             },
 
-            message_no_validationMessage: "Benutzerdefinierter Fehler",
-            customValidation: "{label}: {message}",
+            no_validationMessage: "Benutzerdefinierter Fehler",
 
             validityChecks: {
                 badInput: "{label}: hat ungültige Eingabe",
@@ -451,7 +450,7 @@ export class CmsEditor {
             }
         }
 
-        if (cfg.type == FieldType.NUMBER || cfg.type == FieldType.DATE_RANGE) {
+        if (cfg.type == FieldType.NUMBER) {
             if (cfg.minAllowed != null) {
                 if ("min" in el) el.min = cfg.minAllowed; else console.error("Cannot assign min to ", cfg.id);
             }
@@ -462,20 +461,21 @@ export class CmsEditor {
 
         if (cfg.type == FieldType.DATE_RANGE) {
             if (cfg.datePicker) {
-                this._postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed, capacity: 10000 }); //TODO remove cap
+                this.postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed });
                 const elPicker = scope(cfg.datePicker);
                 if (elPicker) elPicker.onMessage(async (event) => {
                     console.log("received message from picker for ", cfg.id, ":", event.data);
-                    if (event.data?.selectedDates?.length == 2) {
-                        await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), event.data.selectedDates, masterArrayID);
+                    const { selectedDates, displayedMonth, displayedYear } = event.data || {};
+                    if (selectedDates?.length == 2) {
+                        await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), selectedDates, masterArrayID);
                         await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
                     }
-                    if (event.data?.displayedMonth && event.data?.displayedYear) {
-                        //occupationsRange = [
-                        //    new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21),
-                        //   new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7)
-                        //];
-                        //await syncUI(); TODO
+                    const changedDM = displayedMonth != null && displayedMonth != cfg.displayedMonth;
+                    const changedDY = displayedYear != null && displayedYear != cfg.displayedYear;
+                    if (changedDM || changedDY) {
+                        cfg.displayedMonth = displayedMonth;
+                        cfg.displayedYear = displayedYear;
+                        await cfg.onDisplayedDateChanged?.();
                     }
                 });
                 else
@@ -651,7 +651,7 @@ export class CmsEditor {
                 }
                 case FieldType.CUSTOM:
                     try {
-                        return { val: await cfg.onParseUserInput(el.value) };
+                        return { val: await cfg.onParseUserInput?.(el.value) };
                     } catch (e) {
                         console.warn("Error in onParseUserInput for", cfg.id, ":", e);
                         return { val: item?.[cfg.field] };
@@ -722,17 +722,11 @@ export class CmsEditor {
         } else {
             for (let i = 0; i < cfg.fields.length; i++)
                 await this.ds.setFieldValue(cfg.fields[i], values[i]);
+            itemData = this.ds.getCurrentItem(); // update after using setFieldValue
         }
 
-        if (cfg?.onChanged) {
-            console.log("Calling user onChanged(", values[0], ", ", parentCfg, ", ", masterArrayID, ") on config")
-            await cfg.onChanged(values[0], parentCfg, masterArrayID);
-        }
-        if (parentCfg?.onChanged) {
-            const wholeContent = masterArray || values[0];
-            console.log("Calling user onChanged(", wholeContent, ", ", null, ", ", null, ") on parent config")
-            await parentCfg.onChanged(wholeContent, null, null);
-        }
+        await cfg.onChanged?.(values[0], parentCfg, masterArrayID);
+        await parentCfg?.onChanged?.(masterArray || values[0], null, null);
 
         if (needRefresh)
             await this._updateUiFromData(cfg, scope, itemData, values, masterArrayID);
@@ -740,7 +734,7 @@ export class CmsEditor {
             await this._validate(cfg, scope, itemData);
 
         for (const sameLevelCfg of parentCfg ? Object.values(parentCfg.inputs) : Object.values(this.cmsSchema))
-            await this._validate(sameLevelCfg, scope, itemData);
+            if (sameLevelCfg != cfg) await this._validate(sameLevelCfg, scope, itemData);
 
         await this.updateButtonStates();
     }
@@ -881,7 +875,7 @@ export class CmsEditor {
             case FieldType.DATE_RANGE:
                 val0 = dateRangeToString(values[0], values[1], cfg.format);
                 //TODO really assign to val0?
-                this._postMessageToDatePicker(cfg, scope, { utcDates: values[0] && values[1] ? [new Date(values[0]), new Date(values[1])] : [null, null] });
+                this.postMessageToDatePicker(cfg, scope, { utcDates: values[0] && values[1] ? [new Date(values[0]), new Date(values[1])] : [null, null] });
                 break;
             case FieldType.IMAGE:
                 val0 ||= TRANSPARENT_PIXEL;
@@ -902,7 +896,7 @@ export class CmsEditor {
                 break;
             case FieldType.CUSTOM:
                 try {
-                    val0 = await cfg.onFormatValue(values);
+                    val0 = await cfg.onFormatValue?.(values);
                 } catch (e) {
                     console.warn("Error in onFormatValue for", cfg.id, ":", e);
                     val0 = null;
@@ -1248,14 +1242,14 @@ export class CmsEditor {
     }
 
     /**
-     * Validate field plus custom logic, repeater child files etc.
+     * Validate a field against it's user input.
      * @param {CmsFieldConfig} cfg
      * @param {*} scope
      * @param {Object} item
      * @returns {Promise<string[]>} - Empty array means no errors
      */
     async _validate(cfg, scope, item) {
-        // console.info("_validate", { cfg, scope, item });
+        console.info("_validate", { cfg, scope, item });
         if (!cfg) {
             console.error("Cannot assign to input: CMS schema not found in configuration")
             return [this.getTranslatedMessage("error_no_config", cfg, item)];
@@ -1263,42 +1257,48 @@ export class CmsEditor {
         const el = scope(cfg.id);
         if (!el || !el.id) return []; // treat non-existing as valid so don't block saving
 
-        const errors = [];
 
-        if (cfg.isVisible) {
-            console.log("Calling user isVisible(", item, ")")
-            const visible = await cfg.isVisible(item);
-            if (visible) el.expand(); else el.collapse();
-            if (!visible) return []; // treat invisible as valid 
+        const visible = await cfg.isVisible?.(item);
+        if (visible === true) el.expand();
+        if (visible === false) {
+            el.collapse();
+            //TODO must also collapse additional items like buttons and date picker
+            return []; // treat invisible as valid 
         }
+
         if (cfg.readOnly) return [];  // treat readonly as valid 
-        if (cfg.isEnabled) {
-            console.log("Calling user isEnabled(", item, ")")
-            const enabled = await cfg.isEnabled(item);
-            if (enabled) el.enable(); else el.disable();
-            if (!enabled) return []; // treat disabled as valid 
+
+        const enabled = await cfg.isEnabled?.(item);
+        if (enabled === true) el.enable();
+        if (enabled === false) {
+            el.disable();
+            return []; // treat disabled as valid 
         }
 
         const { values } = await this._parseUiValue(cfg, scope, item);
+        const numericValues = values.map(v => (v === "" || v === null || v === undefined ? null : Number(v)));
 
-        const validity = el.validity;
-        const valueMissing = cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
-        if ((validity && !validity.valid) || valueMissing) {
-            console.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, valueMissing });
-            // Provide specific error messages based on validity flags
-            for (const attr of Object.keys(this.translatedMessages.validityChecks))
-                if (validity?.[attr] || (attr == "valueMissing" && valueMissing))
-                    errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, { message: el.validationMessage || this.getTranslatedMessage("message_no_validationMessage", cfg, item) }));
-        }
+        const customErrorMessage = await cfg.onCustomValidation?.(item, values);
 
-        if (cfg.onCustomValidation) {
-            const errorMessage = await cfg.onCustomValidation(item, values);
-            if (el.setCustomValidity) el.setCustomValidity(errorMessage);
-            if (el.onCustomValidation) el.onCustomValidation((value, reject) => { if (errorMessage) reject(errorMessage) });
-            if (errorMessage) {
-                console.warn("Custom rejection for UI", cfg.id, ":", errorMessage);
-                errors.push(this.getTranslatedMessage("customValidation", cfg, item, null, { message: errorMessage }));
-            }
+        const validity = { ...el.validity };
+        validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the value here
+        validity.valueMissing ||= cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
+        validity.rangeUnderflow ||= cfg.minAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
+        validity.rangeOverflow ||= cfg.maxAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
+        //validity.badInput ||= numericValues.some(v => v !== null && Number.isNaN(v));
+        const errors = [];
+        for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
+            errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
+                message: customErrorMessage || this.getTranslatedMessage("no_validationMessage", cfg, item)
+            }));
+        if (errors.length == 0) {
+            console.info("UI Validation succeeded for UI", cfg.id, ":", { values, numericValues, validity });
+            if (el.setCustomValidity) el.setCustomValidity("");
+            if (el.onCustomValidation) el.onCustomValidation((_1, _2) => { });
+        } else {
+            console.warn("UI Validation failed for UI", cfg.id, ":", { values, numericValues, validity, customErrorMessage, errors });
+            if (el.setCustomValidity) el.setCustomValidity(errors.join(", "));
+            if (el.onCustomValidation) el.onCustomValidation((_, reject) => { reject(errors.join(", ")) });
         }
 
         if (el.updateValidityIndication)
@@ -1476,7 +1476,7 @@ export class CmsEditor {
         return msg;
     }
 
-    _postMessageToDatePicker(cfg, scope, message) {
+    postMessageToDatePicker(cfg, scope, message) {
         const elPicker = scope(cfg.datePicker);
         if (elPicker) {
             console.log("postMessage to", cfg.datePicker, ":", message);
