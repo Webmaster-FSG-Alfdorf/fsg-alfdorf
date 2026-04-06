@@ -104,13 +104,13 @@ function selDay(year, month, date) {
         while (forward ? dt < dtSel : dt > dtSel) {
             if (disabledDates.has(dt.toISOString().slice(0, 10))) {
                 // stop selection before first / after last blocked day
-                incUTCDate(dt, forward ? -1 : 1);
+                dt = incUTCDate(dt, forward ? -1 : 1);
                 dateRange[1] = new Date(dt);
                 //console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
                 updateSel();
                 return false;
             }
-            incUTCDate(dt, forward ? 1 : -1);
+            dt = incUTCDate(dt, forward ? 1 : -1);
         }
         dateRange[1] = dtSel;
         //console.log("dateRange now is (", dateRange[0], ",", dateRange[1], ")");
