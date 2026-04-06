@@ -27,7 +27,6 @@ $w.onReady(function () {
         }
         $w("#inputLodging").options = options;
         $w("#filterLodging").options = [{ label: "(Alle)", value: "*" }, ...options];
-        //if (editor) editor._updateUiFromData(); TODO
     });
 
     $w("#datasetReservations").onReady(async () => {
@@ -39,7 +38,13 @@ $w.onReady(function () {
             $w("#inputLodging").scrollTo()
         }
 
-        // special block below only for Management site -- all above shall be identical with Guest site
+        wixData.query("pricesVisitor").ascending("order").find().then((results) => {
+            let options = [];
+            results.items.forEach((pv) => {
+                if (pv.depositName) options.push({ label: pv.title, value: pv.depositName });
+            });
+            $w("#inputDeposit").options = options;
+        });
 
         const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
 
@@ -94,19 +99,15 @@ $w.onReady(function () {
                     field: "dateFrom",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputAdults": {
                     field: "cntAdults",
                     type: FieldType.NUMBER,
-                    minAllowed: 1, //TODO
-                    maxAllowed: 4, //TODO
                     required: true,
                     onChanged: async () => await updateCostsTable()
                 },
@@ -114,7 +115,6 @@ $w.onReady(function () {
                     field: "cntChildren",
                     type: FieldType.NUMBER,
                     required: true,
-                    onChanged: async () => await updateCostsTable()
                 },
                 "#inputFirstName": {
                     field: "firstName",
@@ -207,8 +207,6 @@ $w.onReady(function () {
                 }
             },
 
-            onRefreshUI: async (item) => { await updateCostsTable(); },
-
             generateTitle: (item) => {
                 if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging)) {
                     const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
@@ -219,7 +217,6 @@ $w.onReady(function () {
             },
 
             onBeforeSave: async (item) => {
-                await updateCostsTable();
                 const msg = editor.originalItem && item && editor.originalItem.state != item.state ? {
                     "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
                     "Reserviert": "Ihre Anfrage wurde akzeptiert.",
@@ -233,21 +230,10 @@ $w.onReady(function () {
         });
 
         editor.init();
-
-        wixData.query("pricesVisitor").ascending("order").find().then((results) => {
-            let options = [];
-            results.items.forEach((pv) => {
-                if (pv.depositName) options.push({ label: pv.title, value: pv.depositName });
-            });
-            $w("#inputDeposit").options = options;
-        });
-
-        // end special block
     });
 });
 
 async function validateLodging(item) {
-    //TODO only send if there's any change in config
     const cfg = editor.cmsSchema["#inputDate"];
     const toSend = {
         id: item._id,
@@ -275,7 +261,6 @@ async function validateLodging(item) {
         editor.postMessageToDatePicker(cfg, $w, occ);
     }
 
-    //TODO test:
     if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
     const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
     console.log("onCustomValidation", { valRes, item });
@@ -289,6 +274,7 @@ async function validateLodging(item) {
 
 
 async function updateCostsTable() {
+    console.log("updateCostsTable");
     const item = editor.ds.getCurrentItem();
     $w("#textReservationPrice").html = item ?
         await generateHTMLTable((await generateCostsTable(item)), [

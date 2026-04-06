@@ -386,101 +386,108 @@ export class CmsEditor {
         };
         appplyAttrs(el);
 
-        if (cfg.type == FieldType.IMAGES) {
-            const gallery = this._findRecursive(el, "$w.Gallery");
-            if (gallery && !cfg.readOnly) gallery.onItemClicked((event) => {
-                cfg.selIdx = event.itemIndex;
-                console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
-                this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), null, masterArrayID); // just to update selection marker
-            });
-
-            const updateMedia = async (action) => {
-                const { itemData, masterArray, values } = this._resolveContext(cfg, masterArrayID, parentCfg);
-                const val = this.ensureArray(values[0]);
-                console.log("Executing", action, "on", cfg.id, "with", val.length, "items for index", cfg.selIdx);
-                if (cfg.selIdx < 0 || cfg.selIdx >= val.length) return;
-                if (action == "moveleft" && cfg.selIdx > 0) {
-                    [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
-                    cfg.selIdx--;
-                } else if (action == "moveright" && cfg.selIdx < val.length - 1) {
-                    [val[cfg.selIdx + 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx + 1]];
-                    cfg.selIdx++;
-                } else if (action == "remove") {
-                    val.splice(cfg.selIdx, 1);
-                    cfg.selIdx = -1;
-                }
-                console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
-                await this._persistAndRefresh(cfg, scope, itemData, masterArray, [val], masterArrayID, parentCfg, true);
-            };
-            for (const namePart of ["moveleft", "moveright", "remove"]) {
-                const btn = this._findRecursive(el, "$w.Button", namePart);
-                if (btn) btn.onClick(() => updateMedia(namePart));
-                appplyAttrs(btn);
-            }
-        }
-
-        if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
-            if (cfg.required) {
-                const lbl = this._findRecursive(el, "$w.Text", "name");
-                if (lbl && "text" in lbl) {
-                    lbl.text += " *";
-                    requiredApplied = true;
-                }
-            }
-            const btn = this._findRecursive(el, "$w.UploadButton");
-            if (btn) this._bind(btn, scope, cfg, parentCfg, masterArrayID, ["onChange"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
-            appplyAttrs(btn);
-        }
-
-        if (cfg.dataSet && (cfg.type == FieldType.REFERENCE || cfg.type == FieldType.MULTI_REFERENCE)) {
-            const data = await wixData.query(cfg.dataSet).find();
-            const options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
-            if ("options" in el)
-                el.options = options;
-            else
-                console.error("Cannot assign options list to", cfg.id);
-
-            //must also be applied to filters for those fields
-            for (const fCfg of Object.values(this.filterSchema)) if (fCfg.fields.includes(cfg.field)) {
-                const elFilter = $w(fCfg.id);
-                if (elFilter && "options" in elFilter)
-                    elFilter.options = [{ label: "(Alle)", value: "*" }, ...options];
-                else
-                    console.error("Cannot assign options list to", fCfg.id);
-            }
-        }
-
-        if (cfg.type == FieldType.NUMBER) {
-            if (cfg.minAllowed != null) {
-                if ("min" in el) el.min = cfg.minAllowed; else console.error("Cannot assign min to ", cfg.id);
-            }
-            if (cfg.maxAllowed != null) {
-                if ("max" in el) el.max = cfg.maxAllowed; else console.error("Cannot assign max to ", cfg.id);
-            }
-        }
-
-        if (cfg.type == FieldType.DATE_RANGE) {
-            if (cfg.datePicker) {
-                this.postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed });
-                const elPicker = scope(cfg.datePicker);
-                if (elPicker) elPicker.onMessage(async (event) => {
-                    console.log("received message from picker for ", cfg.id, ":", event.data);
-                    const { selectedDates, displayedMonth, displayedYear } = event.data || {};
-                    if (selectedDates?.length == 2) {
-                        await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), selectedDates, masterArrayID);
-                        await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
-                    }
-                    const changedDM = displayedMonth != null && displayedMonth != cfg.displayedMonth;
-                    const changedDY = displayedYear != null && displayedYear != cfg.displayedYear;
-                    if (changedDM || changedDY) {
-                        cfg.displayedMonth = displayedMonth;
-                        cfg.displayedYear = displayedYear;
-                        await cfg.onDisplayedDateChanged?.();
-                    }
+        switch (cfg.type) {
+            case FieldType.IMAGES: {
+                const gallery = this._findRecursive(el, "$w.Gallery");
+                if (gallery && !cfg.readOnly) gallery.onItemClicked((event) => {
+                    cfg.selIdx = event.itemIndex;
+                    console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
+                    this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), null, masterArrayID); // just to update selection marker
                 });
-                else
-                    console.error("Cannot find datePicker element", cfg.datePicker);
+
+                for (const action of ["moveleft", "moveright", "remove"]) {
+                    const btn = this._findRecursive(el, "$w.Button", action);
+                    if (btn) btn.onClick(async () => {
+                        const { itemData, masterArray, values } = this._resolveContext(cfg, masterArrayID, parentCfg);
+                        const val = this.ensureArray(values[0]);
+                        console.log("Executing", action, "on", cfg.id, "with", val.length, "items for index", cfg.selIdx);
+                        if (cfg.selIdx < 0 || cfg.selIdx >= val.length) return;
+                        if (action == "moveleft" && cfg.selIdx > 0) {
+                            [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
+                            cfg.selIdx--;
+                        } else if (action == "moveright" && cfg.selIdx < val.length - 1) {
+                            [val[cfg.selIdx + 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx + 1]];
+                            cfg.selIdx++;
+                        } else if (action == "remove") {
+                            val.splice(cfg.selIdx, 1);
+                            cfg.selIdx = -1;
+                        }
+                        console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
+                        await this._persistAndRefresh(cfg, scope, itemData, masterArray, [val], masterArrayID, parentCfg, true);
+                    });
+                    appplyAttrs(btn);
+                }
+                break;
             }
+
+            case FieldType.IMAGE:
+            case FieldType.IMAGES: {
+                if (cfg.required) {
+                    const lbl = this._findRecursive(el, "$w.Text", "name");
+                    if (lbl && "text" in lbl) {
+                        lbl.text += " *";
+                        requiredApplied = true;
+                    }
+                }
+                const btn = this._findRecursive(el, "$w.UploadButton");
+                if (btn) this._bind(btn, scope, cfg, parentCfg, masterArrayID, ["onChange"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
+                appplyAttrs(btn);
+                break;
+            }
+
+            case FieldType.REFERENCE:
+            case FieldType.MULTI_REFERENCE:
+                if (cfg.dataSet) {
+                    const data = await wixData.query(cfg.dataSet).find();
+                    const options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
+                    if ("options" in el)
+                        el.options = options;
+                    else
+                        console.error("Cannot assign options list to", cfg.id);
+
+                    //must also be applied to filters for those fields
+                    for (const fCfg of Object.values(this.filterSchema)) if (fCfg.fields.includes(cfg.field)) {
+                        const elFilter = $w(fCfg.id);
+                        if (elFilter && "options" in elFilter)
+                            elFilter.options = [{ label: "(Alle)", value: "*" }, ...options];
+                        else
+                            console.error("Cannot assign options list to", fCfg.id);
+                    }
+                }
+                break;
+
+            case FieldType.NUMBER:
+                if (cfg.minAllowed != null) {
+                    if ("min" in el) el.min = cfg.minAllowed; else console.error("Cannot assign min to ", cfg.id);
+                }
+                if (cfg.maxAllowed != null) {
+                    if ("max" in el) el.max = cfg.maxAllowed; else console.error("Cannot assign max to ", cfg.id);
+                }
+                break;
+
+            case FieldType.DATE_RANGE:
+                if (cfg.datePicker) {
+                    this.postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed });
+                    const elPicker = scope(cfg.datePicker);
+                    if (elPicker) elPicker.onMessage(async (event) => {
+                        console.log("received message from picker for ", cfg.id, ":", event.data);
+                        const { selectedDates, displayedMonth, displayedYear } = event.data || {};
+                        if (selectedDates?.length == 2) {
+                            await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), selectedDates, masterArrayID);
+                            await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
+                        }
+                        const changedDM = displayedMonth != null && displayedMonth != cfg.displayedMonth;
+                        const changedDY = displayedYear != null && displayedYear != cfg.displayedYear;
+                        if (changedDM || changedDY) {
+                            cfg.displayedMonth = displayedMonth;
+                            cfg.displayedYear = displayedYear;
+                            await cfg.onDisplayedDateChanged?.();
+                        }
+                    });
+                    else
+                        console.error("Cannot find datePicker element", cfg.datePicker);
+                }
+                break;
         }
 
         if (cfg.required && !requiredApplied) console.error("Cannot assign required attribute to", cfg.id);
@@ -1256,7 +1263,6 @@ export class CmsEditor {
         }
         const el = scope(cfg.id);
         if (!el || !el.id) return []; // treat non-existing as valid so don't block saving
-
 
         const visible = await cfg.isVisible?.(item);
         if (visible === true) el.expand();
