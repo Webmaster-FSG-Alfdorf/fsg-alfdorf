@@ -31,6 +31,7 @@ $w.onReady(function () {
 
     $w("#datasetReservations").onReady(async () => {
         console.log("#datasetReservations onReady");
+
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
@@ -43,7 +44,7 @@ $w.onReady(function () {
             results.items.forEach((pv) => {
                 if (pv.depositName) options.push({ label: pv.title, value: pv.depositName });
             });
-            $w("#inputDeposit").options = options;
+            $w("#inputDeposit").options = options;  
         });
 
         const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
@@ -271,7 +272,6 @@ async function validateLodging(item) {
 
     return null;
 }
-
 
 async function updateCostsTable() {
     console.log("updateCostsTable");

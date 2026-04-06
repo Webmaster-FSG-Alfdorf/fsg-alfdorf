@@ -1,32 +1,13 @@
 import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
-import { dateRangeToString, FormatTypesMonth, FormatTypesWeekday, FormatTypesNumeric, stringToDateRange, toUTC, toLocal, incUTCDate } from 'public/cms.js';
+import { CmsEditor, FieldType } from 'public/cms_edit.js';
+import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
 
-let currentDate = [new Date(), new Date()];
-let currentDateOccupied = "";
-let occupationsFrom = new Date();
-let occupationsTo = new Date();
+let editor;
 
 $w.onReady(function () {
-    $w("#datasetVisitorPrices").onReady(async () => {
-        const result = await $w("#datasetVisitorPrices").getItems(0, $w("#datasetVisitorPrices").getPageSize());
-        $w("#tableVisitorPrices").rows = result.items.map(item => {
-            const parts = [];
-            if (item.perDay) parts.push("Tag");
-            if (item.perNight) parts.push("Nacht");
-            if (item.perAdult) parts.push("Erwachsene(r)");
-            if (item.perReservation) parts.push("Reservierung");
-            const rangeStr = parts.length > 0 ? ` pro ${parts.join("/")}` : "";
-            return {
-                ...item,
-                price: item.price ? `${item.price.toFixed(2)} €${rangeStr}` : rangeStr,
-                dateRange: item.start ? dateRangeToString(item.start, item.end, { year: null, weekday: null, hour: null, minute: null }) : ""
-            };
-        });
-    });
-
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
         for (const lodging of results.items) {
@@ -41,107 +22,205 @@ $w.onReady(function () {
         $w("#inputLodging").options = options;
     });
 
-    $w("#datasetGuestReservations").onReady(() => {
+    $w("#datasetReservations").onReady(async () => {
+        console.log("#datasetReservations onReady");
 
         const query = wixLocation.query;
         if (query.lodging) {
             $w("#inputLodging").value = query.lodging;
-            $w("#datasetGuestReservations").setFieldValue("lodging", query.lodging);
+            await $w("#datasetReservations").setFieldValue("lodging", query.lodging);
             $w("#inputLodging").scrollTo()
         }
 
-        $w("#htmlDate").onMessage((event) => {
-            if (event.data && Array.isArray(event.data.selectedDates) && event.data.selectedDates.length == 2) {
-                currentDate = [new Date(event.data.selectedDates[0]), new Date(event.data.selectedDates[1])];
-                updateForm(true);
-            }
-            if (event.data && event.data.displayedMonth && event.data.displayedYear) {
-                occupationsFrom = new Date(event.data.displayedYear, event.data.displayedMonth - 1, 21);
-                occupationsTo = new Date(event.data.displayedYear, event.data.displayedMonth + 1, 7);
-                updateForm(true);
-            }
+        $w("#datasetVisitorPrices").onReady(async () => {
+            const result = await $w("#datasetVisitorPrices").getItems(0, $w("#datasetVisitorPrices").getPageSize());
+            $w("#tableVisitorPrices").rows = result.items.map(item => {
+                const parts = [];
+                if (item.perDay) parts.push("Tag");
+                if (item.perNight) parts.push("Nacht");
+                if (item.perAdult) parts.push("Erwachsene(r)");
+                if (item.perReservation) parts.push("Reservierung");
+                const rangeStr = parts.length > 0 ? ` pro ${parts.join("/")}` : "";
+                return {
+                    ...item,
+                    price: item.price ? `${item.price.toFixed(2)} €${rangeStr}` : rangeStr,
+                    dateRange: item.start ? dateRangeToString(item.start, item.end, { year: null, weekday: null, hour: null, minute: null }) : ""
+                };
+            });
         });
 
-        updateForm(false);
-        $w("#inputLodging").onChange((event) => { updateForm(true); })
-        $w("#inputAdults").onChange((event) => { updateForm(false); })
-        $w("#inputChildren").onChange((event) => { updateForm(false); })
-        $w("#inputArrivalTime").onChange((event) => { updateForm(true); })
-        $w("#inputDepartureTime").onChange((event) => { updateForm(true); })
+        const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
 
-        $w("#inputDate").onKeyPress((event) => { if (event.key == "Enter") updateCurrentDate(stringToDateRange($w("#inputDate").value)); });
-        $w("#inputDate").onBlur((event) => { updateCurrentDate(stringToDateRange($w("#inputDate").value)); });
+        editor = new CmsEditor({
+            cmsName: "guestReservations",
+            dataSetName: "datasetReservations",
+            onGenerateEmailOptions: async (item, emailId) => {
+                return await generateHTMLTable(this.lastDiff.diffIntern, [
+                    { label: "Änderung", align: "right", bold: true },
+                    { label: "Von", align: "left" },
+                    { label: "Nach", align: "left" },
+                ]);
+            },
 
-        $w("#inputDate").onCustomValidation((value, reject) => { if (currentDateOccupied) reject(currentDateOccupied); });
-        $w("#inputArrivalTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Ankunft")) reject(currentDateOccupied); });
-        $w("#inputDepartureTime").onCustomValidation((value, reject) => { if (currentDateOccupied.includes("Abreise")) reject(currentDateOccupied); });
+            emailIds: {
+                itemSaved: "ReservationUpdated",
+            },
 
-        $w("#datasetGuestReservations").onAfterSave(() => { updateCurrentDate([new Date(), new Date()]); });
-        //FIXME captcha check missing
+            translatedMessages: {
+                itemName: "Reservierung",
+                itemRemoved: "Die Reservierungsanfrage wurde storniert.",
+            },
+
+            cmsSchema: {
+                "#inputLodging": {
+                    fields: ["lodging", "lodgingSub"],
+                    type: FieldType.CUSTOM,
+                    required: true,
+                    onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
+                    onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
+                    onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
+                    onCustomValidation: async (item) => await validateLodging(item),
+                    onChanged: async () => await updateCostsTable()
+                },
+                "#inputDate": {
+                    fields: ["dateFrom", "dateTo"],
+                    type: FieldType.DATE_RANGE,
+                    datePicker: "#htmlDate",
+                    required: true,
+                    minAllowed: incUTCDate(curUTC, -31),
+                    maxAllowed: incUTCDate(curUTC, 62),
+                    onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
+                    onChanged: async () => await updateCostsTable()
+                },
+                "#inputArrivalTime": {
+                    field: "dateFrom",
+                    required: true,
+                    type: FieldType.HOURS_OF_DATE,
+                },
+                "#inputDepartureTime": {
+                    field: "dateTo",
+                    required: true,
+                    type: FieldType.HOURS_OF_DATE,
+                },
+                "#inputAdults": {
+                    field: "cntAdults",
+                    type: FieldType.NUMBER,
+                    required: true,
+                    onChanged: async () => await updateCostsTable()
+                },
+                "#inputChildren": {
+                    field: "cntChildren",
+                    type: FieldType.NUMBER,
+                    required: true,
+                },
+                "#inputFirstName": {
+                    field: "firstName",
+                    type: FieldType.STRING
+                },
+                "#inputLastName": {
+                    field: "lastName",
+                    type: FieldType.STRING
+                },
+                "#inputMail": {
+                    field: "email",
+                    type: FieldType.STRING,
+                    linkButton: "#buttonSendMail",
+                    linkPrefix: "mailto:"
+                },
+                "#inputPhone": {
+                    field: "phoneNumber",
+                    type: FieldType.STRING,
+                    linkButton: "#buttonPhone",
+                    linkPrefix: "tel:"
+                },
+                "#inputAddress": {
+                    field: "address",
+                    type: FieldType.ADDRESS
+                },
+                "#inputNotes": {
+                    field: "notes",
+                    type: FieldType.STRING
+                },
+                "#inputPrivacyPolicy": {
+                    field: "privacyPolicy",
+                    type: FieldType.BOOLEAN
+                },
+            },
+
+            generateTitle: (item) => {
+                if (item && (item.dateFrom || item.dateTo || item.lastName || item.lodging)) {
+                    const startDate = dateRangeToString(item.dateFrom, null, { month: FormatTypesMonth.short, weekday: null, hour: null, minute: null });
+                    const nights = `+${nightsBetween(item.dateFrom, item.dateTo)}N`;
+                    return `${startDate} ${nights} ${item.lastName} ${item.lodging ?? ""} ${item.lodgingSub > 0 ? item.lodgingSub : ""}`.trim();
+                } else
+                    return "(Neue Reservierung)";
+            },
+
+            onBeforeSave: async (item) => {
+                const msg = editor.originalItem && item && editor.originalItem.state != item.state ? {
+                    "Anfrage": "Der Status wurde zurückgesetzt auf eine unverbindliche Anfrage.",
+                    "Reserviert": "Ihre Anfrage wurde akzeptiert.",
+                    "Bezahlt": "Ihre Reservierung wurde als bezahlt markiert.",
+                    "Abgelehnt": "Ihre Anfrage wurde abgelehnt."
+                }[item.state] || "" :
+                    "";
+                editor.translatedMessages.messageIds.itemSavedDetails = `${msg}${msg ? "<br>" : ""}{diff}`;
+                return true;
+            },
+        });
+
+        editor.init();
     });
 });
 
-function updateCurrentDate(cd) {
-    currentDate = cd;
-    $w("#htmlDate").postMessage({ currentDate: currentDate });
-    $w("#inputDate").resetValidityIndication();
-    updateForm(true);
+async function validateLodging(item) {
+    const cfg = editor.cmsSchema["#inputDate"];
+    const toSend = {
+        id: item._id,
+        lodging: item.lodging,
+        lodgingSub: item.lodgingSub,
+        displayedYear: cfg.displayedYear,
+        displayedMonth: cfg.displayedMonth,
+    };
+    console.log("validateLodging", toSend);
+    if (cfg.lastSent != toSend) {
+        cfg.lastSent = toSend;
+        const occ = toSend.lodging && toSend.displayedYear != null && toSend.displayedMonth != null ?
+            await getOccupations(
+                toSend.lodging,
+                toSend.lodgingSub,
+                new Date(toSend.displayedYear, toSend.displayedMonth - 1, 21),
+                new Date(toSend.displayedYear, toSend.displayedMonth + 1, 7),
+                toSend.id
+            ) :
+            { capacity: 0, occupations: [] };
+        if (toSend.lodgingSub > 0 && occ.capacity >= 1) {
+            occ.occupations.forEach(day => { day.count = day.count >= occ.capacity ? 1 : 0; });
+            occ.capacity = 1;
+        }
+        editor.postMessageToDatePicker(cfg, $w, occ);
+    }
+
+    if (!item.lodging) return "Bitte zuerst eine Unterkunft wählen.";
+    const valRes = await isDateOccupied(item.lodging, item.lodgingSub, item.dateFrom, item.dateTo, true, item._id);
+    console.log("onCustomValidation", { valRes, item });
+    if (valRes.occupied) return (
+        valRes.suggestedArrival ? `Belegt. Ankunft erst ab ${valRes.suggestedArrival} Uhr möglich.` :
+            valRes.suggestedDeparture ? `Belegt. Abreise bis spätestens ${valRes.suggestedDeparture} Uhr nötig.` :
+                `Der Zeitraum ist in dieser Unterkunft bereits belegt.`);
+
+    return null;
 }
 
-function updateOccupiedState(s) {
-    currentDateOccupied = s;
-    $w("#inputDate").resetValidityIndication();
-    $w("#inputDate").value = $w("#inputDate").value; // force onCustomValidation()
-    $w("#inputArrivalTime").resetValidityIndication();
-    $w("#inputArrivalTime").value = $w("#inputArrivalTime").value; // force onCustomValidation()
-    $w("#inputDepartureTime").resetValidityIndication();
-    $w("#inputDepartureTime").value = $w("#inputDepartureTime").value; // force onCustomValidation()
-}
-
-function updateHoursAsLocal(i, id) {
-    let local = toLocal(currentDate[i]);
-    local.setHours(+$w(id).value, 0, 0, 0);
-    currentDate[i] = toUTC(local);
-}
-
-function updateForm(updateFields) {
-    updateHoursAsLocal(0, "#inputArrivalTime");
-    updateHoursAsLocal(1, "#inputDepartureTime");
-
-    const lodging = $w("#inputLodging").value.split("|");
-    let dt0 = new Date(currentDate[0]);
-    let dt1 = new Date(currentDate[1]);
-    isDateOccupied(lodging[0], Number(lodging[1]), dt0, dt1, true).then((res) => {
-        if (!res.occupied)
-            updateOccupiedState("");
-        else if (res.suggestedArrival)
-            updateOccupiedState(`Nur möglich bei Ankunfts-Zeit nach ${res.suggestedArrival} Uhr`);
-        else if (res.suggestedDeparture)
-            updateOccupiedState(`Nur möglich bei Abreise-Zeit bis ${res.suggestedDeparture} Uhr`);
-        else
-            updateOccupiedState("Ihr Gewählter Datumsbereich ist leider nicht verfügbar");
-    });
-
-    generateCostsTable({ lodging: lodging[0], dateFrom: currentDate[0], dateTo: currentDate[1], cntAdults: Number($w("#inputAdults").value) }).then(costs => {
-        generateHTMLTable(costs, [
+async function updateCostsTable() {
+    console.log("updateCostsTable");
+    const item = editor.ds.getCurrentItem();
+    $w("#textReservationPrice").html = item ?
+        await generateHTMLTable((await generateCostsTable(item)), [
             "Leistung",
             { label: "Anzahl Erw.", align: "right" },
             { label: "Nächte", align: "right" },
             { label: "Einzelpreis", align: "right" },
             { label: "Gesamt", align: "right" },
-        ]).then(html => $w("#textReservationPrice").html = html);
-    });
-
-    $w("#inputDate").value = dateRangeToString(currentDate[0], currentDate[1], { hour: null, minute: null });
-
-    if (updateFields) {
-        $w("#datasetGuestReservations").setFieldValue("dateFrom", currentDate[0]);
-        $w("#datasetGuestReservations").setFieldValue("dateTo", currentDate[1]);
-        $w("#datasetGuestReservations").setFieldValue("lodging", lodging[0]);
-        $w("#datasetGuestReservations").setFieldValue("lodgingSub", +lodging[1]);
-        getOccupations(lodging[0], +lodging[1], new Date(occupationsFrom), new Date(occupationsTo)).then(res => {
-            $w("#htmlDate").postMessage({ minDate: new Date(), maxDate: incUTCDate(new Date(), 365), capacity: res.capacity, occupations: res.occupations });
-        });
-    }
-    //FIXME field is mandatory but not yet checked if really set on submit
+        ]) : "";
 }

@@ -189,6 +189,11 @@ export class CmsEditor {
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
 
+        if (!this.ds) {
+            console.error("Cannnot initialize CMS dataset ", this.dataSetName);
+            return;
+        }
+
         for (const [id, cfg] of Object.entries(this.cmsSchema)) this._initCMSConfig(id, cfg);
         for (const [key, cfg] of Object.entries(this.filterSchema)) this._initFilterConfig(key, cfg);
 
@@ -199,7 +204,7 @@ export class CmsEditor {
                 for (const cfg of Object.values(this.filterSchema)) this._initFilterElement(cfg, $w, boundIDs, null, null);
                 await this.refreshUI();
                 const options = $w("#itemSelector").options;
-                if (options.length > 1) await this.navigateTo(options[1].value);
+                if (options?.length > 1) await this.navigateTo(options[1].value);
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -1334,7 +1339,7 @@ export class CmsEditor {
     async updateButtonStates() {
         const selector = $w("#itemSelector");
         const currentIndex = selector.selectedIndex;
-        const totalCount = selector.options.length;
+        const totalCount = selector.options?.length;
 
         await this.getDiff($w);
         const hasChanges = this.lastDiff.diffIntern.length > 0;
