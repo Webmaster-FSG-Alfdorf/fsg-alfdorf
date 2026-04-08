@@ -106,6 +106,15 @@ export class CmsEditor {
         this.filterSortField = config.filterSortField || "_id";
         this.filterSortAscending = config.filterSortAscending || true;
 
+        this.itemSelector = config.itemSelector;
+        this.textResponse = config.textResponse;
+        this.buttonSave = config.buttonSave;
+        this.buttonRevert = config.buttonRevert;
+        this.buttonNew = config.buttonNew;
+        this.buttonRemove = config.buttonRemove;
+        this.buttonPrev = config.buttonPrev;
+        this.buttonNext = config.buttonNext;
+
         this.ds = $w(`#${this.dataSetName}`);
         this.originalItem = null;
         this.isSaving = false;
@@ -203,7 +212,7 @@ export class CmsEditor {
                 const boundIDs = new Set();
                 for (const cfg of Object.values(this.filterSchema)) this._initFilterElement(cfg, $w, boundIDs, null, null);
                 await this.refreshUI();
-                const options = $w("#itemSelector").options;
+                const options = this.itemSelector?.options;
                 if (options?.length > 1) await this.navigateTo(options[1].value);
             } catch (e) {
                 console.error(e);
@@ -215,24 +224,17 @@ export class CmsEditor {
             await this.showMessage("generalError", this.ds.getCurrentItem(), true, { error });
         });
 
-        if ($w("#itemSelector").id) $w("#itemSelector").onChange(() => {
-            const val = $w("#itemSelector").value;
+        this.itemSelector?.onChange(() => {
+            const val = this.itemSelector?.value;
             if (val == "--new--") this.newItem(); else this.navigateTo(val);
-        }); else console.warn("itemSelector not found in DOM");
+        });
 
-        const uiButtons = {
-            "#buttonSave": () => this.saveItem(),
-            "#buttonRevert": () => this.revertItem(),
-            "#buttonNew": () => this.newItem(),
-            "#buttonRemove": () => this.removeItem(),
-            "#buttonPrev": () => this.navigateRelative(-1),
-            "#buttonNext": () => this.navigateRelative(1)
-        };
-
-        for (const [id, action] of Object.entries(uiButtons)) {
-            const el = $w(id);
-            if (el.id) el.onClick(async () => await action()); else console.warn(id, "not found in DOM");
-        }
+        this.buttonSave?.onClick(() => this.saveItem());
+        this.buttonRevert?.onClick(() => this.revertItem());
+        this.buttonNew?.onClick(() => this.newItem());
+        this.buttonRemove?.onClick(() => this.removeItem());
+        this.buttonPrev?.onClick(() => this.navigateRelative(-1));
+        this.buttonNext?.onClick(() => this.navigateRelative(1));
 
         this.updateSelectorList().then(() => this.updateButtonStates());
     }
@@ -763,10 +765,13 @@ export class CmsEditor {
      * @param {string|null} masterArrayID
      */
     async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID) {
+        const wasTouched = cfg._touched;
+        cfg._touched = true;
         const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const { values, needRefresh } = await this._parseUiValue(cfg, scope, itemData);
         if (JSON.stringify(values ?? "") == JSON.stringify(curVal ?? "")) {
             console.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
+            if (!wasTouched) this._validate(cfg, scope, itemData); // now missing values on required fields shall trigger error
             return;
         }
 
@@ -783,6 +788,7 @@ export class CmsEditor {
      */
     async resetField(cfg, scope, parentCfg, masterArrayID) {
         console.log("resetField for", cfg.id);
+        cfg._touched = false;
         const { itemData, masterArray, values: curVal } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const values = [cfg.default];
         if (JSON.stringify(values ?? "") == JSON.stringify(curVal ?? "")) {
@@ -940,7 +946,7 @@ export class CmsEditor {
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && btn.id) {
             if (val0) btn.link = `${cfg.linkPrefix ?? ""}${val0}`;
-            if (val0) btn.enable(); else btn.disable();
+            this._setEnabled(btn, val0);
             btn.target = "_blank";
         }
 
@@ -1066,6 +1072,7 @@ export class CmsEditor {
             await this.flushDebounce();
             const item = this.ds.getCurrentItem();
             console.debug(`saveItem:\n${JSON.stringify(item, null, 2)}`);
+            for (const cfg of Object.values(this.cmsSchema)) cfg._touched = true; //TODO recurse? also on other places?
 
             let allErrors = [];
             for (const cfg of Object.values(this.cmsSchema)) allErrors.push(...await this._validate(cfg, $w, item));
@@ -1108,6 +1115,7 @@ export class CmsEditor {
         console.log("item reverted", await this.getSummary($w));
         this.onAfterReverted();
         await this.showMessage("itemReverted", this.ds.getCurrentItem());
+        for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
         await this.refreshUI();
     }
 
@@ -1123,6 +1131,7 @@ export class CmsEditor {
             console.log("item created", await this.getSummary($w));
             await this.showMessage("itemCreated", newItem);
             await this.refreshUI();
+            for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
         } else
             console.warn("New item aborted: Save failed.");
     }
@@ -1136,15 +1145,18 @@ export class CmsEditor {
         this.collapseResponse();
         const itemToDelete = this.ds.getCurrentItem();
 
-        const options = $w("#itemSelector").options;
-        const idx = options.findIndex(opt => opt.value == itemToDelete._id);
-        const nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
+        let nextId = null;
+        const options = this.itemSelector?.options;
+        if (options) {
+            const idx = options.findIndex(opt => opt.value == itemToDelete._id);
+            nextId = idx != -1 && idx < options.length - 1 ? options[idx + 1].value : idx > 0 ? options[idx - 1].value : null;
+        };
 
         await this.ds.remove();
         console.log("item removed");
         this.onAfterDelete(itemToDelete);
         await this.showMessage("itemRemoved", itemToDelete);
-        if (nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
+        if (!nextId || nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
     }
 
     /**
@@ -1154,10 +1166,12 @@ export class CmsEditor {
     navigateRelative(offset) {
         console.log("navigateRelative", offset);
         const currentId = this.ds.getCurrentItem()?._id;
-        const options = $w("#itemSelector").options;
-        const idx = options.findIndex(opt => opt.value == currentId);
-        const nextIdx = idx == -1 ? -1 : idx + offset;
-        this.navigateTo(nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value);
+        const options = this.itemSelector?.options;
+        if (options) {
+            const idx = options.findIndex(opt => opt.value == currentId);
+            const nextIdx = idx == -1 ? -1 : idx + offset;
+            this.navigateTo(nextIdx < 0 || nextIdx >= options.length ? null : options[nextIdx].value);
+        }
     }
 
     /**
@@ -1186,6 +1200,10 @@ export class CmsEditor {
      */
     async updateSelectorList() {
         console.log("updateSelectorList");
+        if (!this.itemSelector) {
+            console.log("no itemSelector");
+            return;
+        }
 
         let q = wixData.query(this.cmsName);
 
@@ -1238,15 +1256,15 @@ export class CmsEditor {
         q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
         q = q.limit(this.filterLimit);
 
-        try {
+        if (this.itemSelector) try {
             console.debug(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
             const res = await q.find();
             //console.debug(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
-            $w("#itemSelector").options = [
+            this.itemSelector.options = [
                 { label: this.getTranslatedMessage("itemSelector_createNew"), value: "--new--" },
                 ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
-            $w("#itemSelector").value = this.ds.getCurrentItem()?._id;
+            this.itemSelector.value = this.ds.getCurrentItem()?._id;
             await this.updateButtonStates();
         } catch (err) {
             console.error("updateSelectorList failed", err);
@@ -1280,44 +1298,43 @@ export class CmsEditor {
         if (cfg.readOnly) return [];  // treat readonly as valid 
 
         const enabled = await cfg.isEnabled?.(item);
-        if (enabled === true) el.enable();
-        if (enabled === false) {
-            el.disable();
-            return []; // treat disabled as valid 
-        }
+        this._setEnabled(el, enabled);
+        if (enabled === false) return []; // treat disabled as valid 
 
-        const { values } = await this._parseUiValue(cfg, scope, item);
-        const numericValues = values.map(v => (v === "" || v === null || v === undefined ? null : Number(v)));
-
-        const customErrorMessage = await cfg.onCustomValidation?.(item, values);
-
-        const validity = { ...el.validity };
-        validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the value here
-        validity.valueMissing ||= cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
-        validity.rangeUnderflow ||= cfg.minAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
-        validity.rangeOverflow ||= cfg.maxAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
-        //validity.badInput ||= numericValues.some(v => v !== null && Number.isNaN(v));
         const errors = [];
-        for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
-            errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
-                message: customErrorMessage || this.getTranslatedMessage("no_validationMessage", cfg, item)
-            }));
-        if (errors.length == 0) {
-            console.info("UI Validation succeeded for UI", cfg.id, ":", { values, numericValues, validity });
-            if (el.setCustomValidity) el.setCustomValidity("");
-            if (el.onCustomValidation) el.onCustomValidation((_1, _2) => { });
-        } else {
-            console.warn("UI Validation failed for UI", cfg.id, ":", { values, numericValues, validity, customErrorMessage, errors });
-            if (el.setCustomValidity) el.setCustomValidity(errors.join(", "));
-            if (el.onCustomValidation) el.onCustomValidation((_, reject) => { reject(errors.join(", ")) });
-        }
+        let validity = {}
+        if (cfg._touched) { // ignore until the user touched this field
+            const { values } = await this._parseUiValue(cfg, scope, item);
+            const numericValues = values.map(v => (v === "" || v === null || v === undefined ? null : Number(v)));
+            const customErrorMessage = await cfg.onCustomValidation?.(item, values);
+            validity = { ...el.validity };
+            validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the value here
+            validity.valueMissing ||= cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
+            validity.rangeUnderflow ||= cfg.minAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
+            validity.rangeOverflow ||= cfg.maxAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
+            //validity.badInput ||= numericValues.some(v => v !== null && Number.isNaN(v)); //TODO support ?
 
-        if (el.updateValidityIndication)
-            el.updateValidityIndication();
-        else {
-            if (el.style) el.style.borderColor = errors.length == 0 ? "rgba(0,0,0,0)" : "red";
-            const lbl = this._findRecursive(el, "$w.Text", "name");
-            if (lbl) lbl.html = `<p style="color: ${errors.length == 0 ? "#000000" : "#FF0000"}; font-size: 16px;">${lbl.text}</p>`;
+            for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
+                errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
+                    message: customErrorMessage || this.getTranslatedMessage("no_validationMessage", cfg, item)
+                }));
+            if (errors.length == 0) {
+                console.info("UI Validation succeeded for UI", cfg.id, ":", { values, numericValues, validity });
+                if (el.setCustomValidity) el.setCustomValidity("");
+                if (el.onCustomValidation) el.onCustomValidation((_1, _2) => { });
+            } else {
+                console.warn("UI Validation failed for UI", cfg.id, ":", { values, numericValues, validity, customErrorMessage, errors });
+                if (el.setCustomValidity) el.setCustomValidity(errors.join(", "));
+                if (el.onCustomValidation) el.onCustomValidation((_, reject) => { reject(errors.join(", ")) });
+            }
+
+            if (el.updateValidityIndication)
+                el.updateValidityIndication();
+            else {
+                if (el.style) el.style.borderColor = errors.length == 0 ? "rgba(0,0,0,0)" : "red";
+                const lbl = this._findRecursive(el, "$w.Text", "name");
+                if (lbl) lbl.html = `<p style="color: ${errors.length == 0 ? "#000000" : "#FF0000"}; font-size: 16px;">${lbl.text}</p>`;
+            }
         }
 
         if (cfg.type == FieldType.REPEATER) {
@@ -1329,7 +1346,6 @@ export class CmsEditor {
             await Promise.all(promises);
         }
 
-        // console.info("_validate result", { cfg, scope, item, errors });
         return errors;
     }
 
@@ -1337,9 +1353,8 @@ export class CmsEditor {
      * Toggle buttons based on current item state.
      */
     async updateButtonStates() {
-        const selector = $w("#itemSelector");
-        const currentIndex = selector.selectedIndex;
-        const totalCount = selector.options?.length;
+        const currentIndex = this.itemSelector?.selectedIndex;
+        const totalCount = this.itemSelector?.options?.length;
 
         await this.getDiff($w);
         const hasChanges = this.lastDiff.diffIntern.length > 0;
@@ -1348,18 +1363,18 @@ export class CmsEditor {
         const isBusy = this.isSaving;
 
         console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, diffIntern: this.lastDiff.diffIntern, isNew, isBusy });
-        for (const [id, enabled] of Object.entries({
-            "#buttonSave": hasChanges && !isBusy,
-            "#buttonRevert": hasChanges && !isBusy,
-            "#buttonNew": !isNew && !isBusy,
-            "#buttonRemove": !isNew && !isBusy,
-            "#buttonPrev": !hasChanges && !isBusy && currentIndex > 1, // don't navigate to -- new--
-            "#buttonNext": !hasChanges && !isBusy && currentIndex < totalCount - 1,
-            "#itemSelector": !hasChanges && !isBusy,
-        })) {
-            const btn = $w(id);
-            if (btn.id) enabled ? btn.enable() : btn.disable();
-        }
+        this._setEnabled(this.buttonSave, hasChanges && !isBusy);
+        this._setEnabled(this.buttonRevert, hasChanges && !isBusy);
+        this._setEnabled(this.buttonNew, !isNew && !isBusy);
+        this._setEnabled(this.buttonRemove, !isNew && !isBusy);
+        this._setEnabled(this.buttonPrev, !hasChanges && !isBusy && currentIndex > 1); // don't navigate to -- new--
+        this._setEnabled(this.buttonNext, !hasChanges && !isBusy && currentIndex < totalCount - 1);
+        this._setEnabled(this.itemSelector, !hasChanges && !isBusy);
+    }
+
+    _setEnabled(element, enabled) {
+        if (element && enabled === true) element.enable();
+        if (element && enabled === false) element.disable();
     }
 
     /**
@@ -1370,7 +1385,6 @@ export class CmsEditor {
      * @param {Object} [replacements={}]
      */
     async showMessage(msgId, item = {}, isError = false, replacements = {}) {
-        if (!$w("#textResponse").id) return;
         if (this._messageTimer) clearTimeout(this._messageTimer);
 
         const sMsg = this.getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements);
@@ -1384,8 +1398,8 @@ export class CmsEditor {
         };
         data.emailOptions = data.emailId && item.email ? await this.onGenerateEmailOptions(item, data.emailId) : {}
 
-        $w("#textResponse").html = data.msg;
-        $w("#textResponse").show();
+        if (this.textResponse) this.textResponse.html = data.msg;
+        this.textResponse?.show();
         this._messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
 
         console.log("showMessage", data);
@@ -1396,8 +1410,7 @@ export class CmsEditor {
      * Hide response message from response field. Does not affect any opened modal dialog.
      */
     collapseResponse() {
-        if (!$w("#textResponse").id) return;
-        $w("#textResponse").hide();
+        this.textResponse?.hide();
         if (this._messageTimer) {
             clearTimeout(this._messageTimer);
             this._messageTimer = null;

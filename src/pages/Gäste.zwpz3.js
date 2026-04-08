@@ -54,6 +54,10 @@ $w.onReady(function () {
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
+
+            textResponse: $w("#textResponse"),
+            buttonSave: $w("#buttonSave"),
+
             onGenerateEmailOptions: async (item, emailId) => {
                 return await generateHTMLTable(this.lastDiff.diffIntern, [
                     { label: "Änderung", align: "right", bold: true },
@@ -143,6 +147,7 @@ $w.onReady(function () {
                 },
                 "#inputPrivacyPolicy": {
                     field: "privacyPolicy",
+                    label: "Datenschutzerklärung",
                     type: FieldType.BOOLEAN
                 },
             },

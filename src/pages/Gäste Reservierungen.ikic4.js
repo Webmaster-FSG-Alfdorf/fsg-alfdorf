@@ -44,7 +44,7 @@ $w.onReady(function () {
             results.items.forEach((pv) => {
                 if (pv.depositName) options.push({ label: pv.title, value: pv.depositName });
             });
-            $w("#inputDeposit").options = options;  
+            $w("#inputDeposit").options = options;
         });
 
         const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
@@ -52,6 +52,16 @@ $w.onReady(function () {
         editor = new CmsEditor({
             cmsName: "guestReservations",
             dataSetName: "datasetReservations",
+
+            itemSelector: $w("#itemSelector"),
+            textResponse: $w("#textResponse"),
+            buttonSave: $w("#buttonSave"),
+            buttonRevert: $w("#buttonRevert"),
+            buttonNew: $w("#buttonNew"),
+            buttonRemove: $w("#buttonRemove"),
+            buttonPrev: $w("#buttonPrev"),
+            buttonNext: $w("#buttonNext"),
+
             onGenerateEmailOptions: async (item, emailId) => {
                 return await generateHTMLTable(this.lastDiff.diffIntern, [
                     { label: "Änderung", align: "right", bold: true },
@@ -147,6 +157,7 @@ $w.onReady(function () {
                 },
                 "#inputPrivacyPolicy": {
                     field: "privacyPolicy",
+                    label: "Datenschutzerklärung",
                     type: FieldType.BOOLEAN
                 },
                 "#inputDeposit": {
