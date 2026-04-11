@@ -3,7 +3,7 @@ import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
-import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
 let editor;
 
@@ -62,17 +62,9 @@ $w.onReady(function () {
             buttonPrev: $w("#buttonPrev"),
             buttonNext: $w("#buttonNext"),
 
-            onGenerateEmailOptions: async (item, emailId) => {
-                return await generateHTMLTable(this.lastDiff.diffIntern, [
-                    { label: "Änderung", align: "right", bold: true },
-                    { label: "Von", align: "left" },
-                    { label: "Nach", align: "left" },
-                ]);
-            },
-
-            emailIds: {
-                itemSaved: "ReservationUpdated",
-                itemRemoved: "ReservationRemoved",
+            messages: {
+                itemSaved: { emailId: "ReservationUpdated", customizableMail: true },
+                itemRemoved: { emailId: "ReservationRemoved", customizableMail: true },
             },
 
             translatedMessages: {
@@ -92,9 +84,12 @@ $w.onReady(function () {
                     required: true,
                     onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
-                    onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
+                    onDiffValue: (item) => item?.lodgingName ?? "",
                     onCustomValidation: async (item) => await validateLodging(item),
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => {
+                        if (item) item.lodgingName = await generateLodgingName(item);
+                        await updateCostsTable(item);
+                    }
                 },
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
@@ -104,7 +99,7 @@ $w.onReady(function () {
                     minAllowed: incUTCDate(curUTC, -31),
                     maxAllowed: incUTCDate(curUTC, 62),
                     onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => await updateCostsTable(item)
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
@@ -120,7 +115,7 @@ $w.onReady(function () {
                     field: "cntAdults",
                     type: FieldType.NUMBER,
                     required: true,
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => await updateCostsTable(item)
                 },
                 "#inputChildren": {
                     field: "cntChildren",
@@ -163,12 +158,12 @@ $w.onReady(function () {
                 "#inputDeposit": {
                     field: "deposit",
                     type: FieldType.MULTI_SELECT,
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => await updateCostsTable(item)
                 },
                 "#inputPaidSum": {
                     field: "paidSum",
                     type: FieldType.NUMBER,
-                    onChanged: async () => await updateCostsTable(),
+                    onChanged: async (item) => await updateCostsTable(item),
                     fractionDigits: 2,
                     suffix: "€"
                 },
@@ -284,15 +279,14 @@ async function validateLodging(item) {
     return null;
 }
 
-async function updateCostsTable() {
+async function updateCostsTable(item) {
     console.log("updateCostsTable");
-    const item = editor.ds.getCurrentItem();
-    $w("#textReservationPrice").html = item ?
-        await generateHTMLTable((await generateCostsTable(item)), [
-            "Leistung",
-            { label: "Anzahl Erw.", align: "right" },
-            { label: "Nächte", align: "right" },
-            { label: "Einzelpreis", align: "right" },
-            { label: "Gesamt", align: "right" },
-        ]) : "";
+    const hdr = [
+        "Leistung",
+        { label: "Anzahl Erw.", align: "right" },
+        { label: "Nächte", align: "right" },
+        { label: "Einzelpreis", align: "right" },
+        { label: "Gesamt", align: "right" },
+    ];
+    $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
 }

@@ -238,53 +238,6 @@ function convertToDate(v) {
 }
 
 /**
- * Generates a table in HTML format from the given parameters.
- * @param rows {any[][]} a list of rows with each a list of cells a either 
- * a dict { value, align="left"|"right"|"center", bold=true|false, italic=true|false }, or
- * null to merge this cell with it's previous one(s), or
- * any kind of data that will be converted to a string
- * @param header {any[]} a list of column headers each as either
- * a dict { label, align="left"|"right"|"center", bold=true|false, italic=true|false }, or
- * any kind of data that will be converted to a string
- * @returns {string} the <table> string
- */
-export function generateHTMLTable(rows, header = []) {
-    const clsStyle = (align) => ` class="font_7" style="padding: 8px${align ? `; text-align: ${align}` : ""}"`;
-
-    let html = `<table>`;
-    let alignments = [];
-    if (header) {
-        html += "<thead><tr>";
-        header.forEach(v => {
-            if (typeof v == "object" && v && "label" in v) {
-                html += `<th${clsStyle(v.align)}>${v.bold ? "<b>" : ""}${v.italic ? "<i>" : ""}${v.label}${v.italic ? "</i>" : ""}${v.bold ? "</b>" : ""}</th>`;
-                alignments.push(v.align);
-            } else {
-                html += `<th${clsStyle("")}>${v}</th>`;
-                alignments.push("");
-            }
-        });
-        html += "</tr></thead>";
-    }
-    html += "<tbody>";
-    rows.forEach(row => {
-        html += "<tr>";
-        row.forEach((v, ci) => {
-            if (v != null) {
-                let merge = 0;
-                for (let i = ci + 1; i < row.length && row[i]; ++i) ++merge;
-                if (typeof v == "object" && v && "value" in v) {
-                    html += `<td${clsStyle(v.align ?? alignments[ci] ?? "")}${merge > 0 ? ` colspan="${merge}"` : ""}>${v.bold ? "<b>" : ""}${v.italic ? "<i>" : ""}${v.value}${v.italic ? "</i>" : ""}${v.bold ? "</b>" : ""}</td>`;
-                } else html += `<td${clsStyle(alignments[ci] ?? "")}>${v}</td>`;
-            }
-        });
-        html += "</tr>";
-    });
-    html += "</tbody></table>";
-    return html;
-}
-
-/**
  * Generates a table in in a format suitable for trigger-mails from the given parameters (max 5 x 8 of size).
  * @param rows {any[][]} a list of rows with each a list of cells a either 
  * a dict { value }, or any kind of data that will be converted to a string

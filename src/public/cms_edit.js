@@ -2,6 +2,7 @@ import wixData from 'wix-data';
 import wixWindow from 'wix-window';
 
 import { dateRangeToString, stringToDateRange } from 'public/cms.js';
+import { sendMail } from 'backend/common.jsw';
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -20,7 +21,7 @@ import { dateRangeToString, stringToDateRange } from 'public/cms.js';
  * @property {string} [linkButton] - ID of a button (e.g., "#btn") to link to the field's value.
  * @property {string} [linkPrefix] - Prefix for the URL in linkButton (e.g., "mailto:").
  * @property {Function} [onDiffValue] - (item) => string: Custom logic to format the value for display/logs.
- * @property {Function} [onChanged] - (values, parentCfg, masterArrayID) => void: Callback triggered after the field value has been updated.
+ * @property {Function} [onChanged] - (item, values) => void: Callback triggered after the field value has been updated.
  * @property {Function} [onFormatValue] - (values) => any: For FieldType.CUSTOM: Extract data from the CMS item to be displayed in the UI element.
  * @property {Function} [onParseUserInput] - (value) => any: For FieldType.CUSTOM: Extract data from the UI element to be stored in the CMS item.
  * @property {number} [fractionDigits] - For FieldType.NUMBER: Number of decimals (default 0).
@@ -98,7 +99,7 @@ export class CmsEditor {
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
         this.onAfterDelete = config.onAfterDelete || (() => { });
-        this.generateTitle = config.generateTitle || ((item) => item?.title || this.getTranslatedMessage("title_null", {}, item));
+        this.generateTitle = config.generateTitle || ((item) => item?.title || this._getTranslatedMessage("title_null", {}, item));
         this.onGenerateEmailOptions = config.onGenerateEmailOptions || (async () => { });
 
         this.filterSchema = config.filterSchema || {};
@@ -120,16 +121,16 @@ export class CmsEditor {
         this.isSaving = false;
         this.lastDiff = { diffUser: {}, diffIntern: {} };
 
-        this.emailIds = {
-            itemSaved: "",
-            itemReverted: "",
-            itemCreated: "",
-            itemRemoved: "",
-            itemSaveError: "",
-            generalError: "",
+        this.messages = {
+            itemSaved: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
+            itemReverted: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
+            itemCreated: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
+            itemRemoved: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
+            itemSaveError: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
+            generalError: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
 
             // must be the last line
-            ...config.emailIds
+            ...config.messages
         };
 
         this.translatedMessages = {
@@ -140,18 +141,24 @@ export class CmsEditor {
             error_no_config: "Konfiguration nicht gefunden",
             itemName: "Eintrag",
 
+            diff_caption: "Änderung",
+            diff_from: "Von",
+            diff_to: "Nach",
+            input_caption: "Feld",
+            input_value: "Wert",
+
             messageIds: {
-                itemSaved: "Änderungen wurden gespeichert.",
+                itemSaved: "✔ Änderungen wurden gespeichert.",
                 itemSavedDetails: "{diff}",
-                itemReverted: "Änderungen wurden verworfen.",
+                itemReverted: "✔ Änderungen wurden verworfen.",
                 itemRevertedDetails: "",
-                itemCreated: "{itemName} wurde new erstellt.",
+                itemCreated: "✔ {itemName} wurde new erstellt.",
                 itemCreatedDetails: "",
-                itemRemoved: "{itemName} wurde gelöscht.",
+                itemRemoved: "✔ {itemName} wurde gelöscht.",
                 itemRemovedDetails: "",
-                itemSaveError: "Änderungen konnten nicht gespeichert werden.",
+                itemSaveError: "✖ Änderungen konnten nicht gespeichert werden.",
                 itemSaveErrorDetails: "{error}",
-                generalError: "Es ist ein Fehler aufgetreten.",
+                generalError: "✖ Es ist ein Fehler aufgetreten.",
                 generalErrorDetails: "{error}",
 
                 // must be the last line
@@ -260,8 +267,8 @@ export class CmsEditor {
         cfg.showToUser ??= true;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
-                cfg.boolTrue ??= this.getTranslatedMessage("booolean_yes");
-                cfg.boolFalse ??= this.getTranslatedMessage("booolean_no");
+                cfg.boolTrue ??= this._getTranslatedMessage("booolean_yes", cfg);
+                cfg.boolFalse ??= this._getTranslatedMessage("booolean_no", cfg);
                 break;
             case FieldType.NUMBER:
                 cfg.fractionDigits ??= 0;
@@ -285,6 +292,11 @@ export class CmsEditor {
                 break;
             case FieldType.IMAGES:
                 cfg.selIdx = -1;
+                break;
+            case FieldType.CUSTOM:
+                cfg.onFormatValue ??= (values) => values;
+                cfg.onParseUserInput ??= (value) => value;
+                cfg.onCheckHasValue ??= (item) => true;
                 break;
             case FieldType.REPEATER:
                 cfg.inputs ??= {};
@@ -379,13 +391,8 @@ export class CmsEditor {
         this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onBlur", "onKeyPress"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
         this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onInput", "onChange"], cfg.delay, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
 
-        let requiredApplied = false;
         let readOnlyApplied = false;
         const appplyAttrs = (el) => {
-            if (cfg.required && "required" in el) {
-                el.required = cfg.required;
-                requiredApplied = true;
-            }
             if (cfg.readOnly && typeof el.disable == "function") {
                 el.disable();
                 readOnlyApplied = true;
@@ -429,13 +436,6 @@ export class CmsEditor {
 
             case FieldType.IMAGE:
             case FieldType.IMAGES: {
-                if (cfg.required) {
-                    const lbl = this._findRecursive(el, "$w.Text", "name");
-                    if (lbl && "text" in lbl) {
-                        lbl.text += " *";
-                        requiredApplied = true;
-                    }
-                }
                 const btn = this._findRecursive(el, "$w.UploadButton");
                 if (btn) this._bind(btn, scope, cfg, parentCfg, masterArrayID, ["onChange"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
                 appplyAttrs(btn);
@@ -495,9 +495,12 @@ export class CmsEditor {
                         console.error("Cannot find datePicker element", cfg.datePicker);
                 }
                 break;
+
+            case FieldType.CAPTCHA:
+                this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onVerified", "onError", "onTimeout"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
+                break;
         }
 
-        if (cfg.required && !requiredApplied) console.error("Cannot assign required attribute to", cfg.id);
         if (cfg.readOnly && !readOnlyApplied) console.error("Cannot assign readonly attribute to", cfg.id);
     }
 
@@ -560,29 +563,6 @@ export class CmsEditor {
         await this.onRefreshUI(this.originalItem);
         await this.updateSelectorList();
         await this.updateButtonStates();
-    }
-
-    /**
-     * Reads values from UI form controls (for one cfg item).
-     * @param {CmsFieldConfig} cfg
-     * @param {*} scope
-     * @param {Object} item
-     * @returns {Promise<{values:any[],needRefresh:boolean}>}
-     */
-    async _getUiValue(cfg, scope, item) {
-        if (!cfg) {
-            console.error("Cannot assign from input: CMS schema not found in configuration")
-            return;
-        }
-
-        const el = scope(cfg.id);
-        if (!el || !el.id) {
-            console.error("Cannot assign from input", cfg.id, ": Input element not found")
-            return;
-        }
-
-        const { values, needRefresh = false } = await this._parseUiValue(cfg, scope, item);
-        return { values, needRefresh };
     }
 
     /**
@@ -672,19 +652,64 @@ export class CmsEditor {
                     }
                 //            case FieldType.REPEATER:
                 //                return { val: this.ensureArray(item?.[cfg.field]) };
+                case FieldType.CAPTCHA:
+                    return el.token; //TODO only to detect change?
+                //TODO  Cannot assign to UI #captcha1 from field undefined : No 'value' property
                 default:
                     return { val: el.value };
             }
         };
 
-        // if only one field is defined, we expect a single value, othweise we expected values for each defined field
+        // if we have no fields, we expect no values at all,
+        // if only one field is defined, we expect a single value,
+        // otherwise we expect values for each defined field
         const { val, needRefresh = false } = await parse();
-        const values = cfg.fields.length > 1 ? val : [val];
+        const values = cfg.fields.length == 0 ? [] : cfg.fields.length > 1 ? val : [val];
         if (values.length != cfg.fields.length) {
             console.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
         }
         return { values, needRefresh };
     }
+
+    /**
+     * Checks if a value of a UI form control has been entered.
+     * @private
+     * @async
+     * @param {CmsFieldConfig} cfg - The field config.
+     * @param {function(string):$w.Element} scope - The scope function.
+     * @returns {boolean} true if a value has been entered, false if value is missing or invalid cfg
+     */
+    _hasUiValue(cfg, scope, item) {
+        if (!cfg) {
+            console.error("Cannot assign from input: CMS schema not found in configuration")
+            return false;
+        }
+
+        const el = scope(cfg.id);
+        if (!el || !el.id) {
+            console.error("Cannot assign from input", cfg.id, ": Input element not found")
+            return false;
+        }
+
+        switch (cfg.type) {
+            case FieldType.BOOLEAN:
+                return el.checked;
+            case FieldType.IMAGE:
+                return el.src != TRANSPARENT_PIXEL;
+            case FieldType.IMAGES:
+                const gallery = this._findRecursive(el, "$w.Gallery");
+                return gallery && "items" in gallery && gallery.items.length > 0;
+            case FieldType.CUSTOM:
+                return !!cfg.onCheckHasValue?.(item);
+            case FieldType.REPEATER:
+                return el.data.length > 0; //TODO resurse into elements?
+            case FieldType.CAPTCHA:
+                return !!el.token;
+            default:
+                return el.value !== null && el.value !== undefined && el.value !== "";
+        }
+    }
+
 
     /**
      * Resolves editing item context for (repeater) nested fields.
@@ -739,8 +764,8 @@ export class CmsEditor {
             itemData = this.ds.getCurrentItem(); // update after using setFieldValue
         }
 
-        await cfg.onChanged?.(values[0], parentCfg, masterArrayID);
-        await parentCfg?.onChanged?.(masterArray || values[0], null, null);
+        await cfg.onChanged?.(itemData, values[0]);
+        await parentCfg?.onChanged?.(itemData, masterArray || values[0]);
 
         if (needRefresh)
             await this._updateUiFromData(cfg, scope, itemData, values, masterArrayID);
@@ -852,7 +877,6 @@ export class CmsEditor {
         }
 
         const prevValue = el.value;
-        //const { values: prevValue } = await this._getUiValue(cfg, scope, item);
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
         let val0 = values[0];
         let done = false;
@@ -973,15 +997,15 @@ export class CmsEditor {
     }
 
     /**
-     * Formats value as currently set in item for diff output.
+     * Formats value as currently set in item for diff output or input listing.
      * @param {CmsFieldConfig} cfg
      * @param {*} scope
      * @param {Object} item
      * @returns {Promise<string>}
      */
-    async _diffValue(cfg, scope, item) {
+    _diffValue(cfg, scope, item) {
         if (!cfg) return "";
-        if (cfg.onDiffValue) return await cfg.onDiffValue(item);
+        if (cfg.onDiffValue) return cfg.onDiffValue(item);
         if (!item) return "";
         const values = cfg.fields.map(f => item?.[f]);
         const val0 = values[0];
@@ -998,7 +1022,7 @@ export class CmsEditor {
             [FieldType.TIME_OF_DATE]: () => val0 ? `${this._padTime(new Date(val0).getHours())}:${this._padTime(new Date(val0).getMinutes())}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(val0).join(", "),
             [FieldType.IMAGES]: () => this.ensureArray(val0).map((img) => img?.src || img?.fileUrl || "").join("|"),
-            [FieldType.CUSTOM]: () => cfg.onFormatValue(values),
+            [FieldType.CUSTOM]: () => cfg.onFormatValue?.(values),
         };
         const res = val0 == null || val0 == "" ? null : (formatters[cfg.type] || (() => String(val0)))();
         return res != null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
@@ -1009,22 +1033,28 @@ export class CmsEditor {
      * @param {*} scope
      * @returns {Promise<{diffIntern:any[],diffUser:any[]}>}
      */
-    async getDiff(scope) {
-        const currentItem = this.ds.getCurrentItem();
-        let diffIntern = [];
-        let diffUser = [];
-        await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
+    getDiff(scope) {
+        const item = this.ds.getCurrentItem();
+        const caption = [
+            { label: this._getTranslatedMessage("diff_caption", {}, item), align: "right", bold: true },
+            { label: this._getTranslatedMessage("diff_from", {}, item), align: "right", bold: true },
+            { label: "", align: "center" },
+            { label: this._getTranslatedMessage("diff_to", {}, item), bold: true },
+        ];
+        const diffIntern = [caption];
+        const diffUser = [caption];
+        for (const cfg of Object.values(this.cmsSchema)) {
             if (!cfg.collectDiff) return;
-            const [vOrg, vCur] = await Promise.all([
-                this._diffValue(cfg, scope, this.originalItem),
-                this._diffValue(cfg, scope, currentItem)
-            ]);
+            const vOrg = this._diffValue(cfg, scope, this.originalItem);
+            const vCur = this._diffValue(cfg, scope, item);
             if (vOrg != vCur) {
-                diffIntern.push([cfg.label, vOrg, vCur]);
-                if (cfg.showToUser) diffUser.push([cfg.label, vOrg, vCur]);
+                const d = [cfg.label, vOrg, { value: "->", bold: true }, vCur];
+                diffIntern.push(d);
+                if (cfg.showToUser) diffUser.push(d);
             }
-        }));
+        }
         this.lastDiff = { diffIntern, diffUser };
+        return this.lastDiff;
     }
 
     /**
@@ -1033,14 +1063,14 @@ export class CmsEditor {
      * @param {boolean} [onlyShowToUserFields=false] if true, only fields with showToUser == true will be returned
      * @returns {Promise<any[]>}
      */
-    async getSummary(scope, onlyShowToUserFields = false) {
+    getSummary(scope, onlyShowToUserFields = false) {
         const currentItem = this.ds.getCurrentItem();
         let res = [];
-        await Promise.all(Object.values(this.cmsSchema).map(async (cfg) => {
+        for (const cfg of Object.values(this.cmsSchema)) {
             if (!onlyShowToUserFields || cfg.showToUser)
-                res.push([cfg.label, await this._diffValue(cfg, scope, currentItem)]);
+                res.push([cfg.label, this._diffValue(cfg, scope, currentItem)]);
             //TODO recurse into receiver fields? also for getDiff?
-        }));
+        }
         return res;
     }
 
@@ -1064,7 +1094,7 @@ export class CmsEditor {
      * @returns {Promise<Object|false>}
      */
     async saveItem() {
-        console.log("saveItem", await this.getSummary($w));
+        console.log("saveItem", this.getSummary($w));
         this.isSaving = true;
         let savedItem = null;
         try {
@@ -1082,7 +1112,7 @@ export class CmsEditor {
             }
 
             this.collapseResponse();
-            await this.getDiff($w);
+            this.getDiff($w);
             console.log("saveItem diff:", this.lastDiff.diffIntern);
             const beforeSafeResult = await this.onBeforeSave(item);
             if (beforeSafeResult == null) return false;
@@ -1108,11 +1138,11 @@ export class CmsEditor {
      * Revert changes on dataset item and refresh UI.
      */
     async revertItem() {
-        console.log("revertItem", await this.getSummary($w));
+        console.log("revertItem", this.getSummary($w));
         await this.flushDebounce(false);
         this.collapseResponse();
         await this.ds.revert();
-        console.log("item reverted", await this.getSummary($w));
+        console.log("item reverted", this.getSummary($w));
         this.onAfterReverted();
         await this.showMessage("itemReverted", this.ds.getCurrentItem());
         for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
@@ -1124,11 +1154,11 @@ export class CmsEditor {
      */
     async newItem() {
         console.log("newItem");
-        await this.getDiff($w);
+        this.getDiff($w);
         if (this.lastDiff.diffIntern.length == 0 || await this.saveItem()) {
             console.log("item saved before creating new item");
             const newItem = await this.ds.new();
-            console.log("item created", await this.getSummary($w));
+            console.log("item created", this.getSummary($w));
             await this.showMessage("itemCreated", newItem);
             await this.refreshUI();
             for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
@@ -1187,7 +1217,7 @@ export class CmsEditor {
                 console.log("navigateTo current item index", index);
                 await this.ds.setCurrentItemIndex(index);
                 await this.refreshUI();
-                console.log("navigated to item", await this.getSummary($w));
+                console.log("navigated to item", this.getSummary($w));
             } else {
                 console.error("navigateTo cannot find among", result.items.length, "items");
             }
@@ -1261,7 +1291,7 @@ export class CmsEditor {
             const res = await q.find();
             //console.debug(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
             this.itemSelector.options = [
-                { label: this.getTranslatedMessage("itemSelector_createNew"), value: "--new--" },
+                { label: this._getTranslatedMessage("itemSelector_createNew"), value: "--new--" },
                 ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
             this.itemSelector.value = this.ds.getCurrentItem()?._id;
@@ -1282,7 +1312,7 @@ export class CmsEditor {
         console.info("_validate", { cfg, scope, item });
         if (!cfg) {
             console.error("Cannot assign to input: CMS schema not found in configuration")
-            return [this.getTranslatedMessage("error_no_config", cfg, item)];
+            return [this._getTranslatedMessage("error_no_config", cfg, item, null, {}, { color: "#E74C3C" })];
         }
         const el = scope(cfg.id);
         if (!el || !el.id) return []; // treat non-existing as valid so don't block saving
@@ -1301,29 +1331,34 @@ export class CmsEditor {
         this._setEnabled(el, enabled);
         if (enabled === false) return []; // treat disabled as valid 
 
+        if ("text" in el) el.text = cfg.required ? el.text + " *" : el.text.replace(" *", "");
+        if (cfg.type == FieldType.IMAGE || cfg.type == FieldType.IMAGES) {
+            const lbl = this._findRecursive(el, "$w.Text", "name");
+            if (lbl && "text" in lbl) lbl.text = cfg.required ? lbl.text + " *" : lbl.text.replace(" *", "");
+        }
+
         const errors = [];
         let validity = {}
         if (cfg._touched) { // ignore until the user touched this field
             const { values } = await this._parseUiValue(cfg, scope, item);
-            const numericValues = values.map(v => (v === "" || v === null || v === undefined ? null : Number(v)));
             const customErrorMessage = await cfg.onCustomValidation?.(item, values);
             validity = { ...el.validity };
-            validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the value here
-            validity.valueMissing ||= cfg.required && (values.some((v) => v == null || v === "" || v == TRANSPARENT_PIXEL || (Array.isArray(v) && v.length == 0)));
-            validity.rangeUnderflow ||= cfg.minAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
-            validity.rangeOverflow ||= cfg.maxAllowed != null && (numericValues.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
+            validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the one from el.validity
+            validity.valueMissing ||= cfg.required && !this._hasUiValue(cfg, scope, item);
+            validity.rangeUnderflow ||= cfg.minAllowed != null && (values.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
+            validity.rangeOverflow ||= cfg.maxAllowed != null && (values.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
             //validity.badInput ||= numericValues.some(v => v !== null && Number.isNaN(v)); //TODO support ?
 
             for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
-                errors.push(this.getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
-                    message: customErrorMessage || this.getTranslatedMessage("no_validationMessage", cfg, item)
-                }));
+                errors.push(this._getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
+                    message: customErrorMessage || this._getTranslatedMessage("no_validationMessage", cfg, item, null, {}, { color: "#E74C3C" })
+                }, { color: "#E74C3C" }));
             if (errors.length == 0) {
-                console.info("UI Validation succeeded for UI", cfg.id, ":", { values, numericValues, validity });
+                console.info("UI Validation succeeded for UI", cfg.id, ":", { values, validity, value: el.value });
                 if (el.setCustomValidity) el.setCustomValidity("");
                 if (el.onCustomValidation) el.onCustomValidation((_1, _2) => { });
             } else {
-                console.warn("UI Validation failed for UI", cfg.id, ":", { values, numericValues, validity, customErrorMessage, errors });
+                console.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, value: el.value, customErrorMessage, errors });
                 if (el.setCustomValidity) el.setCustomValidity(errors.join(", "));
                 if (el.onCustomValidation) el.onCustomValidation((_, reject) => { reject(errors.join(", ")) });
             }
@@ -1331,9 +1366,9 @@ export class CmsEditor {
             if (el.updateValidityIndication)
                 el.updateValidityIndication();
             else {
-                if (el.style) el.style.borderColor = errors.length == 0 ? "rgba(0,0,0,0)" : "red";
+                if (el.style) el.style.borderColor = errors.length == 0 ? "rgba(0,0,0,0)" : "#E74C3C";
                 const lbl = this._findRecursive(el, "$w.Text", "name");
-                if (lbl) lbl.html = `<p style="color: ${errors.length == 0 ? "#000000" : "#FF0000"}; font-size: 16px;">${lbl.text}</p>`;
+                if (lbl) lbl.html = `<p${this._clsStyle({ color: errors.length == 0 ? "" : "#E74C3C" })}>${lbl.text}</p>`;
             }
         }
 
@@ -1346,6 +1381,7 @@ export class CmsEditor {
             await Promise.all(promises);
         }
 
+        cfg.lastValidationFailed = errors.length > 0;
         return errors;
     }
 
@@ -1356,7 +1392,7 @@ export class CmsEditor {
         const currentIndex = this.itemSelector?.selectedIndex;
         const totalCount = this.itemSelector?.options?.length;
 
-        await this.getDiff($w);
+        this.getDiff($w);
         const hasChanges = this.lastDiff.diffIntern.length > 0;
 
         const isNew = !this.ds.getCurrentItem()?._createdDate;
@@ -1370,6 +1406,8 @@ export class CmsEditor {
         this._setEnabled(this.buttonPrev, !hasChanges && !isBusy && currentIndex > 1); // don't navigate to -- new--
         this._setEnabled(this.buttonNext, !hasChanges && !isBusy && currentIndex < totalCount - 1);
         this._setEnabled(this.itemSelector, !hasChanges && !isBusy);
+
+        this.showMessage("itemSaved", this.ds.getCurrentItem()); //TODO remove
     }
 
     _setEnabled(element, enabled) {
@@ -1385,31 +1423,39 @@ export class CmsEditor {
      * @param {Object} [replacements={}]
      */
     async showMessage(msgId, item = {}, isError = false, replacements = {}) {
-        if (this._messageTimer) clearTimeout(this._messageTimer);
+        const message = this.messages[msgId] ?? {};
 
-        const sMsg = this.getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements);
-        const sDetails = this.getTranslatedMessage(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements);
+        const sMsg = this._getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements, { color: isError ? "#E74C3C" : "#2ECC71", align: "center" });
+        const sDetails = this._getTranslatedMessage(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements, {});
 
-        const data = {
-            emailId: this.emailIds[msgId],
-            item,
-            msg: `<p style="color: ${isError ? "#E74C3C" : "#2ECC71"}; font-size: 16px; text-align: center;">${isError ? "✖ " : "✔ "}${sMsg}</p>`,
-            details: `<p style="font-size: 16px; text-align: left;">${sDetails}</p>`,
-        };
-        data.emailOptions = data.emailId && item.email ? await this.onGenerateEmailOptions(item, data.emailId) : {}
+        const emailOptions = message?.emailId && item.email ? await this.onGenerateEmailOptions(item, message.emailId) : {}
 
-        if (this.textResponse) this.textResponse.html = data.msg;
+        console.log("showMessage", { msgId, isError, message, sMsg, sDetails, emailOptions });
+
+        if (message?.emailId && item.email && message?.automaticMail)
+            sendMail(message.emailId, item, emailOptions);
+
+        if (this.textResponse) this.textResponse.html = sMsg;
         this.textResponse?.show();
+        this.textResponse?.expand(); //TODO detect if needed
+        if (this._messageTimer) clearTimeout(this._messageTimer);
         this._messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
 
-        console.log("showMessage", data);
-        wixWindow.openLightbox("CMSEditorLightbox", data);
+        if (message?.dialog) wixWindow.openLightbox("CMSEditorLightbox", {
+            emailId: message?.emailId && item.email && !message?.automaticMail ? message.emailId : null,
+            emailOptions,
+            emailCustomizable: message?.emailId && item.email && message?.customizableMail,
+            item,
+            msg: sMsg,
+            details: sDetails,
+        });
     }
 
     /**
      * Hide response message from response field. Does not affect any opened modal dialog.
      */
     collapseResponse() {
+        return; //TODO
         this.textResponse?.hide();
         if (this._messageTimer) {
             clearTimeout(this._messageTimer);
@@ -1472,32 +1518,135 @@ export class CmsEditor {
         return v ? v.toString().padStart(2, "0") : "00";
     }
 
+    _clsStyle(v) {
+        return ` class="font_7" style="padding: 8px${v.align ? `; text-align: ${v.align}` : ""}${v.color ? `; color: ${v.color}` : ""}${v.bold ? `; font-weight: bold;` : ""}${v.italic ? `; font-style: italic;` : ""}"`;
+    }
+
+    /**
+     * Get translated message with placeholder replacements.
+     * @param {string} msg - The message.
+     * @param {Object} [replacements={}] - Object with placeholder keys and values or functions that return a value, 
+     * value arrays wil be converted into lines, and nested arrays into columns of lines
+     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
+     * @returns {string}
+     */
+    getTranslatedMessage(msg, replacements = {}, formatHTML = null) {
+
+        const escape = (s) => (typeof s == "object" || Array.isArray(s) ? JSON.stringify(s, null, 2) : String(s))
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;")
+            .replace(/\n/g, "<br>");
+
+        const formatAsList = (value) => {
+            return `</span><ul>${value.map(v => `<li${this._clsStyle(formatHTML)}>${escape(v)}</li>`).join("")}</ul><span${this._clsStyle(formatHTML)}>`;
+        }
+
+        const formatAsTable = (value) => {
+            const alignments = [];
+            let res = "</span><table>";
+            // first line is a header if it contains at least one dictionary with label: as entry
+            const hasHeader = value[0].length > 0 && value[0].some(v => typeof v == "object" && v && "label" in v);
+            if (hasHeader) {
+                res += "<thead><tr>";
+                for (const v of value[0]) {
+                    if (typeof v == "object" && v && "label" in v) {
+                        res += `<th${this._clsStyle({ ...formatHTML, ...v })}>${escape(v.label)}</th>`;
+                        alignments.push(v.align);
+                    } else {
+                        res += `<th${this._clsStyle(formatHTML)}>${escape(v)}</th>`;
+                        alignments.push("");
+                    }
+                }
+                res += "</tr></thead>";
+            }
+            res += "<tbody>";
+            for (let ri = 0; ri < value.length; ri++) {
+                if (hasHeader && ri === 0) continue;
+                const row = value[ri];
+                res += "<tr>";
+                for (let ci = 0; ci < row.length; ci++) {
+                    const v = row[ci];
+                    if (v != null) {
+                        let merge = 0;
+                        while (ci + merge + 1 < row.length && row[ci + merge + 1] == null) merge++;
+                        const colspan = `${merge > 0 ? ` colspan="${merge + 1}"` : ""}`;
+                        if (typeof v == "object" && v && "value" in v)
+                            res += `<td${this._clsStyle({ ...formatHTML, ...v, align: v.align ?? alignments[ci] ?? "" })}${colspan}>${escape(v.value)}</td>`;
+                        else
+                            res += `<td${this._clsStyle({ ...formatHTML, align: alignments[ci] ?? "" })}${colspan}>${escape(v)}</td>`;
+                        ci += merge;
+                    }
+                }
+                res += "</tr>";
+            }
+            res += `</tbody></table><span${this._clsStyle(formatHTML)}>`;
+            return res;
+        }
+
+        if (formatHTML != null) {
+            msg = escape(msg);
+        }
+        for (const [placeholder, valueOrFunc] of Object.entries(replacements)) {
+            const pattern = `{${placeholder}}`;
+            if (msg.includes(pattern)) {
+                let formatted = "";
+                const value = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
+                if (formatHTML == null)
+                    formatted = Array.isArray(value) ? value.map(l => Array.isArray(l) ? l.join("\t") : String(l)).join("\n") : String(value);
+                else if (Array.isArray(value) && value.length > 0)
+                    formatted = Array.isArray(value[0]) ? formatAsTable(value) : formatAsList(value);
+                else
+                    formatted = escape(value);
+                msg = msg.replaceAll(pattern, formatted);
+            }
+        }
+        if (formatHTML != null) {
+            //TODO need to embedd all text outside of lists and tables with _clsStyle 
+            msg = `<span${this._clsStyle(formatHTML)}>${msg}</span>`;
+        }
+        return msg;
+    }
+
     /**
      * Get translated message with placeholder replacements.
      * @param {string} key - The message key.
      * @param {CmsFieldConfig} [cfg={}]
      * @param {Object} [item={}]
+     * @param {Object} [source=null]
      * @param {Object} [replacements={}] - Object with placeholder keys and values.
+     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
      * @returns {string}
      */
-    getTranslatedMessage(key, cfg = {}, item = {}, source = null, replacements = {}) {
-        source ??= this.translatedMessages;
-        let msg = source[key];
-        if (msg == null) console.error(`Missing key in translation matrix: ${key}`, source);
-        msg ??= "";
-
-        msg = msg.replace("{itemName}", this.translatedMessages.itemName);
-        msg = msg.replace("{diff}", this.lastDiff.diffUser);
-        msg = msg.replace("{diffUser}", this.lastDiff.diffUser);
-        msg = msg.replace("{diffIntern}", this.lastDiff.diffIntern);
-
-        for (const [placeholder, value] of Object.entries(cfg))
-            msg = msg.replace(`{${placeholder}}`, value);
-        for (const [placeholder, value] of Object.entries(item))
-            msg = msg.replace(`{${placeholder}}`, value);
-        for (const [placeholder, value] of Object.entries(replacements))
-            msg = msg.replace(`{${placeholder}}`, value);
-        return msg;
+    _getTranslatedMessage(key, cfg = {}, item = {}, source = null, replacements = {}, formatHTML = null) {
+        const msg = (source ?? this.translatedMessages)[key];
+        if (msg == null) console.error("Missing key in translation matrix:", key, { source });
+        return this.getTranslatedMessage(
+            msg ?? `<${key}???>`,
+            {
+                ...cfg,
+                ...item,
+                ...replacements,
+                itemName: this.translatedMessages.itemName,
+                diff: this.lastDiff.diffUser,
+                diffUser: this.lastDiff.diffUser,
+                diffIntern: this.lastDiff.diffIntern,
+                input: () => [
+                    [
+                        { label: this._getTranslatedMessage("input_caption", cfg, item), align: "right", bold: true },
+                        { label: this._getTranslatedMessage("input_value", cfg, item), bold: true },
+                    ],
+                    ...Object.values(this.cmsSchema).map((cfg) => [
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : "", value: cfg.label }, //TODO color "" overwrites default from formatHTML
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : "", value: this._diffValue(cfg, $w, item) }
+                    ])
+                ],
+                item: Object.entries(item),
+                itemKeys: Object.keys(item)
+            },
+            formatHTML);
     }
 
     postMessageToDatePicker(cfg, scope, message) {

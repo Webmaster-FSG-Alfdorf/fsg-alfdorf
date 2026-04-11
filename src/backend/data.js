@@ -91,7 +91,7 @@ async function buildSearchField(item) {
     ].map(normalize).join(" ");
 }
 
-async function generateItemDiff(item) {
+async function generateItemDiff(item) { //TODO remove
     return [
         ["Status", item.state],
         ["Unterkunft", await generateLodgingName(item)],

@@ -3,21 +3,27 @@ import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
-import { getOccupations, isDateOccupied, generateLodgingName, generateCostsTable, generateHTMLTable } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
 let editor;
 
 $w.onReady(function () {
     wixData.query("lodgings").ascending("order").find().then(async (results) => {
         let options = [];
-        for (const lodging of results.items) {
+        let batchRequests = [];
+        // main lodgings go first
+        results.items.forEach((lodging) => {
             options.push({ label: lodging.title, value: `${lodging.lodgingID}|0` });
-            if (lodging.capacity > 1) for (let index = 1; index <= lodging.capacity; index++) {
-                options.push({
-                    label: await generateLodgingName({ lodging: lodging.lodgingID, capacityPrefix: lodging.capacityPrefix, lodgingSub: index }),
-                    value: `${lodging.lodgingID}|${index}`
-                });
-            }
+        });
+        // then all sub lodgings
+        for (const lodging of results.items) if (lodging.capacity > 1)
+            for (let index = 1; index <= lodging.capacity; index++) batchRequests.push({
+                lodging: lodging.lodgingID,
+                lodgingSub: index
+            });
+        if (batchRequests.length > 0) {
+            const names = await getAllLodgingNames(batchRequests);
+            options.push(...batchRequests.map((req, i) => ({ label: names[i], value: `${req.lodging}|${req.lodgingSub}` })));
         }
         $w("#inputLodging").options = options;
     });
@@ -58,21 +64,17 @@ $w.onReady(function () {
             textResponse: $w("#textResponse"),
             buttonSave: $w("#buttonSave"),
 
-            onGenerateEmailOptions: async (item, emailId) => {
-                return await generateHTMLTable(this.lastDiff.diffIntern, [
-                    { label: "Änderung", align: "right", bold: true },
-                    { label: "Von", align: "left" },
-                    { label: "Nach", align: "left" },
-                ]);
-            },
-
-            emailIds: {
-                itemSaved: "ReservationUpdated",
+            messages: {
+                itemSaved: { emailId: "ReservationUpdated", automaticMail: true },
             },
 
             translatedMessages: {
                 itemName: "Reservierung",
-                itemRemoved: "Die Reservierungsanfrage wurde storniert.",
+                messageIds: {
+                    itemSaved: "✔ Vielen Dank! Ihre Anfrage wurde gesendet:\nKeys:{itemKeys}\nInput:{input}\nItem:{item}\nDiff User:{diff}\nDiff Intern:{diffIntern}",  //TODO
+                    itemSavedDetails: "{input}",
+                    itemSaveError: "✖ Anfrage konnte nicht gesendet werden.",
+                }
             },
 
             cmsSchema: {
@@ -82,9 +84,12 @@ $w.onReady(function () {
                     required: true,
                     onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
-                    onDiffValue: async (item) => item ? await generateLodgingName(item) : "",
+                    onDiffValue: (item) => editor.lodgingNames[item?.lodging + "|" + item?.lodgingSub] ?? "",
                     onCustomValidation: async (item) => await validateLodging(item),
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => {
+                        if (item) editor.lodgingNames[item.lodging + "|" + item.lodgingSub] = await generateLodgingName(item);
+                        await updateCostsTable(item);
+                    }
                 },
                 "#inputDate": {
                     fields: ["dateFrom", "dateTo"],
@@ -94,15 +99,17 @@ $w.onReady(function () {
                     minAllowed: incUTCDate(curUTC, -31),
                     maxAllowed: incUTCDate(curUTC, 62),
                     onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => await updateCostsTable(item)
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
+                    default: "2", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
+                    default: "23", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
                 },
@@ -110,7 +117,7 @@ $w.onReady(function () {
                     field: "cntAdults",
                     type: FieldType.NUMBER,
                     required: true,
-                    onChanged: async () => await updateCostsTable()
+                    onChanged: async (item) => await updateCostsTable(item)
                 },
                 "#inputChildren": {
                     field: "cntChildren",
@@ -123,11 +130,13 @@ $w.onReady(function () {
                 },
                 "#inputLastName": {
                     field: "lastName",
+                    required: true,
                     type: FieldType.STRING
                 },
                 "#inputMail": {
                     field: "email",
                     type: FieldType.STRING,
+                    required: true,
                     linkButton: "#buttonSendMail",
                     linkPrefix: "mailto:"
                 },
@@ -148,8 +157,15 @@ $w.onReady(function () {
                 "#inputPrivacyPolicy": {
                     field: "privacyPolicy",
                     label: "Datenschutzerklärung",
+                    required: true,
                     type: FieldType.BOOLEAN
                 },
+                "#captcha1": {
+                    label: "Captcha",
+                    required: true,
+                    type: FieldType.CAPTCHA, //TODO
+                    showToUser: false,
+                }
             },
 
             generateTitle: (item) => {
@@ -174,6 +190,7 @@ $w.onReady(function () {
             },
         });
 
+        editor.lodgingNames = {};
         editor.init();
     });
 });
@@ -217,15 +234,14 @@ async function validateLodging(item) {
     return null;
 }
 
-async function updateCostsTable() {
+async function updateCostsTable(item) {
     console.log("updateCostsTable");
-    const item = editor.ds.getCurrentItem();
-    $w("#textReservationPrice").html = item ?
-        await generateHTMLTable((await generateCostsTable(item)), [
-            "Leistung",
-            { label: "Anzahl Erw.", align: "right" },
-            { label: "Nächte", align: "right" },
-            { label: "Einzelpreis", align: "right" },
-            { label: "Gesamt", align: "right" },
-        ]) : "";
+    const hdr = [
+        "Leistung",
+        { label: "Anzahl Erw.", align: "right" },
+        { label: "Nächte", align: "right" },
+        { label: "Einzelpreis", align: "right" },
+        { label: "Gesamt", align: "right" },
+    ];
+    $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
 }
