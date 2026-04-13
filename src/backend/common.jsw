@@ -104,6 +104,7 @@ export async function isDateOccupied(lodging, lodgingSub, dateFrom, dateTo, sugg
 }
 
 export async function sendMail(mailId, item, options = {}) {
+    console.log("sendMail", mailId);
     const variables = {
         firstName: item.firstName || "",
         lastName: item.lastName || "",

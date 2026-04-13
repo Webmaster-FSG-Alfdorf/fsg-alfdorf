@@ -52,6 +52,7 @@ export const FieldType = Object.freeze({
     MULTI_REFERENCE: "MULTI_REFERENCE",
     CUSTOM: "CUSTOM",
     REPEATER: "REPEATER",
+    CAPTCHA: "CAPTCHA",
 });
 
 export const FilterType = Object.freeze({
@@ -116,6 +117,8 @@ export class CmsEditor {
         this.buttonPrev = config.buttonPrev;
         this.buttonNext = config.buttonNext;
 
+        this.collapseTextResponse = this.textResponse?.collapsed;
+
         this.ds = $w(`#${this.dataSetName}`);
         this.originalItem = null;
         this.isSaving = false;
@@ -132,70 +135,78 @@ export class CmsEditor {
             // must be the last line
             ...config.messages
         };
+        this.translatedMessages = this._mergeTranslations(
+            {
+                booolean_yes: "Ja",
+                booolean_no: "Nein",
+                title_null: "(Unbenannt)",
+                itemSelector_createNew: "➕ Neuer Eintrag",
+                error_no_config: "Konfiguration nicht gefunden",
+                itemName: "Eintrag",
 
-        this.translatedMessages = {
-            booolean_yes: "Ja",
-            booolean_no: "Nein",
-            title_null: "(Unbenannt)",
-            itemSelector_createNew: "➕ Neuer Eintrag",
-            error_no_config: "Konfiguration nicht gefunden",
-            itemName: "Eintrag",
+                diff_caption: "Änderung",
+                diff_from: "Von",
+                diff_to: "Nach",
+                input_caption: "Datum",
+                input_value: "Wert",
 
-            diff_caption: "Änderung",
-            diff_from: "Von",
-            diff_to: "Nach",
-            input_caption: "Feld",
-            input_value: "Wert",
+                no_validationMessage: "Benutzerdefinierter Fehler",
 
-            messageIds: {
-                itemSaved: "✔ Änderungen wurden gespeichert.",
-                itemSavedDetails: "{diff}",
-                itemReverted: "✔ Änderungen wurden verworfen.",
-                itemRevertedDetails: "",
-                itemCreated: "✔ {itemName} wurde new erstellt.",
-                itemCreatedDetails: "",
-                itemRemoved: "✔ {itemName} wurde gelöscht.",
-                itemRemovedDetails: "",
-                itemSaveError: "✖ Änderungen konnten nicht gespeichert werden.",
-                itemSaveErrorDetails: "{error}",
-                generalError: "✖ Es ist ein Fehler aufgetreten.",
-                generalErrorDetails: "{error}",
+                messageIds: {
+                    itemSaved: "✔ Änderungen wurden gespeichert.",
+                    itemSavedDetails: "{diff}",
+                    itemReverted: "✔ Änderungen wurden verworfen.",
+                    itemRevertedDetails: "",
+                    itemCreated: "✔ {itemName} wurde new erstellt.",
+                    itemCreatedDetails: "",
+                    itemRemoved: "✔ {itemName} wurde gelöscht.",
+                    itemRemovedDetails: "",
+                    itemSaveError: "✖ Änderungen konnten nicht gespeichert werden.",
+                    itemSaveErrorDetails: "{error}",
+                    generalError: "✖ Es ist ein Fehler aufgetreten.",
+                    generalErrorDetails: "{error}",
+                },
 
-                // must be the last line
-                ...config.translatedMessages?.messageIds
+                validityChecks: {
+                    badInput: "{label}: hat ungültige Eingabe",
+                    customError: "{label}: {message}",
+                    exceedsFilesLimit: "{label}: überschreitet Dateilimit",
+                    fileNotUploaded: "{label}: Datei nicht hochgeladen",
+                    fileSizeExceedsLimit: "{label}: Dateigröße überschreitet Limit",
+                    fileTypeNotAllowed: "{label}: Dateityp nicht erlaubt",
+                    invalidDate: "{label}: hat ungültiges Datum",
+                    invalidTime: "{label}: hat ungültige Zeit",
+                    patternMismatch: "{label}: entspricht nicht dem erwarteten Muster",
+                    rangeOverflow: "{label}: ist zu groß",
+                    rangeUnderflow: "{label}: ist zu klein",
+                    stepMismatch: "{label}: entspricht nicht dem Schritt",
+                    tooLong: "{label}: ist zu lang",
+                    tooShort: "{label}: ist zu kurz",
+                    typeMismatch: "{label}: hat ungültigen Typ",
+                    valueMissing: "{label}: ist erforderlich",
+                }
             },
-
-            no_validationMessage: "Benutzerdefinierter Fehler",
-
-            validityChecks: {
-                badInput: "{label}: hat ungültige Eingabe",
-                customError: "{label}: {message}",
-                exceedsFilesLimit: "{label}: überschreitet Dateilimit",
-                fileNotUploaded: "{label}: Datei nicht hochgeladen",
-                fileSizeExceedsLimit: "{label}: Dateigröße überschreitet Limit",
-                fileTypeNotAllowed: "{label}: Dateityp nicht erlaubt",
-                invalidDate: "{label}: hat ungültiges Datum",
-                invalidTime: "{label}: hat ungültige Zeit",
-                patternMismatch: "{label}: entspricht nicht dem erwarteten Muster",
-                rangeOverflow: "{label}: ist zu groß",
-                rangeUnderflow: "{label}: ist zu klein",
-                stepMismatch: "{label}: entspricht nicht dem Schritt",
-                tooLong: "{label}: ist zu lang",
-                tooShort: "{label}: ist zu kurz",
-                typeMismatch: "{label}: hat ungültigen Typ",
-                valueMissing: "{label}: ist erforderlich",
-
-                // must be the last line
-                ...config.translatedMessages?.validityChecks
-            },
-
-            // must be the last line
-            ...config.translatedMessages,
-        };
+            config.translatedMessages
+        );
 
         this._messageTimer = null;
         this._debounceTimers = {};
         this._uploading = new Set();
+    }
+
+    _mergeTranslations(defaults, overrides) {
+        return {
+            ...defaults,
+            ...overrides,
+            messageIds: {
+                ...defaults.messageIds,
+                ...overrides?.messageIds
+            },
+            validityChecks: {
+                ...defaults.validityChecks,
+                ...overrides?.validityChecks
+            }
+        };
     }
 
     /**
@@ -653,8 +664,7 @@ export class CmsEditor {
                 //            case FieldType.REPEATER:
                 //                return { val: this.ensureArray(item?.[cfg.field]) };
                 case FieldType.CAPTCHA:
-                    return el.token; //TODO only to detect change?
-                //TODO  Cannot assign to UI #captcha1 from field undefined : No 'value' property
+                    return { val: el.token }; //TODO only to detect change?
                 default:
                     return { val: el.value };
             }
@@ -950,6 +960,9 @@ export class CmsEditor {
                 el.data = val0;
                 done = true;
                 break;
+            case FieldType.CAPTCHA:
+                done = true; // Captcha only supports UI -> database direction
+                break;
         }
         if (!done) {
             // if no special set function has been used, try to use the default 
@@ -1024,7 +1037,7 @@ export class CmsEditor {
             [FieldType.IMAGES]: () => this.ensureArray(val0).map((img) => img?.src || img?.fileUrl || "").join("|"),
             [FieldType.CUSTOM]: () => cfg.onFormatValue?.(values),
         };
-        const res = val0 == null || val0 == "" ? null : (formatters[cfg.type] || (() => String(val0)))();
+        const res = val0 == null ? null : (formatters[cfg.type] || (() => String(val0)))();
         return res != null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
     }
 
@@ -1107,7 +1120,7 @@ export class CmsEditor {
             let allErrors = [];
             for (const cfg of Object.values(this.cmsSchema)) allErrors.push(...await this._validate(cfg, $w, item));
             if (allErrors.length > 0) {
-                await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("<br/>") });
+                await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("\n") });
                 return false;
             }
 
@@ -1270,7 +1283,7 @@ export class CmsEditor {
                 case FilterCombine.PARALLEL_AND:
                     // Parallel Mapping (Many-to-Many)
                     if (!Array.isArray(pVal) || cfg.fields.length != pVal.length) {
-                        console.error("Unexpected result from val() function: Expected array of equal length as cfg.fields", { pVal, cfg });
+                        console.error("Unexpected result from value() function: Expected array of equal length as cfg.fields", { pVal, cfg });
                     } else
                         q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, pVal[i]), q);
                     break;
@@ -1351,8 +1364,9 @@ export class CmsEditor {
 
             for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
                 errors.push(this._getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
-                    message: customErrorMessage || this._getTranslatedMessage("no_validationMessage", cfg, item, null, {}, { color: "#E74C3C" })
-                }, { color: "#E74C3C" }));
+                    message: customErrorMessage || this._getTranslatedMessage("no_validationMessage", cfg, item, null, {})
+                }));
+            console.info("_validate", { values, customErrorMessage, validity, errors });
             if (errors.length == 0) {
                 console.info("UI Validation succeeded for UI", cfg.id, ":", { values, validity, value: el.value });
                 if (el.setCustomValidity) el.setCustomValidity("");
@@ -1406,8 +1420,6 @@ export class CmsEditor {
         this._setEnabled(this.buttonPrev, !hasChanges && !isBusy && currentIndex > 1); // don't navigate to -- new--
         this._setEnabled(this.buttonNext, !hasChanges && !isBusy && currentIndex < totalCount - 1);
         this._setEnabled(this.itemSelector, !hasChanges && !isBusy);
-
-        this.showMessage("itemSaved", this.ds.getCurrentItem()); //TODO remove
     }
 
     _setEnabled(element, enabled) {
@@ -1428,23 +1440,24 @@ export class CmsEditor {
         const sMsg = this._getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements, { color: isError ? "#E74C3C" : "#2ECC71", align: "center" });
         const sDetails = this._getTranslatedMessage(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements, {});
 
-        const emailOptions = message?.emailId && item.email ? await this.onGenerateEmailOptions(item, message.emailId) : {}
+        const canSendMail = message?.emailId != null && item.email != "";
+        const emailOptions = canSendMail ? await (message?.onGenerateEmailOptions ?? this.onGenerateEmailOptions)?.(item, message.emailId) : {}
 
-        console.log("showMessage", { msgId, isError, message, sMsg, sDetails, emailOptions });
+        console.log("showMessage", { msgId, isError, message, sMsg, sDetails, canSendMail, emailOptions });
 
-        if (message?.emailId && item.email && message?.automaticMail)
-            sendMail(message.emailId, item, emailOptions);
+        if (canSendMail && message?.automaticMail)
+            sendMail(message.emailId, item, emailOptions || {});
 
         if (this.textResponse) this.textResponse.html = sMsg;
         this.textResponse?.show();
-        this.textResponse?.expand(); //TODO detect if needed
+        this.textResponse?.expand();
         if (this._messageTimer) clearTimeout(this._messageTimer);
         this._messageTimer = setTimeout(() => { this.collapseResponse(); }, 20000);
 
-        if (message?.dialog) wixWindow.openLightbox("CMSEditorLightbox", {
-            emailId: message?.emailId && item.email && !message?.automaticMail ? message.emailId : null,
+        if (message?.dialog !== false) wixWindow.openLightbox("CMSEditorLightbox", {
+            emailId: canSendMail && !message?.automaticMail ? message.emailId : null,
             emailOptions,
-            emailCustomizable: message?.emailId && item.email && message?.customizableMail,
+            emailCustomizable: canSendMail && message?.customizableMail,
             item,
             msg: sMsg,
             details: sDetails,
@@ -1455,8 +1468,7 @@ export class CmsEditor {
      * Hide response message from response field. Does not affect any opened modal dialog.
      */
     collapseResponse() {
-        return; //TODO
-        this.textResponse?.hide();
+        if (this.collapseTextResponse) this.textResponse?.collapse(); else this.textResponse?.hide();
         if (this._messageTimer) {
             clearTimeout(this._messageTimer);
             this._messageTimer = null;
@@ -1519,7 +1531,7 @@ export class CmsEditor {
     }
 
     _clsStyle(v) {
-        return ` class="font_7" style="padding: 8px${v.align ? `; text-align: ${v.align}` : ""}${v.color ? `; color: ${v.color}` : ""}${v.bold ? `; font-weight: bold;` : ""}${v.italic ? `; font-style: italic;` : ""}"`;
+        return ` class="font_7" style="${v.padding ? `padding: ${v.padding}px; ` : ""}${v.align ? `text-align: ${v.align}; ` : ""}${v.color ? `color: ${v.color}; ` : ""}${v.bold ? `font-weight: bold; ` : ""}${v.italic ? `font-style: italic; ` : ""}"`;
     }
 
     /**
@@ -1553,10 +1565,10 @@ export class CmsEditor {
                 res += "<thead><tr>";
                 for (const v of value[0]) {
                     if (typeof v == "object" && v && "label" in v) {
-                        res += `<th${this._clsStyle({ ...formatHTML, ...v })}>${escape(v.label)}</th>`;
+                        res += `<th${this._clsStyle({ padding: 8, ...formatHTML, ...v })}>${escape(v.label)}</th>`;
                         alignments.push(v.align);
                     } else {
-                        res += `<th${this._clsStyle(formatHTML)}>${escape(v)}</th>`;
+                        res += `<th${this._clsStyle({ padding: 8, ...formatHTML })}>${escape(v)}</th>`;
                         alignments.push("");
                     }
                 }
@@ -1574,9 +1586,9 @@ export class CmsEditor {
                         while (ci + merge + 1 < row.length && row[ci + merge + 1] == null) merge++;
                         const colspan = `${merge > 0 ? ` colspan="${merge + 1}"` : ""}`;
                         if (typeof v == "object" && v && "value" in v)
-                            res += `<td${this._clsStyle({ ...formatHTML, ...v, align: v.align ?? alignments[ci] ?? "" })}${colspan}>${escape(v.value)}</td>`;
+                            res += `<td${this._clsStyle({ padding: 8, ...formatHTML, ...v, align: v.align ?? alignments[ci] ?? "" })}${colspan}>${escape(v.value)}</td>`;
                         else
-                            res += `<td${this._clsStyle({ ...formatHTML, align: alignments[ci] ?? "" })}${colspan}>${escape(v)}</td>`;
+                            res += `<td${this._clsStyle({ padding: 8, ...formatHTML, align: alignments[ci] ?? "" })}${colspan}>${escape(v)}</td>`;
                         ci += merge;
                     }
                 }
@@ -1603,10 +1615,7 @@ export class CmsEditor {
                 msg = msg.replaceAll(pattern, formatted);
             }
         }
-        if (formatHTML != null) {
-            //TODO need to embedd all text outside of lists and tables with _clsStyle 
-            msg = `<span${this._clsStyle(formatHTML)}>${msg}</span>`;
-        }
+        if (formatHTML != null) msg = `<span${this._clsStyle(formatHTML)}>${msg}</span>`;
         return msg;
     }
 
@@ -1639,8 +1648,8 @@ export class CmsEditor {
                         { label: this._getTranslatedMessage("input_value", cfg, item), bold: true },
                     ],
                     ...Object.values(this.cmsSchema).map((cfg) => [
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : "", value: cfg.label }, //TODO color "" overwrites default from formatHTML
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : "", value: this._diffValue(cfg, $w, item) }
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML.color, value: cfg.label },
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML.color, value: this._diffValue(cfg, $w, item) }
                     ])
                 ],
                 item: Object.entries(item),

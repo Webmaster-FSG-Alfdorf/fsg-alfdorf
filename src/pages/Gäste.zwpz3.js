@@ -3,7 +3,7 @@ import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
-import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateTriggerMailTable } from 'backend/common.jsw';
 
 let editor;
 
@@ -64,8 +64,17 @@ $w.onReady(function () {
             textResponse: $w("#textResponse"),
             buttonSave: $w("#buttonSave"),
 
+            onGenerateEmailOptions: async (item) => {
+                const options = {};
+                await generateTriggerMailTable(options, "a", generateItemDiff(item));
+                await generateTriggerMailTable(options, "b", await generateCostsTable(item));
+                console.log("have options:", options);
+                return options;
+            },
+
             messages: {
                 itemSaved: { emailId: "ReservationUpdated", automaticMail: true },
+                itemSaveError: { emailId: "ReservationUpdated", automaticMail: true }, //TODO remove
             },
 
             translatedMessages: {
@@ -244,4 +253,21 @@ async function updateCostsTable(item) {
         { label: "Gesamt", align: "right" },
     ];
     $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
+}
+
+function generateItemDiff(item) { //TODO remove
+    return [
+        ["Status", item.state],
+        ["Unterkunft", "xxx"],
+        ["Datum", dateRangeToString(item.dateFrom, item.dateTo)],
+        ["Erwachsene", item.cntAdults],
+        ["Kinder", item.cntChildren],
+        ["Name", item.firstName + " " + item.lastName],
+        ["Email", item.email],
+        ["Telefon", item.phoneNumber],
+        ["Adresse", item.address?.formatted],
+        ["Notiz", item.note],
+        ["Pfand", item.deposit],
+        ["Bezahlt", item.paidSumup],
+    ];
 }
