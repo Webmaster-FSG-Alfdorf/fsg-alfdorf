@@ -246,11 +246,12 @@ function convertToDate(v) {
  * @param options {{}} the Map in which the new arguments will be pushed.
  */
 export function generateTriggerMailTable(options, prefix, rows) {
-    rows.forEach((row, ri) => {
-        if (ri <= 7) row.forEach((v, ci) => {
-            if (v != null && ci <= 4) {
+    for (let ri = 0; ri < rows.length && ri <= 7; ri++) {
+        const row = rows[ri];
+        for (let ci = 0; ci < row.length && ci <= 4; ci++) {
+            const v = row[ci];
+            if (v != null)
                 options[`${prefix}${ri + 1}${ci + 1}`] = String(typeof v === "object" && v && "value" in v ? v.value : v);
-            }
-        });
-    });
+        }
+    }
 }

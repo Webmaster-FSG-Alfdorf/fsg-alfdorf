@@ -3,7 +3,7 @@ import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
-import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable, generateTriggerMailTable } from 'backend/common.jsw';
+import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
 let editor;
 
@@ -64,13 +64,10 @@ $w.onReady(function () {
             textResponse: $w("#textResponse"),
             buttonSave: $w("#buttonSave"),
 
-            onGenerateEmailOptions: async (item) => {
-                const options = {};
-                await generateTriggerMailTable(options, "a", generateItemDiff(item));
-                await generateTriggerMailTable(options, "b", await generateCostsTable(item));
-                console.log("have options:", options);
-                return options;
-            },
+            onGenerateEmailOptions: async (item) => ({
+                ...editor.convertToEmailOptions("a", editor.getSummary(item)),
+                ...editor.convertToEmailOptions("b", await generateCostsTable(item))
+            }),
 
             messages: {
                 itemSaved: { emailId: "ReservationUpdated", automaticMail: true },
@@ -80,8 +77,8 @@ $w.onReady(function () {
             translatedMessages: {
                 itemName: "Reservierung",
                 messageIds: {
-                    itemSaved: "✔ Vielen Dank! Ihre Anfrage wurde gesendet:\nKeys:{itemKeys}\nInput:{input}\nItem:{item}\nDiff User:{diff}\nDiff Intern:{diffIntern}",  //TODO
-                    itemSavedDetails: "{input}",
+                    itemSaved: "✔ Vielen Dank! Ihre Anfrage wurde gesendet:\nKeys:{itemKeys}\nInput:{summary}\nItem:{item}\nDiff User:{diff}\nDiff Intern:{diffIntern}",  //TODO
+                    itemSavedDetails: "{summary}",
                     itemSaveError: "✖ Anfrage konnte nicht gesendet werden.",
                 }
             },
@@ -108,19 +105,22 @@ $w.onReady(function () {
                     minAllowed: incUTCDate(curUTC, -31),
                     maxAllowed: incUTCDate(curUTC, 62),
                     onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
-                    onChanged: async (item) => await updateCostsTable(item)
+                    onChanged: async (item) => await updateCostsTable(item),
+                    onDiffValue: (item) => xxx, //TODO full date
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
                     default: "2", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
+                    showToUser: false,
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
                     default: "23", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
+                    showToUser: false,
                 },
                 "#inputAdults": {
                     field: "cntAdults",
@@ -135,12 +135,14 @@ $w.onReady(function () {
                 },
                 "#inputFirstName": {
                     field: "firstName",
-                    type: FieldType.STRING
+                    type: FieldType.STRING,
+                    onDiffValue: (item) => item.firstName + " " + item.lastName,
                 },
                 "#inputLastName": {
                     field: "lastName",
                     required: true,
-                    type: FieldType.STRING
+                    type: FieldType.STRING,
+                    showToUser: false,
                 },
                 "#inputMail": {
                     field: "email",
@@ -253,21 +255,4 @@ async function updateCostsTable(item) {
         { label: "Gesamt", align: "right" },
     ];
     $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
-}
-
-function generateItemDiff(item) { //TODO remove
-    return [
-        ["Status", item.state],
-        ["Unterkunft", "xxx"],
-        ["Datum", dateRangeToString(item.dateFrom, item.dateTo)],
-        ["Erwachsene", item.cntAdults],
-        ["Kinder", item.cntChildren],
-        ["Name", item.firstName + " " + item.lastName],
-        ["Email", item.email],
-        ["Telefon", item.phoneNumber],
-        ["Adresse", item.address?.formatted],
-        ["Notiz", item.note],
-        ["Pfand", item.deposit],
-        ["Bezahlt", item.paidSumup],
-    ];
 }

@@ -1071,17 +1071,27 @@ export class CmsEditor {
     }
 
     /**
-     * List all fields in same format as returned from getDiff.
+     * List all fields.
      * @param {*} scope
+     * @param {Object} item
      * @param {boolean} [onlyShowToUserFields=false] if true, only fields with showToUser == true will be returned
      * @returns {Promise<any[]>}
      */
-    getSummary(scope, onlyShowToUserFields = false) {
-        const currentItem = this.ds.getCurrentItem();
-        let res = [];
+    getSummary(scope, item, onlyShowToUserFields = false, formatHTML = null) {
+        const res = [
+            [
+                { label: this._getTranslatedMessage("input_caption", {}, item), align: "right", bold: true },
+                { label: this._getTranslatedMessage("input_value", {}, item), bold: true },
+            ]
+        ];
         for (const cfg of Object.values(this.cmsSchema)) {
             if (!onlyShowToUserFields || cfg.showToUser)
-                res.push([cfg.label, this._diffValue(cfg, scope, currentItem)]);
+                res.push(
+                    [
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: cfg.label },
+                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: this._diffValue(cfg, scope, item) }
+                    ]
+                );
             //TODO recurse into receiver fields? also for getDiff?
         }
         return res;
@@ -1107,7 +1117,6 @@ export class CmsEditor {
      * @returns {Promise<Object|false>}
      */
     async saveItem() {
-        console.log("saveItem", this.getSummary($w));
         this.isSaving = true;
         let savedItem = null;
         try {
@@ -1151,11 +1160,11 @@ export class CmsEditor {
      * Revert changes on dataset item and refresh UI.
      */
     async revertItem() {
-        console.log("revertItem", this.getSummary($w));
+        console.log("revertItem");
         await this.flushDebounce(false);
         this.collapseResponse();
         await this.ds.revert();
-        console.log("item reverted", this.getSummary($w));
+        console.log("item reverted");
         this.onAfterReverted();
         await this.showMessage("itemReverted", this.ds.getCurrentItem());
         for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
@@ -1171,7 +1180,7 @@ export class CmsEditor {
         if (this.lastDiff.diffIntern.length == 0 || await this.saveItem()) {
             console.log("item saved before creating new item");
             const newItem = await this.ds.new();
-            console.log("item created", this.getSummary($w));
+            console.log("item created");
             await this.showMessage("itemCreated", newItem);
             await this.refreshUI();
             for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
@@ -1230,7 +1239,7 @@ export class CmsEditor {
                 console.log("navigateTo current item index", index);
                 await this.ds.setCurrentItemIndex(index);
                 await this.refreshUI();
-                console.log("navigated to item", this.getSummary($w));
+                console.log("navigated to item");
             } else {
                 console.error("navigateTo cannot find among", result.items.length, "items");
             }
@@ -1598,14 +1607,12 @@ export class CmsEditor {
             return res;
         }
 
-        if (formatHTML != null) {
-            msg = escape(msg);
-        }
+        if (formatHTML != null) msg = `<span${this._clsStyle(formatHTML)}>${escape(msg)}</span>`;
         for (const [placeholder, valueOrFunc] of Object.entries(replacements)) {
             const pattern = `{${placeholder}}`;
             if (msg.includes(pattern)) {
-                let formatted = "";
                 const value = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
+                let formatted = "";
                 if (formatHTML == null)
                     formatted = Array.isArray(value) ? value.map(l => Array.isArray(l) ? l.join("\t") : String(l)).join("\n") : String(value);
                 else if (Array.isArray(value) && value.length > 0)
@@ -1615,7 +1622,6 @@ export class CmsEditor {
                 msg = msg.replaceAll(pattern, formatted);
             }
         }
-        if (formatHTML != null) msg = `<span${this._clsStyle(formatHTML)}>${msg}</span>`;
         return msg;
     }
 
@@ -1642,16 +1648,9 @@ export class CmsEditor {
                 diff: this.lastDiff.diffUser,
                 diffUser: this.lastDiff.diffUser,
                 diffIntern: this.lastDiff.diffIntern,
-                input: () => [
-                    [
-                        { label: this._getTranslatedMessage("input_caption", cfg, item), align: "right", bold: true },
-                        { label: this._getTranslatedMessage("input_value", cfg, item), bold: true },
-                    ],
-                    ...Object.values(this.cmsSchema).map((cfg) => [
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML.color, value: cfg.label },
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML.color, value: this._diffValue(cfg, $w, item) }
-                    ])
-                ],
+                summary: () => this.getSummary($w, item, true, formatHTML),
+                summaryUser: () => this.getSummary($w, item, true, formatHTML),
+                summaryIntern: () => this.getSummary($w, item, false, formatHTML),
                 item: Object.entries(item),
                 itemKeys: Object.keys(item)
             },
@@ -1667,4 +1666,16 @@ export class CmsEditor {
             console.error("Cannot find datePicker element", cfg.datePicker);
     }
 
+    convertToEmailOptions(prefix, rows) {
+        const options = {};
+        for (let ri = 0; ri < rows.length && ri <= 7; ri++) {
+            const row = rows[ri];
+            for (let ci = 0; ci < row.length && ci <= 4; ci++) {
+                const v = row[ci];
+                if (v != null)
+                    options[`${prefix}${ri + 1}${ci + 1}`] = String(typeof v == "object" && v && "value" in v ? v.value : v);
+            }
+        }
+        return options;
+    }
 }
