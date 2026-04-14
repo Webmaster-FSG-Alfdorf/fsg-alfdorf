@@ -71,7 +71,7 @@ $w.onReady(function () {
                 },
                 addButton: "#btnDateAdd",
                 removeButton: "#btnDateRemove",
-                onDiffValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
+                onPrintValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
                 onChanged: (item, values) => refreshDateRangeText(values),
             },
             "#sportsField": {

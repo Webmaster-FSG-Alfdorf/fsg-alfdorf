@@ -17,13 +17,14 @@ import { sendMail } from 'backend/common.jsw';
  * @property {string} [prefix] - String prepended to the display value (default "").
  * @property {string} [suffix] - String appended to the display value (default "").
  * @property {boolean} [collectDiff] - Whether to include this field in change tracking (default true).
- * @property {boolean} [showToUser] - Whether to show changes in this field to the end user (default true).
+ * @property {boolean} [collectSummary] - Whether to include this field in summaries (default true).
+ * @property {boolean} [showToUser] - Whether to show diff and summary for this field to the end user (default true).
  * @property {string} [linkButton] - ID of a button (e.g., "#btn") to link to the field's value.
  * @property {string} [linkPrefix] - Prefix for the URL in linkButton (e.g., "mailto:").
- * @property {Function} [onDiffValue] - (item) => string: Custom logic to format the value for display/logs.
+ * @property {Function} [onPrintValue] - (item) => string: Custom logic to format the value for diff and summary display.
  * @property {Function} [onChanged] - (item, values) => void: Callback triggered after the field value has been updated.
- * @property {Function} [onFormatValue] - (values) => any: For FieldType.CUSTOM: Extract data from the CMS item to be displayed in the UI element.
- * @property {Function} [onParseUserInput] - (value) => any: For FieldType.CUSTOM: Extract data from the UI element to be stored in the CMS item.
+ * @property {Function} [onFormatCustomValue] - (values) => any: For FieldType.CUSTOM: Extract data from the CMS item to be displayed in the UI element.
+ * @property {Function} [onParseCustomUserInput] - (value) => any: For FieldType.CUSTOM: Extract data from the UI element to be stored in the CMS item.
  * @property {number} [fractionDigits] - For FieldType.NUMBER: Number of decimals (default 0).
  * @property {string} [boolTrue] - For FieldType.BOOLEAN: Label for true (default "Ja").
  * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
@@ -275,6 +276,7 @@ export class CmsEditor {
         cfg.prefix ??= "";
         cfg.suffix ??= "";
         cfg.collectDiff ??= true;
+        cfg.collectSummary ??= true;
         cfg.showToUser ??= true;
         switch (cfg.type) {
             case FieldType.BOOLEAN:
@@ -305,9 +307,9 @@ export class CmsEditor {
                 cfg.selIdx = -1;
                 break;
             case FieldType.CUSTOM:
-                cfg.onFormatValue ??= (values) => values;
-                cfg.onParseUserInput ??= (value) => value;
-                cfg.onCheckHasValue ??= (item) => true;
+                cfg.onFormatCustomValue ??= (values) => values;
+                cfg.onParseCustomUserInput ??= (value) => value;
+                cfg.onCheckCustomHasValue ??= (item) => true;
                 break;
             case FieldType.REPEATER:
                 cfg.inputs ??= {};
@@ -368,8 +370,8 @@ export class CmsEditor {
         el._cmsInitialized = true;
 
         if (cfg.resetButton) {
-            const el = scope(cfg.resetButton);
-            if (el.id) el.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
+            const resetEl = scope(cfg.resetButton);
+            if (resetEl.id) resetEl.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
             else console.warn(cfg.resetButton, "not found in DOM");
         }
 
@@ -382,8 +384,8 @@ export class CmsEditor {
                         this._updateUiFromData(cfgSub, $item, rowData, null, rowData._id);
                     }
                     if (cfg.removeButton) {
-                        const el = $item(cfg.removeButton);
-                        if (el.id) el.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
+                        const elRemove = $item(cfg.removeButton);
+                        if (elRemove.id) elRemove.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
                         else console.warn(cfg.removeButton, "not found in DOM");
                     }
                 } catch (e) {
@@ -392,8 +394,8 @@ export class CmsEditor {
                 }
             });
             if (cfg.addButton) {
-                const el = scope(cfg.addButton);
-                if (el.id) el.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
+                const addEl = scope(cfg.addButton);
+                if (addEl.id) addEl.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
                 else console.warn(cfg.addButton, "not found in DOM");
             }
             return;
@@ -656,9 +658,9 @@ export class CmsEditor {
                 }
                 case FieldType.CUSTOM:
                     try {
-                        return { val: await cfg.onParseUserInput?.(el.value) };
+                        return { val: await cfg.onParseCustomUserInput?.(el.value) };
                     } catch (e) {
-                        console.warn("Error in onParseUserInput for", cfg.id, ":", e);
+                        console.warn("Error in onParseCustomUserInput for", cfg.id, ":", e);
                         return { val: item?.[cfg.field] };
                     }
                 //            case FieldType.REPEATER:
@@ -710,7 +712,7 @@ export class CmsEditor {
                 const gallery = this._findRecursive(el, "$w.Gallery");
                 return gallery && "items" in gallery && gallery.items.length > 0;
             case FieldType.CUSTOM:
-                return !!cfg.onCheckHasValue?.(item);
+                return !!cfg.onCheckCustomHasValue?.(item);
             case FieldType.REPEATER:
                 return el.data.length > 0; //TODO resurse into elements?
             case FieldType.CAPTCHA:
@@ -948,9 +950,9 @@ export class CmsEditor {
                 break;
             case FieldType.CUSTOM:
                 try {
-                    val0 = await cfg.onFormatValue?.(values);
+                    val0 = await cfg.onFormatCustomValue?.(values);
                 } catch (e) {
-                    console.warn("Error in onFormatValue for", cfg.id, ":", e);
+                    console.warn("Error in onFormatCustomValue for", cfg.id, ":", e);
                     val0 = null;
                 }
                 break;
@@ -1010,15 +1012,15 @@ export class CmsEditor {
     }
 
     /**
-     * Formats value as currently set in item for diff output or input listing.
+     * Formats the value from in item for diff or summary output.
      * @param {CmsFieldConfig} cfg
      * @param {*} scope
      * @param {Object} item
-     * @returns {Promise<string>}
+     * @returns {string}
      */
-    _diffValue(cfg, scope, item) {
+    _printValue(cfg, scope, item) {
         if (!cfg) return "";
-        if (cfg.onDiffValue) return cfg.onDiffValue(item);
+        if (cfg.onPrintValue) return cfg.onPrintValue(item);
         if (!item) return "";
         const values = cfg.fields.map(f => item?.[f]);
         const val0 = values[0];
@@ -1035,7 +1037,7 @@ export class CmsEditor {
             [FieldType.TIME_OF_DATE]: () => val0 ? `${this._padTime(new Date(val0).getHours())}:${this._padTime(new Date(val0).getMinutes())}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(val0).join(", "),
             [FieldType.IMAGES]: () => this.ensureArray(val0).map((img) => img?.src || img?.fileUrl || "").join("|"),
-            [FieldType.CUSTOM]: () => cfg.onFormatValue?.(values),
+            [FieldType.CUSTOM]: () => cfg.onFormatCustomValue?.(values),
         };
         const res = val0 == null ? null : (formatters[cfg.type] || (() => String(val0)))();
         return res != null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
@@ -1044,7 +1046,7 @@ export class CmsEditor {
     /**
      * Compare original item and current item for changed fields.
      * @param {*} scope
-     * @returns {Promise<{diffIntern:any[],diffUser:any[]}>}
+     * @returns {{diffIntern:any[],diffUser:any[]}}
      */
     getDiff(scope) {
         const item = this.ds.getCurrentItem();
@@ -1057,13 +1059,14 @@ export class CmsEditor {
         const diffIntern = [caption];
         const diffUser = [caption];
         for (const cfg of Object.values(this.cmsSchema)) {
-            if (!cfg.collectDiff) return;
-            const vOrg = this._diffValue(cfg, scope, this.originalItem);
-            const vCur = this._diffValue(cfg, scope, item);
-            if (vOrg != vCur) {
-                const d = [cfg.label, vOrg, { value: "->", bold: true }, vCur];
-                diffIntern.push(d);
-                if (cfg.showToUser) diffUser.push(d);
+            if (cfg.collectDiff) {
+                const vOrg = this._printValue(cfg, scope, this.originalItem);
+                const vCur = this._printValue(cfg, scope, item);
+                if (vOrg != vCur) {
+                    const d = [cfg.label, vOrg, { value: "->", bold: true }, vCur];
+                    diffIntern.push(d);
+                    if (cfg.showToUser) diffUser.push(d);
+                }
             }
         }
         this.lastDiff = { diffIntern, diffUser };
@@ -1084,16 +1087,13 @@ export class CmsEditor {
                 { label: this._getTranslatedMessage("input_value", {}, item), bold: true },
             ]
         ];
-        for (const cfg of Object.values(this.cmsSchema)) {
-            if (!onlyShowToUserFields || cfg.showToUser)
-                res.push(
-                    [
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: cfg.label },
-                        { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: this._diffValue(cfg, scope, item) }
-                    ]
-                );
-            //TODO recurse into receiver fields? also for getDiff?
-        }
+        for (const cfg of Object.values(this.cmsSchema))
+            if (cfg.collectSummary && (!onlyShowToUserFields || cfg.showToUser)) res.push(
+                [
+                    { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: cfg.label },
+                    { color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "", value: this._printValue(cfg, scope, item) }
+                ]
+            );
         return res;
     }
 
@@ -1120,7 +1120,6 @@ export class CmsEditor {
         this.isSaving = true;
         let savedItem = null;
         try {
-            await this.updateButtonStates();
             await this.flushDebounce();
             const item = this.ds.getCurrentItem();
             console.debug(`saveItem:\n${JSON.stringify(item, null, 2)}`);
@@ -1130,8 +1129,10 @@ export class CmsEditor {
             for (const cfg of Object.values(this.cmsSchema)) allErrors.push(...await this._validate(cfg, $w, item));
             if (allErrors.length > 0) {
                 await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("\n") });
+                await this.updateButtonStates();
                 return false;
             }
+            await this.updateButtonStates();
 
             this.collapseResponse();
             this.getDiff($w);
@@ -1420,15 +1421,16 @@ export class CmsEditor {
 
         const isNew = !this.ds.getCurrentItem()?._createdDate;
         const isBusy = this.isSaving;
+        const allValid = Object.values(this.cmsSchema).every(cfg => !cfg.lastValidationFailed);
 
-        console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, diffIntern: this.lastDiff.diffIntern, isNew, isBusy });
-        this._setEnabled(this.buttonSave, hasChanges && !isBusy);
-        this._setEnabled(this.buttonRevert, hasChanges && !isBusy);
-        this._setEnabled(this.buttonNew, !isNew && !isBusy);
-        this._setEnabled(this.buttonRemove, !isNew && !isBusy);
-        this._setEnabled(this.buttonPrev, !hasChanges && !isBusy && currentIndex > 1); // don't navigate to -- new--
-        this._setEnabled(this.buttonNext, !hasChanges && !isBusy && currentIndex < totalCount - 1);
-        this._setEnabled(this.itemSelector, !hasChanges && !isBusy);
+        console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, diffIntern: this.lastDiff.diffIntern, isNew, isBusy, allValid });
+        this._setEnabled(this.buttonSave, !isBusy && hasChanges && allValid);
+        this._setEnabled(this.buttonRevert, !isBusy && hasChanges);
+        this._setEnabled(this.buttonNew, !isBusy && !isNew);
+        this._setEnabled(this.buttonRemove, !isBusy && !isNew);
+        this._setEnabled(this.buttonPrev, !isBusy && !hasChanges && currentIndex > 1); // don't navigate to -- new--
+        this._setEnabled(this.buttonNext, !isBusy && !hasChanges && currentIndex < totalCount - 1);
+        this._setEnabled(this.itemSelector, !isBusy && !hasChanges);
     }
 
     _setEnabled(element, enabled) {
@@ -1569,7 +1571,7 @@ export class CmsEditor {
             const alignments = [];
             let res = "</span><table>";
             // first line is a header if it contains at least one dictionary with label: as entry
-            const hasHeader = value[0].length > 0 && value[0].some(v => typeof v == "object" && v && "label" in v);
+            const hasHeader = value[0].some(v => typeof v == "object" && v && "label" in v);
             if (hasHeader) {
                 res += "<thead><tr>";
                 for (const v of value[0]) {
@@ -1666,15 +1668,22 @@ export class CmsEditor {
             console.error("Cannot find datePicker element", cfg.datePicker);
     }
 
-    convertToEmailOptions(prefix, rows) {
+    convertToEmailOptions(prefix, rows, maxRows = 8, maxCols = 4) {
         const options = {};
-        for (let ri = 0; ri < rows.length && ri <= 7; ri++) {
-            const row = rows[ri];
-            for (let ci = 0; ci < row.length && ci <= 4; ci++) {
+        let ri = 0;
+        if (Array.isArray(rows)) for (let i = 0; i < rows.length && ri < maxRows; i++) {
+            const row = rows[i];
+            if (!Array.isArray(row)) continue;
+            const hasHeader = row.some(v => typeof v == "object" && v && "label" in v);
+            if (hasHeader) continue; // assume headers are printed directly in the triggered email
+            for (let ci = 0; ci < row.length && ci <= maxCols; ci++) {
                 const v = row[ci];
-                if (v != null)
-                    options[`${prefix}${ri + 1}${ci + 1}`] = String(typeof v == "object" && v && "value" in v ? v.value : v);
+                if (v != null) {
+                    const s = typeof v == "object" && v && "value" in v ? v.value : v;
+                    options[`${prefix}${ri + 1}${ci + 1}`] = typeof s == "object" || Array.isArray(s) ? JSON.stringify(s, null, 2) : String(s);
+                }
             }
+            ++ri;
         }
         return options;
     }

@@ -88,9 +88,9 @@ $w.onReady(function () {
                     fields: ["lodging", "lodgingSub"],
                     type: FieldType.CUSTOM,
                     required: true,
-                    onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
-                    onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
-                    onDiffValue: (item) => editor.lodgingNames[item?.lodging + "|" + item?.lodgingSub] ?? "",
+                    onParseCustomUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
+                    onFormatCustomValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
+                    onPrintValue: (item) => editor.lodgingNames[item?.lodging + "|" + item?.lodgingSub] ?? "",
                     onCustomValidation: async (item) => await validateLodging(item),
                     onChanged: async (item) => {
                         if (item) editor.lodgingNames[item.lodging + "|" + item.lodgingSub] = await generateLodgingName(item);
@@ -106,21 +106,23 @@ $w.onReady(function () {
                     maxAllowed: incUTCDate(curUTC, 62),
                     onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
                     onChanged: async (item) => await updateCostsTable(item),
-                    onDiffValue: (item) => xxx, //TODO full date
+                    onPrintValue: (item) => item && (item.dateFrom || item.dateTo) ? dateRangeToString(item.dateFrom, item.dateTo, { minute: null }) : "", // full date
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
                     default: "2", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    showToUser: false,
+                    collectSummary: false,
+                    collectDiff: false
                 },
                 "#inputDepartureTime": {
                     field: "dateTo",
                     default: "23", //TODO
                     required: true,
                     type: FieldType.HOURS_OF_DATE,
-                    showToUser: false,
+                    collectSummary: false,
+                    collectDiff: false
                 },
                 "#inputAdults": {
                     field: "cntAdults",
@@ -136,13 +138,14 @@ $w.onReady(function () {
                 "#inputFirstName": {
                     field: "firstName",
                     type: FieldType.STRING,
-                    onDiffValue: (item) => item.firstName + " " + item.lastName,
+                    onPrintValue: (item) => item ? `${item.firstName} ${item.lastName}` : "",
                 },
                 "#inputLastName": {
                     field: "lastName",
                     required: true,
                     type: FieldType.STRING,
-                    showToUser: false,
+                    collectSummary: false,
+                    collectDiff: false
                 },
                 "#inputMail": {
                     field: "email",
@@ -175,7 +178,8 @@ $w.onReady(function () {
                     label: "Captcha",
                     required: true,
                     type: FieldType.CAPTCHA, //TODO
-                    showToUser: false,
+                    collectDiff: false,
+                    collectSummary: false
                 }
             },
 
@@ -254,5 +258,5 @@ async function updateCostsTable(item) {
         { label: "Einzelpreis", align: "right" },
         { label: "Gesamt", align: "right" },
     ];
-    $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
+    $w("#textReservationPrice").html = item ? editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {}) : "";
 }

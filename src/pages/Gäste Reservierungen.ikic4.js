@@ -82,9 +82,9 @@ $w.onReady(function () {
                     fields: ["lodging", "lodgingSub"],
                     type: FieldType.CUSTOM,
                     required: true,
-                    onParseUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
-                    onFormatValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
-                    onDiffValue: (item) => item?.lodgingName ?? "",
+                    onParseCustomUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
+                    onFormatCustomValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
+                    onPrintValue: (item) => item?.lodgingName ?? "",
                     onCustomValidation: async (item) => await validateLodging(item),
                     onChanged: async (item) => {
                         if (item) item.lodgingName = await generateLodgingName(item);
