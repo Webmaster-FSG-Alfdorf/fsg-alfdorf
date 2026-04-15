@@ -79,7 +79,7 @@ $w.onReady(function () {
             translatedMessages: {
                 itemName: "Reservierung",
                 messageIds: {
-                    itemSaved: "✔ Vielen Dank! Ihre Anfrage wurde gesendet:\nKeys:{itemKeys}\nInput:{summary}\nItem:{item}\nDiff User:{diff}\nDiff Intern:{diffIntern}",  //TODO
+                    itemSaved: "✔ Vielen Dank! Ihre Anfrage wurde gesendet",
                     itemSavedDetails: "{summary}",
                     itemSaveError: "✖ Anfrage konnte nicht gesendet werden.",
                 }

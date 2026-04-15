@@ -46,6 +46,9 @@ const tooltipStyle = {
     border: '1px solid #999',
     position: 'absolute',
     maxWidth: '220px',
+    maxHeight: '300px',
+    overflowX: 'hidden',
+    overflowY: 'auto',
     lineHeight: '1.4',
     zIndex: Z_INDEX_TOOLTIP,
     pointerEvents: "auto",
@@ -74,12 +77,19 @@ function drawCMSContent(areasCMS) {
             this.div = document.createElement('div');
             Object.assign(this.div.style, tooltipStyle);
 
-            let content = `<div id="close-tooltip" style="position:absolute; top:5px; right:10px; cursor:pointer; font-weight:bold; font-size:18px; color:#999;">×</div>`;
-
-            content += `<div style="margin-right:15px;"><strong>${this.name}</strong><br><span style="font-size:13px; color:#666;">${this.descr}</span></div>`;
+            let content = `
+                <div id="close-tooltip" style="position:absolute; top:5px; right:10px; cursor:pointer; font-weight:bold; font-size:18px; color:#999;">x</div>
+                <div style="margin-right:15px;">
+                ${this.name ? `<strong>${this.name}</strong>` : ""}
+                ${this.descr ? `<br><span style="font-size:13px; color:#666;">${this.descr}</span>` : ""}
+                </div>
+                <div class="tooltip-scroll" style="margin-top:8px; max-height:200px; overflow-y:auto;">
+            `;
 
             for (const image of this.images)
                 content += `<img src="${image}" style="width:100%; height:auto; margin-top:8px; border-radius:4px; display:block;">`;
+
+            content += "</div>";
 
             if (this.url)
                 content += `<button id="tooltip-btn" style="margin-top:10px; width:100%; padding:6px; cursor:pointer; background:#2196f3; color:white; border:none; border-radius:4px;">Details</button>`;
@@ -116,7 +126,7 @@ function drawCMSContent(areasCMS) {
         }
     }
 
-    let activeTooltip = null; // Globale Referenz, um immer nur einen Tooltip offen zu haben
+    let activeTooltip = null;
     let hoverLabel = null;
     let hoverLabelContent = null;
 
@@ -391,17 +401,4 @@ function drawCMSContent(areasCMS) {
     <script src="https://webmaster-fsg-alfdorf.github.io/fsg-alfdorf/src/public/interactivemap.js"></script>
 </body>
 </html>
-*/
-
-/*
-import wixData from 'wix-data';
-
-$w.onReady(async function () {
-    $w("#htmlMap").onMessage(async (event) => {
-        if (event.data == "ready") {
-            const { items } = await wixData.query("mapAreas").limit(1000).find();
-            $w("#htmlMap").postMessage(items);
-        }
-    });
-});
 */
