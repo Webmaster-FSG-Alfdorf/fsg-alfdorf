@@ -97,7 +97,7 @@ export const FormatTypesNumeric = {
 };
 
 /**
- * @param {object} start start date, shall be a Dat object or a string parseable to a Date
+ * @param {object} start start date, shall be a Date object or a string parseable to a Date
  * @param {object} end optional end date to print a range instead of a single date
  * @param {object} options options for the date formatting
  * @param {string|string[]} options.locales the locale(s) to use for formatting, defaults to "de-DE"
@@ -108,6 +108,8 @@ export const FormatTypesNumeric = {
  * @param {FormatTypesNumeric} options.hour the format of the hour, defaults to "2-digit"
  * @param {FormatTypesNumeric} options.minute the format of the minute, defaults to "2-digit"
  * @param {FormatTypesNumeric} options.second the format of the second, defaults to "none"
+ * @param {object} options.start overrides for start date formatting only
+ * @param {object} options.end overrides for end date formatting only
  * @returns {string} — human readable string of the range
  */
 export function dateRangeToString(
@@ -121,31 +123,46 @@ export function dateRangeToString(
         year = FormatTypesNumeric.numeric,
         hour = FormatTypesNumeric.twoDigit,
         minute = FormatTypesNumeric.twoDigit,
-        second = FormatTypesNumeric.none
+        second = FormatTypesNumeric.none,
+        start: startOverrides = {},
+        end: endOverrides = {}
     } = {}) {
     let res = "";
     let df = { timeZone: "Europe/Berlin" };
     const dStart = start ? new Date(start) : null;
     if (dStart && !isNaN(dStart.getTime())) {
-        if (weekday != null) df.weekday = weekday;
-        if (day != null) df.day = day;
-        if (month != null) df.month = month;
-        if (year != null) df.year = year;
-        if (hour != null) df.hour = hour;
-        if (minute != null) df.minute = minute;
-        if (second != null) df.second = second;
+        const ovr = (fmt, override) => override === undefined ? fmt : override;
+        const setFmt = (obj, key, fmt, override) => {
+            const v = ovr(fmt, override[key]);
+            if (v != null) obj[key] = v;
+        };
+        setFmt(df, "weekday", weekday, startOverrides);
+        setFmt(df, "day", day, startOverrides);
+        setFmt(df, "month", month, startOverrides);
+        setFmt(df, "year", year, startOverrides);
+        setFmt(df, "hour", hour, startOverrides);
+        setFmt(df, "minute", minute, startOverrides);
+        setFmt(df, "second", second, startOverrides);
         res += dStart.toLocaleString(locales, df);
-        const dEnd = new Date(end);
+        const dEnd = end ? new Date(end) : null;
         if (dEnd && !isNaN(dEnd.getTime())) {
-            // Use local methods for comparisons to match display timezone
+            const showDay = ovr(weekday, endOverrides.weekday) != null || ovr(day, endOverrides.day) != null || ovr(month, endOverrides.month) != null || ovr(year, endOverrides.year) != null;
+            const showTime = ovr(hour, endOverrides.hour) != null || ovr(minute, endOverrides.minute) != null || ovr(second, endOverrides.second) != null;
             const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
             const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
-            const showDay = weekday != null || day != null || month != null || year != null;
-            const showTime = hour != null || minute != null || second != null;
             if ((showDay && !sameDay) || (showTime && !sameTime)) {
                 res += " - ";
-                if (sameDay) res += dEnd.toLocaleString(locales, Object.fromEntries(Object.entries(df).filter(([k]) => !['weekday', 'day', 'month', 'year'].includes(k))));
-                else res += dEnd.toLocaleString(locales, df);
+                const dfEnd = { timeZone: "Europe/Berlin" };
+                if (!sameDay) {
+                    setFmt(dfEnd, "weekday", weekday, endOverrides);
+                    setFmt(dfEnd, "day", day, endOverrides);
+                    setFmt(dfEnd, "month", month, endOverrides);
+                    setFmt(dfEnd, "year", year, endOverrides);
+                }
+                setFmt(dfEnd, "hour", hour, endOverrides);
+                setFmt(dfEnd, "minute", minute, endOverrides);
+                setFmt(dfEnd, "second", second, endOverrides);
+                res += dEnd.toLocaleString(locales, dfEnd);
             }
         }
     }

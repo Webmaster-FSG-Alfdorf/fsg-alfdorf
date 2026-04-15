@@ -2,7 +2,7 @@ import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
 import { CmsEditor, FieldType } from 'public/cms_edit.js';
-import { dateRangeToString, FormatTypesMonth, incUTCDate, nightsBetween } from 'public/cms.js';
+import { dateRangeToString, FormatTypesMonth, FormatTypesNumeric, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
 let editor;
@@ -56,6 +56,8 @@ $w.onReady(function () {
         });
 
         const curUTC = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0));
+        const maxUTC = new Date(curUTC);
+        maxUTC.setUTCMonth(maxUTC.getUTCMonth() + 6);
 
         editor = new CmsEditor({
             cmsName: "guestReservations",
@@ -65,7 +67,7 @@ $w.onReady(function () {
             buttonSave: $w("#buttonSave"),
 
             onGenerateEmailOptions: async (item) => ({
-                ...editor.convertToEmailOptions("a", editor.getSummary(item)),
+                ...editor.convertToEmailOptions("a", editor.getSummary($w, item)),
                 ...editor.convertToEmailOptions("b", await generateCostsTable(item))
             }),
 
@@ -102,11 +104,21 @@ $w.onReady(function () {
                     type: FieldType.DATE_RANGE,
                     datePicker: "#htmlDate",
                     required: true,
-                    minAllowed: incUTCDate(curUTC, -31),
-                    maxAllowed: incUTCDate(curUTC, 62),
+                    minAllowed: curUTC,
+                    maxAllowed: maxUTC,
                     onDisplayedDateChanged: async () => await validateLodging(editor.ds.getCurrentItem()),
                     onChanged: async (item) => await updateCostsTable(item),
-                    onPrintValue: (item) => item && (item.dateFrom || item.dateTo) ? dateRangeToString(item.dateFrom, item.dateTo, { minute: null }) : "", // full date
+                    onPrintValue: (item) => {
+                        if (!item || !item.dateFrom || !item.dateTo) return "";
+                        const haveAT = new Date(item.dateFrom).getHours() != 2;
+                        const haveDT = new Date(item.dateTo).getHours() != 23;
+                        return dateRangeToString(item.dateFrom, item.dateTo, {
+                            hour: null,
+                            minute: null,
+                            start: { hour: haveAT ? FormatTypesNumeric.twoDigit : null, minute: haveAT ? FormatTypesNumeric.twoDigit : null },
+                            end: { hour: haveDT ? FormatTypesNumeric.twoDigit : null, minute: haveDT ? FormatTypesNumeric.twoDigit : null }
+                        });
+                    },
                 },
                 "#inputArrivalTime": {
                     field: "dateFrom",
@@ -138,6 +150,7 @@ $w.onReady(function () {
                 "#inputFirstName": {
                     field: "firstName",
                     type: FieldType.STRING,
+                    summaryLabel: "Name",
                     onPrintValue: (item) => item ? `${item.firstName} ${item.lastName}` : "",
                 },
                 "#inputLastName": {
