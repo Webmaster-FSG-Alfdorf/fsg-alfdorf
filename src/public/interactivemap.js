@@ -1,6 +1,6 @@
 /* global google */
 
-const VERSION = 8388; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
+const VERSION = 8389; // displayed in the legend, also used for cache-busting of the JS/CSS files when updated
 
 const DEF_PLACE_SIZE = 9.0; // in meters, used for auto-calculating the width of place polygons based on the segment length and orientation
 const FLASH_DELAY = 500; // ms delay for flashing the polygons on search results
@@ -81,8 +81,8 @@ function drawCMSContent(areasCMS) {
                 <div id="close-tooltip" style="position:absolute; top:5px; right:10px; cursor:pointer; font-weight:bold; font-size:18px; color:#999;">x</div>
                 <div style="margin-right:15px;">
                 ${this.name ? `<strong>${this.name}</strong>` : ""}
-                ${this.descr ? `<br><span style="font-size:13px; color:#666;">${this.descr}</span>` : ""}
                 </div>
+                ${this.descr ? `<span style="font-size:13px; color:#666;">${this.descr}</span><br>` : ""}
                 <div class="tooltip-scroll" style="margin-top:8px; max-height:200px; overflow-y:auto;">
             `;
 
@@ -108,6 +108,7 @@ function drawCMSContent(areasCMS) {
             this.div.addEventListener('pointerdown', stopEvents);
             this.div.addEventListener('mousedown', stopEvents);
             this.div.addEventListener('dblclick', stopEvents);
+            this.div.addEventListener('wheel', stopEvents, { passive: false });
 
             this.getPanes().floatPane.appendChild(this.div);
         }
