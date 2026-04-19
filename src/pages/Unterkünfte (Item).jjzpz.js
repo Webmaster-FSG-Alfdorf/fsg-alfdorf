@@ -2,9 +2,9 @@ import wixLocation from 'wix-location';
 
 $w.onReady(function () {
     $w("#datasetLodgings").getItems(0, 1).then(async result => {
-            if (!result.items || result.items.length == 0) {
-                console.log("No items found for #datasetLodgings");
-                return;
+        if (!result.items || result.items.length == 0) {
+            console.log("No items found for #datasetLodgings");
+            return;
             }
             const lodging = result.items[0];
 

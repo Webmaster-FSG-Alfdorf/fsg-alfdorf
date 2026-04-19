@@ -43,19 +43,19 @@ $w.onReady(function () {
                         field: "recurrenceType",
                         type: FieldType.SELECT,
                         default: "daily",
-                        isVisible: (val) => val?.recurrenceInterval > 0
+                        visible: (item) => item?.recurrenceInterval > 0
                     },
                     "#checkboxDatesWeekdays": {
                         field: "recurrenceDays",
                         type: FieldType.MULTI_SELECT,
                         required: true,
-                        isVisible: (val) => val?.recurrenceInterval > 0 && val?.recurrenceType == "weekly"
+                        visible: (item) => item?.recurrenceInterval > 0 && item?.recurrenceType == "weekly"
                     },
                     "#dropdownMonthlyRepetition": {
                         field: "monthlyRepetition",
                         type: FieldType.SELECT,
                         default: "weekday",
-                        isVisible: (val) => val?.recurrenceInterval > 0 && val?.recurrenceType == "monthly"
+                        visible: (item) => item?.recurrenceInterval > 0 && item?.recurrenceType == "monthly"
                     },
                     "#pickerDatesEnd": {
                         field: "end",
