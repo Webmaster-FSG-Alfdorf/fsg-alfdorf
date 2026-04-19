@@ -65,7 +65,7 @@ export const FilterType = Object.freeze({
     HAS_SOME: "HAS_SOME",
     GE: "GE",
     LE: "LE",
-    IS_NOT_EMPTY: "IS_NOT_EMPTY"
+    IS_EMPTY: "IS_EMPTY",
 });
 
 export const FilterCombine = Object.freeze({
@@ -114,6 +114,8 @@ export class CmsEditor {
         this.filterSortAscending = config.filterSortAscending || true;
 
         this.itemSelector = config.itemSelector;
+        this.itemRepeater = config.itemRepeater;
+        this.itemRepeaterSummary = config.itemRepeaterSummary;
         this.textResponse = config.textResponse;
         this.buttonSave = config.buttonSave;
         this.buttonRevert = config.buttonRevert;
@@ -149,6 +151,7 @@ export class CmsEditor {
                 itemSelector_createNew: "➕ Neuer Eintrag",
                 error_no_config: "Konfiguration nicht gefunden",
                 itemName: "Eintrag",
+                itemNamePlural: "Einträge",
 
                 diff_caption: "Änderung",
                 diff_from: "Von",
@@ -162,7 +165,7 @@ export class CmsEditor {
                     itemSaved: "✔ Änderungen wurden gespeichert.",
                     itemSavedDetails: "{diff}",
                     itemReverted: "✔ Änderungen wurden verworfen.",
-                    itemRevertedDetails: "",
+                    itemRevertedDetails: "{diff}",
                     itemCreated: "✔ {itemName} wurde new erstellt.",
                     itemCreatedDetails: "",
                     itemRemoved: "✔ {itemName} wurde gelöscht.",
@@ -190,6 +193,13 @@ export class CmsEditor {
                     tooShort: "{label}: ist zu kurz",
                     typeMismatch: "{label}: hat ungültigen Typ",
                     valueMissing: "{label}: ist erforderlich",
+                },
+
+                repeaterSummaries: {
+                    none: "Leider keine passenden {itemNamePlural}",
+                    one: "1 passender {itemName}",
+                    some: "{count} passende {itemNamePlural}",
+                    all: "Alle {count} {itemNamePlural}",
                 }
             },
             config.translatedMessages
@@ -1296,8 +1306,8 @@ export class CmsEditor {
      */
     async updateSelectorList() {
         console.log("updateSelectorList");
-        if (!this.itemSelector) {
-            console.log("no itemSelector");
+        if (!this.itemSelector && !this.itemRepeater) {
+            console.log("no itemSelector or itemRepeater");
             return;
         }
 
@@ -1311,13 +1321,13 @@ export class CmsEditor {
                     case FilterType.GE: return q.ge(f, v);
                     case FilterType.LE: return q.le(f, v);
                     case FilterType.HAS_SOME: return q.hasSome(f, this.ensureArray(v));
-                    case FilterType.IS_NOT_EMPTY: return q.isNotEmpty(f);
+                    case FilterType.IS_EMPTY: return v ? q.isEmpty(f) : q;
                     default: return q;
                 }
             };
 
             const el = $w(cfg.id);
-            if (!el && cfg.type != FilterType.IS_NOT_EMPTY) continue;
+            if (!el) continue;
 
             const val = "checked" in el ? el.checked : el.value;
             if (cfg.skip(val)) continue;
@@ -1351,24 +1361,41 @@ export class CmsEditor {
 
         q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
         q = q.limit(this.filterLimit);
+        console.debug(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
+
+        this._updatingSelector = true;
 
         if (this.itemSelector) try {
-            console.debug(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
             const res = await q.find();
             //console.debug(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
-            this._updatingSelector = true;
             this.itemSelector.options = [
                 { label: this._getTranslatedMessage("itemSelector_createNew"), value: "--new--" },
                 ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
             ];
             this.itemSelector.value = this.ds.getCurrentItem()?._id;
-            this._updatingSelector = false;
-            await this.updateButtonStates();
-        } catch (err) {
-            console.error("updateSelectorList failed", err);
-            this._updatingSelector = false;
-            } else
-            await this.updateButtonStates();
+        } catch (err) { console.error("updateSelectorList failed", err); }
+
+        if (this.itemRepeater) try {
+            const res = await q.find();
+            this.itemRepeater.data = res.items;
+
+            if (this.itemRepeaterSummary) {
+                const count = res.items.length;
+                const key = (() => {
+                    this._getTranslatedMessage()
+                    switch (true) {
+                        case count == 0: return "none";
+                        case count == 1: return "one";
+                        case filtered: return "some"; //TODO
+                        default: return "all";
+                    }
+                })();
+                this.itemRepeaterSummary.html = this._getTranslatedMessage(key, {}, {}, this.translatedMessages.repeaterSummaries, { count }, true);
+            }
+        } catch (err) { console.error("updateSelectorList failed", err); }
+
+        this._updatingSelector = false;
+        await this.updateButtonStates();
     }
 
     /**
@@ -1479,6 +1506,7 @@ export class CmsEditor {
         this._setEnabled(this.buttonRemove, !isBusy && !isNew);
         this._setEnabled(this.buttonPrev, !isBusy && !hasChanges && currentIndex > 1); // don't navigate to -- new--
         this._setEnabled(this.buttonNext, !isBusy && !hasChanges && currentIndex < totalCount - 1);
+        this._setEnabled(this.buttonView, !isBusy && !hasChanges && !isNew);
         this._setEnabled(this.itemSelector, !isBusy && !hasChanges);
     }
 
@@ -1678,6 +1706,7 @@ export class CmsEditor {
                 ...item,
                 ...replacements,
                 itemName: this.translatedMessages.itemName,
+                itemNamePlural: this.translatedMessages.itemNamePlural,
                 diff: this.lastDiff.diffUser,
                 diffUser: this.lastDiff.diffUser,
                 diffIntern: this.lastDiff.diffIntern,

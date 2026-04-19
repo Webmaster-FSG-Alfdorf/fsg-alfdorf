@@ -1,12 +1,10 @@
 import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 
-let editor;
-
 $w.onReady(function () {
     $w("#datasetSports").onReady(async () => {
         console.log("#datasetSports onReady");
 
-        editor = new CmsEditor({
+        const editor = new CmsEditor({
             cmsName: "sports",
             dataSetName: "datasetSports",
             viewModeURL: "sport",
@@ -22,7 +20,7 @@ $w.onReady(function () {
             buttonView: $w("#buttonView"),
 
             translatedMessages: {
-                itemName: "Sprotart",
+                itemName: "Sportangebot",
             },
 
             generateTitle: (item) => item?.name,
