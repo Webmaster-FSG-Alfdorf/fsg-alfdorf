@@ -1409,7 +1409,7 @@ export class CmsEditor {
         const visible = typeof cfg.visible == "function" ? await cfg.visible(item) : cfg.visible;
         const required = typeof cfg.required == "function" ? await cfg.required(item) : cfg.required;
         const readOnly = typeof cfg.readOnly == "function" ? await cfg.readOnly(item) : cfg.readOnly;
-        console.info("validate", { cfg, scope, item, el, visible, required, readOnly });
+        console.info("validate", { cfg, scope, item, visible, required, readOnly });
 
         // process "visible" attribute
         if (visible === true) el?.expand();
