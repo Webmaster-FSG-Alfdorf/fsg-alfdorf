@@ -32,27 +32,6 @@ export async function printEventSummary(id, trg) {
 }
 
 /**
- * @param {object} sport — the sport entry
- * @param {object} trg — the text field that will be filled with the summary
- */
-export async function printSportSummary(sport, trg) {
-    let html = "<ul>";
-
-    html += sport.description;
-
-    if (sport.ownEquipment)
-        html += `<li>🎽 ${sport.ownEquipment}`;
-
-    if (sport.price)
-        html += `<li>💶 ${sport.price}`;
-
-    if (sport.contact)
-        html += `<li>👤 ${sport.contact}`
-
-    trg.html = html + "</ul>";
-}
-
-/**
  * @param {object[]} sorted
  * @param {string} nameSingularWPrefix
  * @param {string} namePlural

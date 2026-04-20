@@ -7,7 +7,24 @@ $w.onReady(function () {
         itemRepeater: $w("#repeaterResults"),
         itemRepeaterSummary: $w("#textCountResults"),
 
+        translatedMessages: {
+            itemName: "Sportangebot",
+            itemNamePlural: "Sportangebote",
+            repeaterSummaries: {
+                one: "1 passendes {itemName}", //TODO untested
+            },
+        },
+
         generateTitle: (item) => item?.name,
+
+        onRepeaterItemReady: ($item, rowData) => {
+            let html = "<ul>";
+            html += rowData.description ?? "";
+            if (rowData.ownEquipment) html += `<li>🎽 ${rowData.ownEquipment}`;
+            if (rowData.price) html += `<li>💶 ${rowData.price}`;
+            if (rowData.contact) html += `<li>👤 ${rowData.contact}`
+            $item("#textDescription").html = html + "</ul>";
+        },
 
         filterSortField: "name",
         filterSchema: {
@@ -42,10 +59,4 @@ $w.onReady(function () {
     });
 
     editor.init();
-
-    //printDataSetSummary(sorted, " Sportart", "Sportarten", filtered);//TODO
-    $w("#repeaterResults").onItemReady(async (item, data) => {
-        //printSportSummary(data, item("#textDescription"));
-    });
-
 });

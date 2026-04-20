@@ -73,7 +73,6 @@ $w.onReady(function () {
 
             messages: {
                 itemSaved: { emailId: "ReservationUpdated", automaticMail: true },
-                itemSaveError: { emailId: "ReservationUpdated", automaticMail: true }, //TODO remove
             },
 
             translatedMessages: {
@@ -90,6 +89,7 @@ $w.onReady(function () {
                     fields: ["lodging", "lodgingSub"],
                     type: FieldType.CUSTOM,
                     required: true,
+                    default: "GW|0", //TODO
                     onParseCustomUserInput: (value) => value ? value.split("|").map((v, i) => i == 0 ? v : Number(v ?? 0)) : ["", 0],
                     onFormatCustomValue: (values) => Array.isArray(values) && values.length == 2 ? `${values[0]}|${values[1] ?? 0}` : "",
                     onPrintValue: (item) => editor.lodgingNames[item?.lodging + "|" + item?.lodgingSub] ?? "",
@@ -190,7 +190,8 @@ $w.onReady(function () {
                 "#captcha1": {
                     label: "Captcha",
                     required: true,
-                    type: FieldType.CAPTCHA, //TODO
+                    type: FieldType.CAPTCHA,
+                    onEqualData: () => false,
                     collectDiff: false,
                     collectSummary: false
                 }
