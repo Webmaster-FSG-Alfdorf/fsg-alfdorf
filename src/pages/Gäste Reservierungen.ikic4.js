@@ -165,7 +165,7 @@ $w.onReady(function () {
                     type: FieldType.NUMBER,
                     onChanged: async (item) => await updateCostsTable(item),
                     fractionDigits: 2,
-                    suffix: "€"
+                    onPrintedValue: (res) => res + "€",
                 },
                 "#inputPaidSumup": {
                     field: "paidSumup",
@@ -199,7 +199,7 @@ $w.onReady(function () {
                 "#filterAlsoPast": {
                     type: FilterType.GE,
                     skip: (val) => val, // only apply if not checked
-                    value: () => incUTCDate(new Date(), 1),
+                    value: incUTCDate(new Date(), 1),
                     field: "dateTo",
                 },
                 "#filterStatus": {
@@ -288,5 +288,5 @@ async function updateCostsTable(item) {
         { label: "Einzelpreis", align: "right" },
         { label: "Gesamt", align: "right" },
     ];
-    $w("#textReservationPrice").html = editor.getTranslatedMessage("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
+    $w("#textReservationPrice").html = editor.getString("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
 }

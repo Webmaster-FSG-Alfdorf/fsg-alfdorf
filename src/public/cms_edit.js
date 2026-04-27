@@ -16,8 +16,6 @@ import { sendMail } from 'backend/common.jsw';
  * @property {boolean} [required] - Item can only be stored if data has been entered (default false).
  * @property {boolean} [readOnly] - Data cannot be edited by the user (default false).
  * @property {number} [delay] - Debounce delay in ms (default 500ms).
- * @property {string} [prefix] - String prepended to the display value (default "").
- * @property {string} [suffix] - String appended to the display value (default "").
  * @property {boolean} [collectDiff] - Whether to include this field in change tracking (default true).
  * @property {boolean} [collectSummary] - Whether to include this field in summaries (default true).
  * @property {boolean} [showToUser] - Whether to show diff and summary for this field to the end user (default true).
@@ -31,7 +29,7 @@ import { sendMail } from 'backend/common.jsw';
  * @property {string} [boolTrue] - For FieldType.BOOLEAN: Label for true (default "Ja").
  * @property {string} [boolFalse] - For FieldType.BOOLEAN: Label for false (default "Nein").
  * @property {Object} [format] - For FieldType.DATE/DATE_RANGE: Options for dateRangeToString.
- * @property {boolean} [trim] - For FieldType.STRING: Whether to trim whitespace (default true).
+ * @property {boolean} [trim] - For FieldType.STRING/STRING_...: Whether to trim whitespace (default true).
  * @property {boolean} [dataSet] - For FieldType.REFERENCE/MULTI_REFERENCE: Name of the dataset to which the references shall point.
  * @property {boolean} [onGenerateLabel] - (item) => string: For FieldType.REFERENCE/MULTI_REFERENCE: Label for entries of the dataset.
  * //TODO needs update as some are missing
@@ -39,6 +37,8 @@ import { sendMail } from 'backend/common.jsw';
 
 export const FieldType = Object.freeze({
     STRING: "STRING",
+    STRING_MAIL: "STRING_MAIL",
+    STRING_PHONE: "STRING_PHONE",
     RICH_TEXT: "RICH_TEXT",
     NUMBER: "NUMBER",
     BOOLEAN: "BOOLEAN",
@@ -66,6 +66,7 @@ export const FilterType = Object.freeze({
     GE: "GE",
     LE: "LE",
     IS_EMPTY: "IS_EMPTY",
+    CUSTOM: "CUSTOM",
 });
 
 export const FilterCombine = Object.freeze({
@@ -76,6 +77,13 @@ export const FilterCombine = Object.freeze({
 
 
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+export class SafeHTML {
+    constructor(html, plain = null) {
+        this.html = html;
+        this.plain = plain ?? html;
+    }
+};
 
 export class CmsEditor {
     /**
@@ -94,6 +102,7 @@ export class CmsEditor {
      * @param {function(Object):string} [config.generateTitle]
      */
     constructor(config = {}) {
+        this.editMode = config.editMode ?? true;
         this.cmsName = config.cmsName;
         this.dataSetName = config.dataSetName || `${config.cmsName}Dataset`;
         this.cmsSchema = config.cmsSchema || {};
@@ -105,9 +114,10 @@ export class CmsEditor {
         this.onAfterSave = config.onAfterSave || (() => { });
         this.onAfterReverted = config.onAfterReverted || (() => { });
         this.onAfterDelete = config.onAfterDelete || (() => { });
-        this.generateTitle = config.generateTitle || ((item) => item?.title || this._getTranslatedMessage("title_null", {}, item));
+        this.generateTitle = config.generateTitle || ((item) => item?.title || this._str_key("title_null", {}, item));
         this.onGenerateEmailOptions = config.onGenerateEmailOptions || (async () => { return {} });
         this.onRepeaterItemReady = config.onRepeaterItemReady || (() => { });
+        this.onReady = config.onReady || ((query) => { });
 
         this.filterSchema = config.filterSchema || {};
         this.filterLimit = config.filterLimit || 1000;
@@ -128,10 +138,9 @@ export class CmsEditor {
 
         this.collapseTextResponse = this.textResponse?.collapsed;
 
-        this.ds = $w(`#${this.dataSetName}`);
+        this.ds = null;
         this.originalItem = null;
         this.isSaving = false;
-        this.lastDiff = { diffUser: {}, diffIntern: {} };
 
         this.messages = {
             itemSaved: { emailId: "", dialog: true, automaticMail: false, customizableMail: false },
@@ -210,6 +219,18 @@ export class CmsEditor {
         this._debounceTimers = {};
         this._uploading = new Set();
         this._updatingSelector = false;
+
+        this._str_msg_replace("one line", {}, null);
+        // => [one line]
+
+        this._str_msg_replace("two\nlines", {}, null);
+        // => [two, lines]
+
+        this._str_msg_replace("{a}\nprefix{b}suffix", { a: "A", b: "B" }, null);
+        // => [A, prefixBsuffix]
+
+        this._str_msg_replace("a\t{a}\n{b}\t{b}", { a: "A", b: "B" }, null);
+        // => [[a, A], [b, B]]
     }
 
     _mergeTranslations(defaults, overrides) {
@@ -237,8 +258,14 @@ export class CmsEditor {
      */
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
+        if (this.ds) {
+            console.log("Already initialized");
+            return;
+        }
 
-        if (!this.ds) {
+        this.ds = $w(`#${this.dataSetName}`);
+        if (!this.ds || typeof this.ds.onReady != "function") {
+            this.ds = null;
             console.error("Cannnot initialize CMS dataset ", this.dataSetName);
             return;
         }
@@ -251,9 +278,11 @@ export class CmsEditor {
                 for (const cfg of Object.values(this.cmsSchema)) this._initCMSElement(cfg, $w, null, null);
                 const boundIDs = new Set();
                 for (const cfg of Object.values(this.filterSchema)) this._initFilterElement(cfg, $w, boundIDs, null, null);
-                for (const cfg of Object.values(this.cmsSchema)) this.resetField(cfg, $w, null, null);
+                if (this.editMode)
+                    for (const cfg of Object.values(this.cmsSchema)) this.resetField(cfg, $w, null, null);
                 await this.refreshUI();
                 const query = wixLocation.query;
+                await this.onReady?.(query);
                 if (query.id)
                     await this.navigateTo(query.id);
                 else {
@@ -267,7 +296,8 @@ export class CmsEditor {
         });
 
         this.ds.onError(async (error) => {
-            await this.showMessage("generalError", this.ds.getCurrentItem(), true, { error });
+            console.log("onError", error);
+            await this.showMessage("generalError", this.getItem(), true, { error });
         });
 
         this.itemSelector?.onChange(() => {
@@ -285,8 +315,6 @@ export class CmsEditor {
         this.buttonPrev?.onClick(() => this.navigateRelative(-1));
         this.buttonNext?.onClick(() => this.navigateRelative(1));
         this.buttonView?.onClick(() => this.showItem());
-
-        this.updateSelectorList();
     }
 
     /**
@@ -295,6 +323,7 @@ export class CmsEditor {
      * @param {CmsFieldConfig} cfg
      */
     _initCMSConfig(id, cfg) {
+        console.log("_initCMSConfig", id, cfg);
         cfg.id ??= id;
         if (Array.isArray(cfg.fields) && cfg.fields.length >= 1)
             cfg.field = cfg.fields[0]; // if we have fields defined, field points to the first one
@@ -308,16 +337,14 @@ export class CmsEditor {
         cfg.required ??= false;
         cfg.readOnly ??= false;
         cfg.delay ??= 500;
-        cfg.prefix ??= "";
-        cfg.suffix ??= "";
         cfg.collectDiff ??= true;
         cfg.collectSummary ??= true;
         cfg.showToUser ??= true;
         cfg.onEqualData ??= (cfg, item, uiValues, dataValues) => JSON.stringify(uiValues ?? "") == JSON.stringify(dataValues ?? "");
         switch (cfg.type) {
             case FieldType.BOOLEAN:
-                cfg.boolTrue ??= this._getTranslatedMessage("booolean_yes", cfg);
-                cfg.boolFalse ??= this._getTranslatedMessage("booolean_no", cfg);
+                cfg.boolTrue ??= this._str_key("booolean_yes", cfg);
+                cfg.boolFalse ??= this._str_key("booolean_no", cfg);
                 break;
             case FieldType.NUMBER:
                 cfg.fractionDigits ??= 0;
@@ -333,6 +360,8 @@ export class CmsEditor {
                 cfg.maxAllowed ??= null;
                 break;
             case FieldType.STRING:
+            case FieldType.STRING_MAIL:
+            case FieldType.STRING_PHONE:
                 cfg.trim ??= true;
                 break;
             case FieldType.REFERENCE:
@@ -363,10 +392,17 @@ export class CmsEditor {
         cfg.id ??= key;
         cfg.fields ??= this.ensureArray(cfg.field);
         cfg.type ??= FilterType.EQ;
-        cfg.orCombined ??= false;
+        cfg.combine ??= FilterCombine.AND;
         cfg.value ??= (val) => val;
         cfg.skip ??= (val) => val == null || val == "" || val == "*";
+        cfg.countsAsFiltered ??= true;
         cfg.delay ??= 500;
+        switch (cfg.type) {
+            case FilterType.CUSTOM:
+                cfg.onFilter ??= (q, f, v) => q;
+                cfg.onFilterResults ??= (items) => items;
+                break;
+        }
     }
 
     /**
@@ -381,7 +417,7 @@ export class CmsEditor {
      * @param {function():Promise<void>} callback
      */
     _bind(trg, scope, cfg, parentCfg, masterArrayID, events, delay, callback) {
-        for (const s of events) if (typeof trg[s] == "function") {
+        if (trg) for (const s of events) if (typeof trg[s] == "function") {
             console.debug("Binding", s, "to", cfg.id);
             trg[s]((event) => {
                 if (s != "onKeyPress" || event.key == "Enter") {
@@ -398,8 +434,11 @@ export class CmsEditor {
 
     async _initCMSElement(cfg, scope, parentCfg, masterArrayID) {
         const el = scope(cfg.id);
-        if (!el) {
-            console.warn("No such input element:", cfg.id);
+        if (Array.isArray(el)) {
+            if (this.editMode)
+                console.warn("No such input element:", cfg.id);
+            else
+                console.info("No such input element:", cfg.id);
             return;
         }
         if (el._cmsInitialized) return;
@@ -407,7 +446,7 @@ export class CmsEditor {
 
         if (cfg.resetButton) {
             const resetEl = scope(cfg.resetButton);
-            if (resetEl.id) resetEl.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
+            if (!Array.isArray(resetEl)) resetEl.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
             else console.warn(cfg.resetButton, "not found in DOM");
         }
 
@@ -421,7 +460,7 @@ export class CmsEditor {
                     }
                     if (cfg.removeButton) {
                         const elRemove = $item(cfg.removeButton);
-                        if (elRemove.id) elRemove.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
+                        if (!Array.isArray(elRemove)) elRemove.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
                         else console.warn(cfg.removeButton, "not found in DOM");
                     }
                 } catch (e) {
@@ -431,7 +470,7 @@ export class CmsEditor {
             });
             if (cfg.addButton) {
                 const addEl = scope(cfg.addButton);
-                if (addEl.id) addEl.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
+                if (!Array.isArray(addEl)) addEl.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
                 else console.warn(cfg.addButton, "not found in DOM");
             }
             return;
@@ -447,9 +486,11 @@ export class CmsEditor {
             if (element.children) for (const child of element.children) _find(child);
         }
         _find(el);
-        console.log("elements for", cfg.id, ":", cfg.elements.map(e => e.type + ": " + e.id));
+        console.log("elements for", cfg.id, ":", cfg.elements.map(e => e.type + ": " + e.id), JSON.stringify(el, null, 2), el.length);
 
         cfg.titleElement = cfg.elements.find(c => (c.type == "$w.Text") && (c.id.toLowerCase().includes("name")));
+
+        if (cfg.options == null && "options" in cfg) cfg.options = el.options.map(opt => [opt.value, opt.label]);
 
         switch (cfg.type) {
             case FieldType.IMAGES:
@@ -457,7 +498,7 @@ export class CmsEditor {
                 if (cfg.gallery) cfg.gallery.onItemClicked((event) => {
                     cfg.selIdx = event.itemIndex;
                     console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
-                    this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), null, masterArrayID); // just to update selection marker
+                    this._updateUiFromData(cfg, scope, this.getItem(), null, masterArrayID); // just to update selection marker
                 });
 
                 for (const action of ["moveleft", "moveright", "remove"]) {
@@ -525,11 +566,11 @@ export class CmsEditor {
                 if (cfg.datePicker) {
                     this.postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed });
                     const elPicker = scope(cfg.datePicker);
-                    if (elPicker) elPicker.onMessage(async (event) => {
+                    if (!Array.isArray(elPicker)) elPicker.onMessage(async (event) => {
                         console.log("received message from picker for ", cfg.id, ":", event.data);
                         const { selectedDates, displayedMonth, displayedYear } = event.data || {};
                         if (selectedDates?.length == 2) {
-                            await this._updateUiFromData(cfg, scope, this.ds.getCurrentItem(), selectedDates, masterArrayID);
+                            await this._updateUiFromData(cfg, scope, this.getItem(), selectedDates, masterArrayID);
                             await this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID);
                         }
                         const changedDM = displayedMonth != null && displayedMonth != cfg.displayedMonth;
@@ -548,6 +589,7 @@ export class CmsEditor {
             case FieldType.CAPTCHA:
                 this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onVerified", "onError", "onTimeout"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
                 break;
+
         }
     }
 
@@ -561,7 +603,7 @@ export class CmsEditor {
      */
     _initFilterElement(cfg, scope, boundIDs, parentCfg, masterArrayID) {
         const el = scope(cfg.id);
-        if (!el)
+        if (Array.isArray(el))
             console.warn("No such filter element:", cfg.id);
         else if (!boundIDs.has(cfg.id)) {
             boundIDs.add(cfg.id);
@@ -570,30 +612,33 @@ export class CmsEditor {
         }
     }
 
+    getItem() {
+        return this.ds?.getCurrentItem();
+    }
+
     /**
      * Synchronizes the UI with the current dataset item.
      * @returns {Promise<void>}
      */
     async refreshUI() {
-        const item = this.ds.getCurrentItem();
+        const item = this.getItem();
         console.log("refreshUI", item);
 
-        if (item) try {
+        if (item && this.ds) try {
             await Promise.all((Object.values(this.cmsSchema).filter(cfg => cfg.type == FieldType.MULTI_REFERENCE)).map(async (cfg) => {
                 try {
                     const refResult = await wixData.queryReferenced(this.cmsName, item._id, cfg.field);
                     item[cfg.field] = refResult.items.map(refItem => refItem._id);
-                    await this.ds.setFieldValue(cfg.field, item[cfg.field]);
+                    if (this.editMode) await this.ds.setFieldValue(cfg.field, item[cfg.field]);
                 } catch (e) {
                     console.error("Failed to fetch references for", cfg.field, ":", e);
-                    console.error(e);
                     throw e;
                 }
             }));
             for (const cfg of Object.values(this.cmsSchema)) if (cfg.type == FieldType.REPEATER) {
                 const now = Date.now();
                 item[cfg.field] = (item[cfg.field] || []).map((d, i) => ({ ...d, _id: d._id || `row-${i}-${now}` }));
-                await this.ds.setFieldValue(cfg.field, item[cfg.field]);
+                if (this.editMode) await this.ds.setFieldValue(cfg.field, item[cfg.field]);
             }
         } catch (e) {
             console.error(e);
@@ -627,10 +672,7 @@ export class CmsEditor {
         }
 
         const el = scope(cfg.id);
-        if (!el || !el.id) {
-            console.error("Cannot assign from input", cfg.id, ": Input element not found")
-            return { values: null, needRefresh: false };
-        }
+        if (Array.isArray(el)) return { values: null, needRefresh: false };
 
         const parse = async () => {
             switch (cfg.type) {
@@ -663,6 +705,8 @@ export class CmsEditor {
                 case FieldType.MULTI_REFERENCE:
                     return { val: this.ensureArray(el.value) };
                 case FieldType.STRING:
+                case FieldType.STRING_MAIL:
+                case FieldType.STRING_PHONE:
                     return { val: cfg.trim ? String(el.value).trim() : String(el.value) };
                 case FieldType.IMAGE: {
                     if (cfg.uploadButton?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
@@ -731,10 +775,7 @@ export class CmsEditor {
         }
 
         const el = scope(cfg.id);
-        if (!el || !el.id) {
-            console.error("Cannot assign from input", cfg.id, ": Input element not found")
-            return false;
-        }
+        if (Array.isArray(el)) return false;
 
         switch (cfg.type) {
             case FieldType.BOOLEAN:
@@ -765,7 +806,7 @@ export class CmsEditor {
      * @returns {{item:Object|null,masterArray:Array|null,values:any[]}}
      */
     _resolveContext(cfg, masterArrayID, parentCfg) {
-        let item = this.ds.getCurrentItem();
+        let item = this.getItem();
         let masterArray = parentCfg == null || masterArrayID == null ? null : [...this.ensureArray(item[parentCfg.field])];
         const idx = masterArray?.findIndex(v => v._id == masterArrayID);
         if (idx == -1) {
@@ -789,6 +830,8 @@ export class CmsEditor {
      */
     async _persistAndRefresh(cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh) {
         console.info("_persistAndRefresh", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
+        if (!this.ds || !this.editMode) return;
+
         if (masterArray != null && masterArrayID != null) {
             const idx = masterArray.findIndex(v => v._id == masterArrayID);
             if (idx == -1)
@@ -803,7 +846,7 @@ export class CmsEditor {
         } else {
             for (let i = 0; i < cfg.fields.length; i++)
                 await this.ds.setFieldValue(cfg.fields[i], values[i]);
-            item = this.ds.getCurrentItem(); // update after using setFieldValue
+            item = this.getItem(); // update after using setFieldValue
         }
 
         await cfg.onChanged?.(item, values[0]);
@@ -834,9 +877,11 @@ export class CmsEditor {
     async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID) {
         const wasTouched = cfg._touched;
         cfg._touched = true;
+        if (!this.ds || !this.editMode) return;
+
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const { values: uiValues, needRefresh } = await this._parseUiValue(cfg, scope, item);
-        if (await cfg.onEqualData(cfg, item, uiValues, dataValues)) {
+        if (cfg.onEqualData(cfg, item, uiValues, dataValues)) {
             console.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
             if (!wasTouched) this._validate(cfg, scope, item); // now missing values on required fields shall trigger error
         } else {
@@ -855,9 +900,11 @@ export class CmsEditor {
     async resetField(cfg, scope, parentCfg, masterArrayID) {
         console.log("resetField for", cfg.id);
         cfg._touched = false;
+        if (!this.ds || !this.editMode) return;
+
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const uiValues = [cfg.default];
-        if (await cfg.onEqualData(cfg, item, uiValues, dataValues))
+        if (cfg.onEqualData(cfg, item, uiValues, dataValues))
             console.debug(`Already in reset state ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
         else
             console.log(`Resetting UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
@@ -872,6 +919,8 @@ export class CmsEditor {
      */
     async addRepeaterItem(scope, cfg, masterArrayID) {
         console.log("addRepeaterItem for", cfg.id);
+        if (!this.ds || !this.editMode) return;
+
         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
         console.info({ scope, cfg, masterArrayID, item, masterArray, values });
         const newItem = { _id: `row-${values[0].length}-${Date.now()}` };
@@ -889,6 +938,8 @@ export class CmsEditor {
      */
     async removeRepeaterItem(scope, cfg, id, masterArrayID) {
         console.log("removeRepeaterItem from", cfg.id, "with id", id);
+        if (!this.ds || !this.editMode) return;
+
         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
         console.info({ scope, cfg, id, masterArrayID, item, masterArray, values });
         const newValues = [values[0].filter(v => v._id != id)];
@@ -910,10 +961,7 @@ export class CmsEditor {
         }
 
         const el = scope(cfg.id);
-        if (!el || !el.id) {
-            console.error("Cannot assign to input", cfg.id, ": Input element not found")
-            return;
-        }
+        if (Array.isArray(el)) return;
 
         const prevValue = el.value;
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
@@ -996,13 +1044,13 @@ export class CmsEditor {
             if ("value" in el)
                 el.value = val0;
             else
-                console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property")
+                console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property", { cfg, scope, item, el })
         }
         //values[0] = val0; TOODO needed as a side effect? hopefully not
         console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, el.value, "was:", prevValue);
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
-        if (btn && btn.id) {
+        if (btn && !Array.isArray(btn)) {
             if (val0) btn.link = `${cfg.linkPrefix ?? ""}${val0}`;
             this._setEnabled(btn, val0);
             btn.target = "_blank";
@@ -1031,80 +1079,116 @@ export class CmsEditor {
     }
 
     /**
-     * Formats the value from in item for diff or summary output.
+     * Generates an <image> tag from a URL or path.
+     * @param {string} url - The URL or path.
+     * @returns {string} The generated HTML string.
+     */
+    _generateImageTag(url, w = 300, h = 200) {
+        if (!url) return "";
+        if (url.startsWith("wix:image://v1/")) {
+            const match = url.match(/^wix:image:\/\/v1\/([^\/#]+)(?:\/([^#]+))?/);
+            if (match) {
+                const mediaId = match[1];
+                url = `https://static.wixstatic.com/media/${mediaId}/v1/fill/w_${w},h_${h},al_c,q_85,enc_auto/${mediaId}`;
+            }
+        }
+        return `<img src="${url}" style="display:block;margin:4px;">`;
+    }
+
+    /**
+     * Formats the values for diff or summary output.
      * @param {CmsFieldConfig} cfg
      * @param {*} scope
      * @param {Object} item
      * @returns {string}
      */
-    _printValue(cfg, scope, item, values) {
+    _printValue(cfg, scope, item, values, forUser, formatHTML) {
+
+        const getFileName = (url) => url ? url.split('/').pop()?.split('#')[0] || url : "";
+
         if (!cfg) return "";
-        if (cfg.onPrintValue) return cfg.onPrintValue(item);
-        if (!item) return "";
+        if (cfg.onPrintValue) {
+            const pv = cfg.onPrintValue(item, values, forUser, formatHTML);
+            if (pv != null) return pv;
+        }
         const val0 = values[0];
         const formatters = {
             [FieldType.BOOLEAN]: () => val0 ? cfg.boolTrue : cfg.boolFalse,
             [FieldType.NUMBER]: () => Number(val0).toLocaleString("de-DE", { minimumFractionDigits: cfg.fractionDigits }),
-            [FieldType.ADDRESS]: () => val0.formatted || "",
+            [FieldType.ADDRESS]: () => {
+                const f = val0?.formatted ?? "";
+                return new SafeHTML(`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f)}">${f}</a>`, f);
+            },
             [FieldType.DATE]: () => dateRangeToString(val0, null, cfg.format),
             [FieldType.DATE_RANGE]: () => dateRangeToString(val0, values[1], cfg.format),
             [FieldType.HOURS_OF_DATE]: () => {
-                const hours = new Date(val0).getHours();
-                return val0 ? (scope(cfg.id)?.options?.find(opt => opt.value == hours)?.label ?? `${this._padTime(hours)}:00`) : "";
+                const hours = val0 ? new Date(val0).getHours() : null;
+                return hours == null ? "" : cfg.options?.[hours] ?? `${this._padTime(hours)}:00`;
             },
             [FieldType.TIME_OF_DATE]: () => val0 ? `${this._padTime(new Date(val0).getHours())}:${this._padTime(new Date(val0).getMinutes())}` : "",
-            [FieldType.MULTI_SELECT]: () => this.ensureArray(val0).join("\n"),
-            [FieldType.IMAGE]: () => this._extractFileName(val0),
-            [FieldType.IMAGES]: () => this.ensureArray(val0).map((img) => this._extractFileName(img?.src || img?.fileUrl || "")).join("\n"),
+            [FieldType.MULTI_SELECT]: () => this.ensureArray(val0),
+            [FieldType.IMAGE]: () => ["", forUser ? new SafeHTML(this._generateImageTag(val0), getFileName(val0)) : getFileName(val0)],
+            [FieldType.IMAGES]: () => ["", ...this.ensureArray(val0)
+                .map(img => {
+                    const url = img?.src || img?.fileUrl || "";
+                    return forUser ? new SafeHTML(this._generateImageTag(url), getFileName(url)) : getFileName(url);
+                })],
             [FieldType.CUSTOM]: () => cfg.onFormatCustomValue?.(values),
-            [FieldType.TAGS]: () => this.ensureArray(val0).map(v => scope(cfg.id)?.options?.find(opt => opt.value == v)?.label).join("\n"),
+            [FieldType.TAGS]: () => this.ensureArray(val0).map(v => cfg.options?.[v] ?? v),
+            [FieldType.RICH_TEXT]: () => new SafeHTML(val0, val0),
+            [FieldType.STRING_MAIL]: () => new SafeHTML(`<a href="mailto:${val0}">${val0}</a>`, val0),
+            [FieldType.STRING_PHONE]: () => new SafeHTML(`<a href="tel:${val0.replace(/\D/g, "")}">${val0}</a>`, val0),
         };
-        const res = val0 == null ? null : (formatters[cfg.type] || (() => String(val0)))();
-        return res != null ? `${cfg.prefix}${res}${cfg.suffix}` : "";
-    }
-
-    /**
-     * Extracts the file name from a URL or path.
-     * @param {string} url - The URL or path to extract the file name from.
-     * @returns {string} The extracted file name.
-     */
-    _extractFileName(url) {
-        return url ? url.split('/').pop()?.split('#')[0] || url : "";
+        let res = val0 == null ? null : (formatters[cfg.type] || (() => String(val0)))();
+        if (cfg.onPrintedValue) res = cfg.onPrintedValue(res);
+        return res ?? "";
     }
 
     /**
      * Compare original item and current item for changed fields.
      * @param {*} scope
-     * @returns {{diffIntern:any[],diffUser:any[]}}
+     * @returns {boolean}
      */
-    getDiff(scope) {
-        const item = this.ds.getCurrentItem();
-        const caption = [
-            { label: this._getTranslatedMessage("diff_caption", {}, item), align: "right", bold: true },
-            { label: this._getTranslatedMessage("diff_from", {}, item), align: "right", bold: true },
-            { label: "", align: "center" },
-            { label: this._getTranslatedMessage("diff_to", {}, item), bold: true },
-        ];
-        const diff = { diffIntern: [caption], diffUser: [caption], hasChanges: false };
+    hasChanges(scope) {
+        const item = this.getItem();
         for (const cfg of Object.values(this.cmsSchema)) {
             if (cfg.collectDiff) {
                 const orgVal = cfg.fields.map(f => this.originalItem?.[f] ?? "");
                 const curVal = cfg.fields.map(f => item?.[f] ?? "");
-                if (JSON.stringify(orgVal) != JSON.stringify(curVal)) {
-                    const vOrg = this._printValue(cfg, scope, this.originalItem, orgVal);
-                    const vCur = this._printValue(cfg, scope, item, curVal);
-                    const row = [
-                        (typeof cfg.diffLabel == "function" ? cfg.diffLabel(item, vOrg, vCur) : cfg.diffLabel) + ":",
-                        vOrg,
-                        { value: "->", bold: true },
-                        vCur];
-                    diff.hasChanges = true;
-                    diff.diffIntern.push(row);
-                    if (cfg.showToUser) diff.diffUser.push(row);
-                }
+                if (!cfg.onEqualData(cfg, item, curVal, orgVal)) return true;
             }
         }
-        this.lastDiff = diff;
+        return false;
+    }
+
+    /**
+     * Compare original item and current item for changed fields.
+     * @param {*} scope
+     * @param {Object} item
+     * @param {boolean} [forUser] if true, only fields with showToUser == true will be returned, 
+     *   and they will be formatted for the user.
+     * @returns {any[]}
+     */
+    getDiff(scope, item, forUser, formatHTML) {
+        const caption = [
+            { label: this._str_key("diff_caption", {}, item), align: "right", bold: true },
+            { label: this._str_key("diff_from", {}, item), align: "right", bold: true },
+            { label: "", align: "center" },
+            { label: this._str_key("diff_to", {}, item), bold: true },
+        ];
+        const diff = [caption];
+        for (const cfg of Object.values(this.cmsSchema)) {
+            if (cfg.collectDiff && (!forUser || cfg.showToUser)) {
+                const orgVal = cfg.fields.map(f => this.originalItem?.[f] ?? "");
+                const curVal = cfg.fields.map(f => item?.[f] ?? "");
+                if (!cfg.onEqualData(cfg, item, curVal, orgVal)) diff.push([
+                    (typeof cfg.diffLabel == "function" ? cfg.diffLabel(item, forUser, formatHTML) : cfg.diffLabel) + ":",
+                    this._printValue(cfg, scope, this.originalItem, orgVal, forUser, formatHTML),
+                    { value: "->", bold: true },
+                    this._printValue(cfg, scope, item, curVal, forUser, formatHTML)
+                ]);
+            }
+        }
         return diff;
     }
 
@@ -1112,26 +1196,27 @@ export class CmsEditor {
      * List all fields.
      * @param {*} scope
      * @param {Object} item
-     * @param {boolean} [onlyShowToUserFields=false] if true, only fields with showToUser == true will be returned
+     * @param {boolean} [forUser] if true, only fields with showToUser == true will be returned, 
+     *   and they will be formatted for the user.
      * @returns {Promise<any[]>}
      */
-    getSummary(scope, item, onlyShowToUserFields = false, formatHTML = null) {
+    getSummary(scope, item, forUser, formatHTML = null) {
         const res = [
             [
-                { label: this._getTranslatedMessage("input_caption", {}, item), align: "right", bold: true },
-                { label: this._getTranslatedMessage("input_value", {}, item), bold: true },
+                { label: this._str_key("input_caption", {}, item), align: "right", bold: true },
+                { label: this._str_key("input_value", {}, item), bold: true },
             ]
         ];
         for (const cfg of Object.values(this.cmsSchema))
-            if (cfg.collectSummary && (!onlyShowToUserFields || cfg.showToUser)) res.push(
+            if (cfg.collectSummary && (!forUser || cfg.showToUser)) res.push(
                 [
                     {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
-                        value: (typeof cfg.summaryLabel == "function" ? cfg.summaryLabel() : cfg.summaryLabel) + ":"
+                        value: (typeof cfg.summaryLabel == "function" ? cfg.summaryLabel(forUser, formatHTML) : cfg.summaryLabel) + ":"
                     },
                     {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
-                        value: this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]))
+                        value: this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]), forUser, formatHTML)
                     }
                 ]
             );
@@ -1158,26 +1243,26 @@ export class CmsEditor {
      * @returns {Promise<Object|false>}
      */
     async saveItem() {
+        if (!this.ds || !this.editMode) return;
         this.isSaving = true;
         let savedItem = null;
         try {
             await this.flushDebounce();
-            const item = this.ds.getCurrentItem();
-            console.debug(`saveItem:\n${JSON.stringify(item, null, 2)}`);
+            const item = this.getItem();
+            console.debug("saveItem", item);
             for (const cfg of Object.values(this.cmsSchema)) cfg._touched = true; //TODO recurse? also on other places?
 
             let allErrors = [];
             for (const cfg of Object.values(this.cmsSchema)) allErrors.push(...await this._validate(cfg, $w, item));
             if (allErrors.length > 0) {
-                await this.showMessage("itemSaveError", item, true, { allErrors, error: allErrors.join("\n") });
+                await this.showMessage("itemSaveError", item, true, { error: allErrors });
                 await this.updateButtonStates();
                 return false;
             }
             await this.updateButtonStates();
 
             this.collapseResponse();
-            this.getDiff($w);
-            console.log("saveItem diff:", this.lastDiff.diffIntern);
+            console.log("saveItem diff:", this.getDiff($w, item, false, null));
             const beforeSafeResult = await this.onBeforeSave(item);
             if (beforeSafeResult == null) return false;
             savedItem = await this.ds.save();
@@ -1202,13 +1287,14 @@ export class CmsEditor {
      * Revert changes on dataset item and refresh UI.
      */
     async revertItem() {
+        if (!this.ds || !this.editMode) return;
         console.log("revertItem");
         await this.flushDebounce(false);
         this.collapseResponse();
-        await this.ds.revert();
+        await this.ds.revert(); //TODO this kills the diff output of the showMessage() below
         console.log("item reverted");
         this.onAfterReverted();
-        await this.showMessage("itemReverted", this.ds.getCurrentItem());
+        await this.showMessage("itemReverted", this.getItem());
         for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
         await this.refreshUI();
     }
@@ -1217,9 +1303,9 @@ export class CmsEditor {
      * Create new item after saving current.
      */
     async newItem() {
-        console.log("newItem");
-        this.getDiff($w);
-        if (!this.lastDiff.hasChanges || await this.saveItem()) {
+        if (!this.ds || !this.editMode) return;
+        console.log("newItem", this.getDiff($w, this.getItem(), false, null));
+        if (!this.hasChanges($w) || await this.saveItem()) {
             console.log("item saved before creating new item");
             const newItem = await this.ds.new();
             console.log("item created");
@@ -1234,10 +1320,11 @@ export class CmsEditor {
      * Remove item and select next/previous.
      */
     async removeItem() {
+        if (!this.ds || !this.editMode) return;
         console.log("removeItem");
         await this.flushDebounce();
         this.collapseResponse();
-        const itemToDelete = this.ds.getCurrentItem();
+        const itemToDelete = this.getItem();
 
         let nextId = null;
         const options = this.itemSelector?.options;
@@ -1257,7 +1344,7 @@ export class CmsEditor {
      * Shows the current item in reader mode in a new window.
      */
     showItem() {
-        const item = this.ds.getCurrentItem();
+        const item = this.getItem();
         const url = `/${this.viewModeURL}/${item?._id}`;
         console.log("Showing item:", url);
         if (item && item._id) wixLocation.to(url, { target: '_blank' });
@@ -1269,7 +1356,7 @@ export class CmsEditor {
      */
     navigateRelative(offset) {
         console.log("navigateRelative", offset);
-        const currentId = this.ds.getCurrentItem()?._id;
+        const currentId = this.getItem()?._id;
         const options = this.itemSelector?.options;
         if (options) {
             const idx = options.findIndex(opt => opt.value == currentId);
@@ -1284,7 +1371,7 @@ export class CmsEditor {
      */
     async navigateTo(id) {
         console.log("navigateTo", id);
-        if (id && id != "--new--") {
+        if (id && id != "--new--" && this.ds) {
             const result = await this.ds.getItems(0, this.ds.getTotalCount());
             const index = result.items.findIndex(item => item._id == id);
             if (index != -1) {
@@ -1311,6 +1398,7 @@ export class CmsEditor {
 
         let q = wixData.query(this.cmsName);
         let filtered = false;
+        const customChecks = [];
 
         for (const cfg of Object.values(this.filterSchema)) {
             const applyOp = (q, f, v) => {
@@ -1320,71 +1408,83 @@ export class CmsEditor {
                     case FilterType.GE: return q.ge(f, v);
                     case FilterType.LE: return q.le(f, v);
                     case FilterType.HAS_SOME: return q.hasSome(f, this.ensureArray(v));
-                    case FilterType.IS_EMPTY: return v ? q.isEmpty(f) : q;
+                    case FilterType.IS_EMPTY: return q.isEmpty(f);
+                    case FilterType.CUSTOM: return cfg.onFilter(q, f, v);
                     default: return q;
                 }
             };
 
-            const el = $w(cfg.id);
-            const val = !el ? null : "checked" in el ? el.checked : el.value;
+            const getElementValue = () => {
+                const el = $w(cfg.id);
+                return el && "checked" in el ? el.checked : el && "value" in el ? el.value : null;
+            };
+            const val = typeof cfg.value == "function" ? cfg.value(getElementValue()) : cfg.value;
             if (!cfg.skip(val)) {
-                filtered = true;
-                const pVal = cfg.value(val);
+                if (cfg.countsAsFiltered) filtered = true;
+                if (cfg.type == FilterType.CUSTOM) customChecks.push(cfg);
                 switch (cfg.combine) {
                     case FilterCombine.OR:
                         // ONE value vs MANY fields (OR)
                         let qOr = null;
                         for (let i = 0; i < cfg.fields.length; i++) {
-                            const qI = applyOp(wixData.query(this.cmsName), cfg.fields[i], pVal);
+                            const qI = applyOp(wixData.query(this.cmsName), cfg.fields[i], val);
                             qOr = i == 0 ? qI : qOr.or(qI);
                         }
                         if (qOr) q = q.and(qOr);
                         break;
                     case FilterCombine.PARALLEL_AND:
                         // Parallel Mapping (Many-to-Many)
-                        if (!Array.isArray(pVal) || cfg.fields.length != pVal.length) {
-                            console.error("Unexpected result from value() function: Expected array of equal length as cfg.fields", { pVal, cfg });
+                        if (!Array.isArray(val) || cfg.fields.length != val.length) {
+                            console.error("Unexpected result from value() function: Expected array of equal length as cfg.fields", { pVal: val, cfg });
                         } else
-                            q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, pVal[i]), q);
+                            q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, val[i]), q);
                         break;
                     case FilterCombine.AND:
                     default:
                         // Broadcasting (One-to-Many) or Standard (One-to-One)
-                        q = cfg.fields.reduce((q0, f) => applyOp(q0, f, pVal), q);
+                        q = cfg.fields.reduce((q0, f) => applyOp(q0, f, val), q);
                         break;
                 }
-                if (cfg.fields.length > 1 && Array.isArray(pVal) && pVal.length == cfg.fields.length) { } //TODO remove?
             }
         }
 
         q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
         q = q.limit(this.filterLimit);
-        console.debug(`updateSelectorList query:\n${JSON.stringify(q, null, 2)}`);
+        console.debug("updateSelectorList query:", q);
 
         this._updatingSelector = true;
-
-        if (this.itemSelector) try {
-            const res = await q.find();
-            //console.debug(`updateSelectorList result:\n${JSON.stringify(res, null, 2)}`);
-            this.itemSelector.options = [
-                { label: this._getTranslatedMessage("itemSelector_createNew"), value: "--new--" },
-                ...res.items.map(item => ({ label: this.generateTitle(item), value: item._id }))
-            ];
-            this.itemSelector.value = this.ds.getCurrentItem()?._id;
-        } catch (err) { console.error("updateSelectorList failed", err); }
-
-        if (this.itemRepeater) try {
-            const res = await q.find();
-            this.itemRepeater.data = res.items;
-
-            if (this.itemRepeaterSummary) {
-                const count = res.items.length;
-                const key = count == 0 ? "none" : count == 1 ? "one" : filtered ? "some" : "all";
-                this.itemRepeaterSummary.html = this._getTranslatedMessage(key, {}, {}, this.translatedMessages.repeaterSummaries, { count }, {});
+        try {
+            let items = (await q.find()).items;
+            for (const cfg of customChecks) {
+                const cntBefore = items.length;
+                items = cfg.onFilterResults(items);
+                console.log("onFilterResults filtered", cntBefore, "to", items.length);
             }
-        } catch (err) { console.error("updateSelectorList failed", err); }
+            if (this.filterSortResults) items.sort(this.filterSortResults);
+            console.debug("updateSelectorList result:", items);
 
-        this._updatingSelector = false;
+            try {
+                if (this.itemSelector) {
+                    this.itemSelector.options = [
+                        { label: this._str_key("itemSelector_createNew"), value: "--new--" },
+                        ...items.map(item => ({ label: this.generateTitle(item), value: item._id }))
+                    ];
+                    this.itemSelector.value = this.getItem()?._id;
+                }
+
+                if (this.itemRepeater)
+                    this.itemRepeater.data = items;
+
+                if (this.itemRepeaterSummary) {
+                    const count = items.length;
+                    const key = count == 0 ? "none" : count == 1 ? "one" : filtered ? "some" : "all";
+                    this.itemRepeaterSummary.html = this._str_key(key, {}, {}, this.translatedMessages.repeaterSummaries, { count }, {});
+                }
+            } catch (err) { console.error("updateSelectorList failed", err); }
+        } finally {
+            this._updatingSelector = false;
+        }
+
         await this.updateButtonStates();
     }
 
@@ -1398,13 +1498,10 @@ export class CmsEditor {
     async _validate(cfg, scope, item) {
         if (!cfg) {
             console.error("Cannot validate input: CMS schema not found in configuration")
-            return [this._getTranslatedMessage("error_no_config", cfg, item, null, {}, { color: "#E74C3C" })];
+            return [this._str_key("error_no_config", cfg, item, null, {}, { color: "#E74C3C" })];
         }
         let el = scope(cfg.id);
-        if (el && !el.id) {
-            console.error("Unexpected element type -- no 'id' attribute", { el, scope, cfg })
-            el = null;
-        }
+        if (Array.isArray(el)) el = null;
 
         const visible = typeof cfg.visible == "function" ? await cfg.visible(item) : cfg.visible;
         const required = typeof cfg.required == "function" ? await cfg.required(item) : cfg.required;
@@ -1430,7 +1527,7 @@ export class CmsEditor {
 
         const errors = [];
         let validity = {}
-        if (cfg._touched) { // ignore until the user touched this field
+        if (el && cfg._touched) { // ignore until the user touched this field
             let customErrorMessage = null;
             let values = null;
             validity = { ...el.validity };
@@ -1445,8 +1542,8 @@ export class CmsEditor {
             //validity.badInput ||= numericValues.some(v => v !== null && Number.isNaN(v)); //TODO support ?
 
             for (const [attr, failure] of Object.entries(validity)) if (attr != "valid" && failure)
-                errors.push(this._getTranslatedMessage(attr, cfg, item, this.translatedMessages.validityChecks, {
-                    message: customErrorMessage || this._getTranslatedMessage("no_validationMessage", cfg, item, null, {})
+                errors.push(this._str_key(attr, cfg, item, this.translatedMessages.validityChecks, {
+                    message: customErrorMessage || this._str_key("no_validationMessage", cfg, item, null, {})
                 }));
             console.info("_validate", { values, customErrorMessage, validity, errors });
             if (errors.length == 0) {
@@ -1467,7 +1564,7 @@ export class CmsEditor {
             }
         }
 
-        if (cfg.type == FieldType.REPEATER) {
+        if (el && cfg.type == FieldType.REPEATER) {
             const promises = [];
             el.forEachItem(($item, itemData) => {
                 for (const cfgSub of Object.values(cfg.inputs))
@@ -1487,17 +1584,17 @@ export class CmsEditor {
         const currentIndex = this.itemSelector?.selectedIndex;
         const totalCount = this.itemSelector?.options?.length;
 
-        const hasChanges = this.getDiff($w).hasChanges;
+        const hasChanges = this.hasChanges($w);
 
-        const isNew = !this.ds.getCurrentItem()?._createdDate;
+        const isNew = !this.getItem()?._createdDate;
         const isBusy = this.isSaving;
         const allValid = true; // Object.values(this.cmsSchema).every(cfg => !cfg.lastValidationFailed); TODO
 
-        console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, diffIntern: this.lastDiff.diffIntern, isNew, isBusy, allValid });
-        this._setEnabled(this.buttonSave, !isBusy && hasChanges && allValid);
-        this._setEnabled(this.buttonRevert, !isBusy && hasChanges);
-        this._setEnabled(this.buttonNew, !isBusy && !isNew);
-        this._setEnabled(this.buttonRemove, !isBusy && !isNew);
+        console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, isNew, isBusy, allValid });
+        this._setEnabled(this.buttonSave, this.editMode && !isBusy && hasChanges && allValid);
+        this._setEnabled(this.buttonRevert, this.editMode && !isBusy && hasChanges);
+        this._setEnabled(this.buttonNew, this.editMode && !isBusy && !isNew);
+        this._setEnabled(this.buttonRemove, this.editMode && !isBusy && !isNew);
         this._setEnabled(this.buttonPrev, !isBusy && !hasChanges && currentIndex > 1); // don't navigate to -- new--
         this._setEnabled(this.buttonNext, !isBusy && !hasChanges && currentIndex < totalCount - 1);
         this._setEnabled(this.buttonView, !isBusy && !hasChanges && !isNew);
@@ -1519,8 +1616,8 @@ export class CmsEditor {
     async showMessage(msgId, item = {}, isError = false, replacements = {}) {
         const message = this.messages[msgId] ?? {};
 
-        const sMsg = this._getTranslatedMessage(msgId, {}, item, this.translatedMessages.messageIds, replacements, { color: isError ? "#E74C3C" : "#2ECC71", align: "center" });
-        const sDetails = this._getTranslatedMessage(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements, {});
+        const sMsg = this._str_key(msgId, {}, item, this.translatedMessages.messageIds, replacements, { color: isError ? "#E74C3C" : "#2ECC71", align: "center" });
+        const sDetails = this._str_key(msgId + "Details", {}, item, this.translatedMessages.messageIds, replacements, {});
 
         const canSendMail = message?.emailId && item.email;
         const emailOptions = canSendMail ? await (message?.onGenerateEmailOptions ?? this.onGenerateEmailOptions)?.(item, message.emailId) : {}
@@ -1594,128 +1691,262 @@ export class CmsEditor {
         return v ? v.toString().padStart(2, "0") : "00";
     }
 
-    _clsStyle(v) {
-        return ` class="font_7" style="${v.padding ? `padding: ${v.padding}px; ` : ""}${v.align ? `text-align: ${v.align}; ` : ""}${v.color ? `color: ${v.color}; ` : ""}${v.bold ? `font-weight: bold; ` : ""}${v.italic ? `font-style: italic; ` : ""}"`;
+    _clsStyle(v = {}) {
+        const styles = [];
+
+        if (v.padding != null) styles.push(`padding:${v.padding}px`);
+        if (v.align && ["left", "right", "center"].includes(v.align)) styles.push(`text-align:${v.align}`);
+        if (["top", "middle", "bottom", undefined].includes(v.valign)) styles.push(`vertical-align:${v.valign ?? "top"}`); // TODO not working as Wix removes it
+        if (v.color && /^[#a-zA-Z0-9(),.\s-]+$/.test(v.color)) styles.push(`color:${v.color}`);
+        if (v.bold) styles.push(`font-weight:bold`);
+        if (v.italic) styles.push(`font-style:italic`);
+
+        const styleAttr = styles.length ? ` style="${styles.join(";")}"` : "";
+        return ` class="font_7"${styleAttr}`;
     }
 
     /**
      * Get translated message with placeholder replacements.
      * @param {string} msg - The message.
-     * @param {Object} [replacements={}] - Object with placeholder keys and values or functions that return a value, 
-     * value arrays wil be converted into lines, and nested arrays into columns of lines
-     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
-     * @returns {string}
-     */
-    getTranslatedMessage(msg, replacements = {}, formatHTML = null) {
-
-        const escape = (s) => (typeof s == "object" || Array.isArray(s) ? JSON.stringify(s, null, 2) : String(s))
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;")
-            .replace(/\n/g, "<br>");
-
-        const formatAsList = (value) => {
-            return `</span><ul>${value.map(v => `<li${this._clsStyle(formatHTML)}>${escape(v)}</li>`).join("")}</ul><span${this._clsStyle(formatHTML)}>`;
-        }
-
-        const formatAsTable = (value) => {
-            const alignments = [];
-            let res = "</span><table>";
-            // first line is a header if it contains at least one dictionary with label: as entry
-            const hasHeader = value[0].some(v => typeof v == "object" && v && "label" in v);
-            if (hasHeader) {
-                res += "<thead><tr>";
-                for (const v of value[0]) {
-                    if (typeof v == "object" && v && "label" in v) {
-                        res += `<th${this._clsStyle({ padding: 8, ...formatHTML, ...v })}>${escape(v.label)}</th>`;
-                        alignments.push(v.align);
-                    } else {
-                        res += `<th${this._clsStyle({ padding: 8, ...formatHTML })}>${escape(v)}</th>`;
-                        alignments.push("");
-                    }
-                }
-                res += "</tr></thead>";
-            }
-            res += "<tbody>";
-            for (let ri = 0; ri < value.length; ri++) {
-                if (hasHeader && ri === 0) continue;
-                const row = value[ri];
-                res += "<tr>";
-                for (let ci = 0; ci < row.length; ci++) {
-                    const v = row[ci];
-                    if (v != null) {
-                        let merge = 0;
-                        while (ci + merge + 1 < row.length && row[ci + merge + 1] == null) merge++;
-                        const colspan = `${merge > 0 ? ` colspan="${merge + 1}"` : ""}`;
-                        if (typeof v == "object" && v && "value" in v)
-                            res += `<td${this._clsStyle({ padding: 8, ...formatHTML, ...v, align: v.align ?? alignments[ci] ?? "" })}${colspan}>${escape(v.value)}</td>`;
-                        else
-                            res += `<td${this._clsStyle({ padding: 8, ...formatHTML, align: alignments[ci] ?? "" })}${colspan}>${escape(v)}</td>`;
-                        ci += merge;
-                    }
-                }
-                res += "</tr>";
-            }
-            res += `</tbody></table><span${this._clsStyle(formatHTML)}>`;
-            return res;
-        }
-
-        if (formatHTML != null) msg = `<span${this._clsStyle(formatHTML)}>${escape(msg)}</span>`;
-        for (const [placeholder, valueOrFunc] of Object.entries(replacements)) {
-            const pattern = `{${placeholder}}`;
-            if (msg.includes(pattern)) {
-                const value = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                let formatted = "";
-                if (formatHTML == null)
-                    formatted = Array.isArray(value) ? value.map(l => Array.isArray(l) ? l.join("\t") : String(l)).join("\n") : String(value);
-                else if (Array.isArray(value) && value.length > 0)
-                    formatted = Array.isArray(value[0]) ? formatAsTable(value) : formatAsList(value);
-                else
-                    formatted = escape(value);
-                msg = msg.replaceAll(pattern, formatted);
-            }
-        }
-        return msg;
-    }
-
-    /**
-     * Get translated message with placeholder replacements.
-     * @param {string} key - The message key.
-     * @param {CmsFieldConfig} [cfg={}]
-     * @param {Object} [item={}]
-     * @param {Object} [source=null]
      * @param {Object} [replacements={}] - Object with placeholder keys and values.
      * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
      * @returns {string}
      */
-    _getTranslatedMessage(key, cfg = {}, item = {}, source = null, replacements = {}, formatHTML = null) {
-        const msg = (source ?? this.translatedMessages)[key];
+    getString(msg, replacements = {}, formatHTML = null) {
+        return this._str_msg(msg, {}, this.getItem() ?? {}, replacements, formatHTML);
+    }
+
+    /**
+     * Get message of a key with placeholder replacements.
+     * @param {string} key - The message key.
+     * @param {CmsFieldConfig} [cfg={}]
+     * @param {Object} [item={}]
+     * @param {Object} [source=null] - An optional source for the message key - defaults to translatedMessages.
+     * @param {Object} [replacements={}] - Object with placeholder keys and values.
+     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
+     * @returns {string}
+     */
+    _str_key(key, cfg = {}, item = {}, source = null, replacements = {}, formatHTML = null) {
+        let msg = (source ?? this.translatedMessages)[key];
         if (msg == null) console.error("Missing key in translation matrix:", key, { source });
-        return this.getTranslatedMessage(
-            msg ?? `<${key}???>`,
-            {
-                ...cfg,
-                ...item,
-                ...replacements,
-                itemName: this.translatedMessages.itemName,
-                itemNamePlural: this.translatedMessages.itemNamePlural,
-                diff: this.lastDiff.diffUser,
-                diffUser: this.lastDiff.diffUser,
-                diffIntern: this.lastDiff.diffIntern,
-                summary: () => this.getSummary($w, item, true, formatHTML),
-                summaryUser: () => this.getSummary($w, item, true, formatHTML),
-                summaryIntern: () => this.getSummary($w, item, false, formatHTML),
-                item: Object.entries(item),
-                itemKeys: Object.keys(item)
-            },
-            formatHTML);
+        return this._str_msg(msg ?? `<${key}???>`, cfg, item, replacements, formatHTML);
+    }
+
+    /**
+     * Get message with placeholder replacements.
+     * @param {*} msg - The message (converted to a string) or a SafeHTML text.
+     * @param {CmsFieldConfig} [cfg={}]
+     * @param {Object} [item={}]
+     * @param {Object} [replacements={}] - Object with placeholder keys and values.
+     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
+     * @returns {string}
+     */
+    _str_msg(msg, cfg, item, replacements, formatHTML) {
+        const combined = {
+            ...cfg,
+            ...item,
+            itemName: this.translatedMessages.itemName,
+            itemNamePlural: this.translatedMessages.itemNamePlural,
+            diff: () => this.getDiff($w, item, true, formatHTML),
+            diffUser: () => this.getDiff($w, item, true, formatHTML),
+            diffIntern: () => this.getDiff($w, item, false, formatHTML),
+            summary: () => this.getSummary($w, item, true, formatHTML),
+            summaryUser: () => this.getSummary($w, item, true, formatHTML),
+            summaryIntern: () => this.getSummary($w, item, false, formatHTML),
+            item: () => Object.entries(item),
+            itemKeys: () => Object.keys(item),
+            ...replacements,
+        };
+
+        for (const cfg of Object.values(this.cmsSchema)) {
+            const fn = () => this._printValue(cfg, $w, item, cfg.fields.map(f => item?.[f]), true, formatHTML);;
+            combined[cfg.id] = fn;
+            combined[cfg.label] = fn;
+            combined[cfg.field] = fn;
+        }
+
+        return this._str_msg_replace(msg, combined, formatHTML);
+    }
+
+    /**
+     * Get message with placeholder replacements. 
+     * @param {*} msg - The message (converted to a string) or a SafeHTML text.
+     * @param {Object} [replacements] - Object with placeholder keys and values.
+     * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
+     * @returns {string}
+     */
+    _str_msg_replace(msg, replacements, formatHTML = null) {
+        const re = /\{(-?)(#?[a-z0-9_]+)\}|\n|\t/gi;
+
+        const isCell = (value) => value != null && typeof value == "object" && "value" in value;
+        const isHdr = (value) => value != null && typeof value == "object" && "label" in value;
+
+        class Text {
+            constructor(parts = []) {
+                this.parts = parts; // string | object | SafeHTML | Text
+            }
+            addToText(value) {
+                if (value instanceof Text) {
+                    this.parts.push(...value.parts);
+                } else if (Array.isArray(value)) {
+                    for (const v of value) this.addToText(v);
+                } else if (value != null) {
+                    this.parts.push(value);
+                }
+            }
+        }
+        class List {
+            constructor(items = []) {
+                this.items = items; // Text | List | Table | string | object
+            }
+        }
+        class TableRow {
+            constructor(cells = []) {
+                this.cells = cells; // Text | object | string | List
+            }
+        }
+        class Table {
+            constructor(rows = []) {
+                this.rows = rows; // TableRow[]
+            }
+        }
+        const parse = (v) => {
+            //console.log("parse", typeof v, v);
+            if (v instanceof SafeHTML) return v;
+            if (Array.isArray(v)) return v.map(s => parse(s));
+            if (isCell(v) || isHdr(v)) return v;
+
+            let curCell = new Text();
+            let curLine = new TableRow();
+            let res = new Table();
+            const s = typeof v == "object" ? JSON.stringify(v, null, 2) : String(v ?? "");
+            let lastIndex = 0;
+            for (const match of s.matchAll(re)) {
+                const idx = match.index;
+                if (idx > lastIndex) curCell.parts.push(s.slice(lastIndex, idx));
+                const full = match[0];
+                if (full == "\n") {
+                    curLine.cells.push(curCell);
+                    res.rows.push(curLine);
+                    curCell = new Text();
+                    curLine = new TableRow();
+                } else if (full == "\t") {
+                    curLine.cells.push(curCell);
+                    curCell = new Text();
+                } else {
+                    const inlineBlock = match[1];
+                    const key = match[2];
+                    const valueOrFunc = replacements[key];
+                    if (valueOrFunc === undefined) {
+                        console.error("Unknown placeholder:", key);
+                    } else {
+                        const val = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
+                        //console.log("parse", { inlineBlock, key });
+                        const parsed = parse(val);
+                        //console.log("parsed", { inlineBlock, key, parsed });
+                        if (inlineBlock) {
+                            curLine.cells.push(curCell);
+                            if (!Array.isArray(res)) res = res === "" ? [] : [res];
+                            if (curLine.length > 0) res.push(curLine);
+                            for (const r of parsed) res.push([...r]);
+                            curCell = new Text();
+                            curLine = new TableRow();
+                        } else {
+                            curCell.addToText(parsed);
+                        }
+                    }
+                }
+                lastIndex = idx + full.length;
+            }
+            if (s.length > lastIndex) curCell.parts.push(s.slice(lastIndex));
+            curLine.cells.push(curCell);
+            res.rows.push(curLine);
+            //console.log("parse result", res);
+
+            return res;
+        }
+
+        const render = (value, formatHTML) => {
+            if (value instanceof List) {
+                if (formatHTML == null) return value.items.map(item => ` - ${render(item, null)}`).join("\n");
+                return "</span><ul>\n" +
+                    value.items.map(item => `<li${this._clsStyle(formatHTML)}>${render(item, formatHTML)}</li>`).join("") +
+                    `</ul><span${this._clsStyle(formatHTML)}>\n`;
+            }
+
+            if (value instanceof Table) {
+                if (formatHTML == null) return value.rows.map(row => render(row, null)).join("\n");
+                let res = "</span><table>\n";
+                let alignments = [];
+                let prevColCount = -1;
+                for (const row of value.rows) {
+                    let colCount = row.cells.length;
+                    if (prevColCount != -1 && prevColCount != colCount) {
+                        // start a new table
+                        res += `</table><table>\n`;
+                        alignments = [];
+                    }
+                    prevColCount = colCount;
+                    if (row.cells.some(isHdr)) alignments = row.cells.map(cell => isHdr(cell) ? cell.align : null);
+                    res += render(row, { ...formatHTML, alignments });
+                }
+                res += `</table><span${this._clsStyle(formatHTML)}>`;
+                return res;
+            }
+
+            if (value instanceof TableRow) {
+                if (formatHTML == null) return value.cells.map(cell => render(cell, null)).join("\t");
+                const isHeaderRow = value.cells.some(isHdr);
+                const tag = isHeaderRow ? "th" : "td";
+                let res = "<tr>";
+                for (let ci = 0; ci < value.cells.length; ci++) {
+                    const cell = value.cells[ci];
+                    let merge = 0;
+                    while (ci + merge + 1 < value.cells.length && value.cells[ci + merge + 1] == null) ++merge;
+                    const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
+                    const format = { padding: 8, ...formatHTML };
+                    if (format.alignments?.[ci]) format.align = format.alignments[ci];
+                    if (isHdr(cell) || isCell(cell)) Object.assign(format, cell);
+                    if (cell != null) {
+                        res += `<${tag}${this._clsStyle(format)}${colspan}>${render(cell, formatHTML)}</${tag}>`;
+                        ci += merge;
+                    }
+                }
+                res += "</tr>\n";
+                return res;
+            }
+
+            if (value instanceof Text)
+                return value.parts.map(p => render(p, formatHTML)).join("");
+
+            if (value instanceof SafeHTML)
+                return formatHTML == null ? render(value.plain, null) : value.html;
+
+            if (isCell(value))
+                return render(value.value, formatHTML == null ? null : { ...formatHTML, ...value });
+
+            if (isHdr(value))
+                return render(value.label, formatHTML == null ? null : { ...formatHTML, ...value });
+
+            const s = typeof value == "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
+            return formatHTML == null ? s :
+                s
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+        };
+
+        const parsed = parse(msg);
+        const res = formatHTML == null ? render(parsed, null) : `<span${this._clsStyle(formatHTML)}>${render(parsed, formatHTML)}</span>\n`;
+        console.log("finally rendered", { msg, parsed, res });
+        return res;
     }
 
     postMessageToDatePicker(cfg, scope, message) {
         const elPicker = scope(cfg.datePicker);
-        if (elPicker) {
+        if (!Array.isArray(elPicker)) {
             console.log("postMessage to", cfg.datePicker, ":", message);
             elPicker.postMessage(message);
         } else
@@ -1752,9 +1983,9 @@ export class CmsEditor {
         authentication.onLogout(() => update());
         update();
         $w(buttonName).onClick(() => {
-            item ??= this.ds.getCurrentItem();
-            console.log("Clicked on", buttonName, ": Navigating to", location, "with", item?._id);
-            if (item) wixLocation.to(`/${location}?id=${item._id}`, { target: '_blank' });
+            const item_ = item ?? this.getItem();
+            console.log("Clicked on", buttonName, ": Navigating to", location, "with", item_?._id);
+            if (item_) wixLocation.to(`/${location}?id=${item_._id}`, { target: '_blank' });
         });
     }
 }

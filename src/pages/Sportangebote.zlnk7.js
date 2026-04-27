@@ -4,6 +4,7 @@ $w.onReady(function () {
     const editor = new CmsEditor({
         cmsName: "sports",
         dataSetName: "datasetSports",
+
         itemRepeater: $w("#repeaterResults"),
         itemRepeaterSummary: $w("#textCountResults"),
 

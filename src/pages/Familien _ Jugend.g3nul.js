@@ -1,18 +1,5 @@
-import { printEventSummary, filterAndSortEvents } from 'public/cms.js';
+import { displayEvents } from 'public/display_events.js';
 
 $w.onReady(function () {
-    $w("#repeaterResults").onItemReady(async (item, data) => {
-        printEventSummary(data._id, item("#textDescription"));
-    });
-
-    $w("#checkboxNoReservation").onChange(() => update());
-    $w("#checkboxOnGround").onChange(() => update());
-    $w("#checkboxNoPrice").onChange(() => update());
-    $w("#checkboxAlsoPast").onChange(() => update());
-    $w("#dropdownType").onChange(() => update());
-    update();
+    displayEvents(true);
 });
-
-function update() {
-    filterAndSortEvents(true);
-}

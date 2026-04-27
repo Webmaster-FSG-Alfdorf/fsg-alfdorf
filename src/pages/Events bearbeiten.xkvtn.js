@@ -1,13 +1,28 @@
 import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
 import { dateRangeToString, listAllRanges, printRanges, incUTCDate } from 'public/cms.js';
 
-let editor;
-
 $w.onReady(function () {
-    $w("#datesRepeater").value = {};
-    editor = new CmsEditor({
+    const editor = new CmsEditor({
         cmsName: "events",
         dataSetName: "datasetEvents",
+        viewModeURL: "events",
+
+        itemSelector: $w("#itemSelector"),
+        textResponse: $w("#textResponse"),
+        buttonSave: $w("#buttonSave"),
+        buttonRevert: $w("#buttonRevert"),
+        buttonNew: $w("#buttonNew"),
+        buttonRemove: $w("#buttonRemove"),
+        buttonPrev: $w("#buttonPrev"),
+        buttonNext: $w("#buttonNext"),
+        buttonView: $w("#buttonView"),
+
+        translatedMessages: {
+            itemName: "Event",
+            itemNamePlural: "Events",
+        },
+
+        generateTitle: (item) => item?.title,
 
         cmsSchema: {
             "#titleField": {
@@ -146,7 +161,7 @@ $w.onReady(function () {
             "#filterAlsoPast": {
                 type: FilterType.GE,
                 skip: (val) => val, // only apply if not checked
-                value: () => incUTCDate(new Date(), 1),
+                value: incUTCDate(new Date(), 1),
                 field: "dateTo",
             },
             "#filterType": {
