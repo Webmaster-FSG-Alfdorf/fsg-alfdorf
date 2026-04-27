@@ -18,8 +18,8 @@ function update() {
 function toggleMenu(roles, roleID, label, url) {
     const showMenu = roles.some((role) => role._id == roleID);
     const menu = $w("#expandableMenu");
-    const menuShown = menu.menuItems.some(item => item.id == url);
-    if (showMenu && !menuShown) {
+    const menuShown = menu.menuItems?.some(item => item.id == url);
+    if (menu.menuItems && showMenu && !menuShown) {
         console.log(`masterPage - going to show ${url} menu item`);
         const mi = menu.menuItems;
         mi.push({
@@ -32,7 +32,7 @@ function toggleMenu(roles, roleID, label, url) {
         });
         menu.menuItems = mi;
     }
-    if (!showMenu && menuShown) {
+    if (menu.menuItems && !showMenu && menuShown) {
         console.log(`masterPage - going to hide ${url} menu item`);
         menu.menuItems = menu.menuItems.filter(item => item.id != url);
     }

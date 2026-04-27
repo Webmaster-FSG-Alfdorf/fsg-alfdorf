@@ -219,18 +219,6 @@ export class CmsEditor {
         this._debounceTimers = {};
         this._uploading = new Set();
         this._updatingSelector = false;
-
-        this._str_msg_replace("one line", {}, null);
-        // => [one line]
-
-        this._str_msg_replace("two\nlines", {}, null);
-        // => [two, lines]
-
-        this._str_msg_replace("{a}\nprefix{b}suffix", { a: "A", b: "B" }, null);
-        // => [A, prefixBsuffix]
-
-        this._str_msg_replace("a\t{a}\n{b}\t{b}", { a: "A", b: "B" }, null);
-        // => [[a, A], [b, B]]
     }
 
     _mergeTranslations(defaults, overrides) {
@@ -977,6 +965,7 @@ export class CmsEditor {
                 break;
             case FieldType.ADDRESS:
                 val0 = val0 && typeof val0 == "object" ? val0 : { formatted: "" };
+                console.log("address", val0);
                 break;
             case FieldType.TIME_OF_DATE:
                 if (val0 != null) {
@@ -1116,8 +1105,11 @@ export class CmsEditor {
             [FieldType.BOOLEAN]: () => val0 ? cfg.boolTrue : cfg.boolFalse,
             [FieldType.NUMBER]: () => Number(val0).toLocaleString("de-DE", { minimumFractionDigits: cfg.fractionDigits }),
             [FieldType.ADDRESS]: () => {
+                const loc = val0?.location ?? {};
                 const f = val0?.formatted ?? "";
-                return new SafeHTML(`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f)}">${f}</a>`, f);
+                return loc.latitude && loc.longitude ?
+                    new SafeHTML(`<a href="https://www.google.com/maps/search/?api=1&query=${loc.latitude},${loc.longitude}">${f}</a>`, f)
+                    : f;
             },
             [FieldType.DATE]: () => dateRangeToString(val0, null, cfg.format),
             [FieldType.DATE_RANGE]: () => dateRangeToString(val0, values[1], cfg.format),
