@@ -7,7 +7,7 @@ import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 import { sendMail } from 'backend/common.jsw';
 
 const LOG = true;
-const VERBOSE = false;
+const VERBOSE = true;
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -1784,7 +1784,7 @@ export class CmsEditor {
      * @returns {string}
      */
     _str_msg_replace(msg, replacements, formatHTML = null) {
-        const re = /\{(-?)(#?[a-z0-9_]+)\}|\n|\t/gi;
+        const re = /\{(\??)(-?)([^}]+)\}|\n|\t/gi;
 
         const isCell = (value) => value != null && typeof value == "object" && "value" in value;
         const isHdr = (value) => value != null && typeof value == "object" && "label" in value;
@@ -1828,45 +1828,76 @@ export class CmsEditor {
             let curLine = new TableRow();
             let res = new Table();
             const s = typeof v == "object" ? JSON.stringify(v, null, 2) : String(v ?? "");
-            let lastIndex = 0;
-            for (const match of s.matchAll(re)) {
-                const idx = match.index;
-                if (idx > lastIndex) curCell.parts.push(s.slice(lastIndex, idx));
-                const full = match[0];
-                if (full == "\n") {
+
+            let i = 0;
+            while (i < s.length) {
+                const ch = s[i];
+                if (ch == "\n") {
                     curLine.cells.push(curCell);
                     res.rows.push(curLine);
                     curCell = new Text();
                     curLine = new TableRow();
-                } else if (full == "\t") {
+                    ++i;
+                } else if (ch == "\t") {
                     curLine.cells.push(curCell);
                     curCell = new Text();
-                } else {
-                    const inlineBlock = match[1];
-                    const key = match[2];
-                    const valueOrFunc = replacements[key];
-                    if (valueOrFunc === undefined) {
-                        this.errorIfLog("Unknown placeholder:", key);
-                    } else {
-                        const val = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                        this.debug("parse", { inlineBlock, key });
-                        const parsed = parse(val);
-                        this.debug("parsed", { inlineBlock, key, parsed });
-                        if (inlineBlock) {
-                            curLine.cells.push(curCell);
-                            if (!Array.isArray(res)) res = res === "" ? [] : [res];
-                            if (curLine.length > 0) res.push(curLine);
-                            for (const r of parsed) res.push([...r]);
-                            curCell = new Text();
-                            curLine = new TableRow();
-                        } else {
-                            curCell.addToText(parsed);
-                        }
+                    ++i;
+                } else if (ch == "{") {
+                    let depth = 1;
+                    let j = i + 1;
+                    while (j < s.length && depth > 0) {
+                        if (s[j] == "{") ++depth; else if (s[j] == "}") --depth;
+                        ++j;
                     }
+                    if (depth != 0) {
+                        this.errorIfLog("Missing closing }:", s.slice(i));
+                        curCell.parts.push(ch);
+                        ++i;
+                        continue;
+                    }
+                    const raw = s.slice(i + 1, j - 1);
+                    let optional = false;
+                    let inlineBlock = false;
+                    let key = raw;
+                    if (key.startsWith("?")) {
+                        optional = true;
+                        key = key.slice(1);
+                    }
+                    if (key.startsWith("-")) {
+                        inlineBlock = true;
+                        key = key.slice(1);
+                    }
+                    this.debug("got placeholder", { optional, inlineBlock, key });
+                    const valueOrFunc = replacements[key];
+                    if (valueOrFunc == null) this.warn("Unknown placeholder, using as is:", key);
+                    const val = valueOrFunc == null ? key : typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
+                    const parsed = parse.call(this, val);
+                    this.debug("parsed", { optional, inlineBlock, key, parsed });
+                    const isEmpty = parsed == null || parsed === "" || (parsed instanceof Table && parsed.rows.length == 0);
+                    if (optional && isEmpty) {
+                        // skip entirely
+                        this.debug("skipped as content is empty");
+                    } else if (inlineBlock) {
+                        curLine.cells.push(curCell);
+                        if (!Array.isArray(res)) res = res === "" ? [] : [res];
+                        if (curLine.length > 0) res.push(curLine);
+                        if (parsed instanceof Table)
+                            parsed.rows.forEach(r => res.push(r));
+                        else if (Array.isArray(parsed))
+                            parsed.forEach(r => res.push(r));
+                        else
+                            res.push(parsed);
+                        curCell = new Text();
+                        curLine = new TableRow();
+                    } else
+                        curCell.addToText(parsed);
+                    i = j;
+                } else {
+                    curCell.parts.push(ch);
+                    ++i;
                 }
-                lastIndex = idx + full.length;
             }
-            if (s.length > lastIndex) curCell.parts.push(s.slice(lastIndex));
+
             curLine.cells.push(curCell);
             res.rows.push(curLine);
             this.debug("parse result", res);

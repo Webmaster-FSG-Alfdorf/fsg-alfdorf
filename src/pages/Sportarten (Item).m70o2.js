@@ -15,10 +15,10 @@ $w.onReady(function () {
                 + "{?📝}\t{alltime}\n"
                 + "{?🌦️}\t{weatherIndep}\n"
                 + "{?🍂}\t{season}\n"
-                + "{?{whatsappIcon}}\t{whatsappCode}\n"
+                + "{?{whatsAppIcon}}\t{whatsappCode}\n"
                 + "{?📅}\t{events}\n", //TODO events
                 {
-                    whatsappIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"),
+                    whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"),
                 }, {});
         },
     });
