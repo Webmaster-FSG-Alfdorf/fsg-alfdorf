@@ -1,4 +1,5 @@
 import { currentMember, authentication } from "wix-members-frontend";
+import { ROLES } from "public/cms.js";
 
 $w.onReady(function () {
     authentication.onLogin(() => update());
@@ -7,12 +8,13 @@ $w.onReady(function () {
 });
 
 function update() {
-    currentMember.getRoles().then((roles) => {
-        toggleMenu(roles, "276cacd9-b43e-4e4e-8e3f-92192eb8eba7", "Gästeverwaltung", "guests-management");
-        toggleMenu(roles, "231ed231-93cf-45c1-9cbe-d99e7e45a27e", "Events bearbeiten", "events-edit");
-        toggleMenu(roles, "9cf0085c-a914-46de-a6b1-29aa4b86a76e", "Speisekarte bearbeiten", "food-edit");
-        toggleMenu(roles, "3ef4ffaa-79b2-440c-9872-802287e9407b", "Sportangebote bearbeiten", "sports-edit");
-    });
+    const applyRoles = (roles) => {
+        for (const r of Object.values(ROLES)) toggleMenu(roles, r.id, r.label, r.slug);
+    };
+    if (authentication.loggedIn)
+        currentMember.getRoles().then(applyRoles).catch(() => applyRoles([]));
+    else
+        applyRoles([]);
 }
 
 function toggleMenu(roles, roleID, label, url) {

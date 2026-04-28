@@ -1,3 +1,27 @@
+
+export const ROLES = {
+    GUESTS_MANAGEMENT: {
+        label: "Gästeverwaltung",
+        slug: "guests-management",
+        id: "276cacd9-b43e-4e4e-8e3f-92192eb8eba7",
+    },
+    EVENTS_EDIT: {
+        label: "Events bearbeiten",
+        slug: "events-edit",
+        id: "231ed231-93cf-45c1-9cbe-d99e7e45a27e",
+    },
+    FOOD_EDIT: {
+        label: "Speisekarte bearbeiten",
+        slug: "food-edit",
+        id: "9cf0085c-a914-46de-a6b1-29aa4b86a76e",
+    },
+    SPORTS_EDIT: {
+        label: "Sportangebote bearbeiten",
+        slug: "sports-edit",
+        id: "3ef4ffaa-79b2-440c-9872-802287e9407b",
+    }
+};
+
 export const FormatTypesMonth = {
     narrow: 'narrow',
     short: 'short',

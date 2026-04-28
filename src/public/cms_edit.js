@@ -6,6 +6,9 @@ import { currentMember, authentication } from "wix-members-frontend";
 import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 import { sendMail } from 'backend/common.jsw';
 
+const LOG = true;
+const VERBOSE = false;
+
 /**
  * @typedef {Object} CmsFieldConfig
  * @property {string} field - The CMS field key in case there is only one field.
@@ -124,17 +127,18 @@ export class CmsEditor {
         this.filterSortField = config.filterSortField || "_id";
         this.filterSortAscending = config.filterSortAscending || true;
 
-        this.itemSelector = config.itemSelector;
-        this.itemRepeater = config.itemRepeater;
-        this.itemRepeaterSummary = config.itemRepeaterSummary;
-        this.textResponse = config.textResponse;
-        this.buttonSave = config.buttonSave;
-        this.buttonRevert = config.buttonRevert;
-        this.buttonNew = config.buttonNew;
-        this.buttonRemove = config.buttonRemove;
-        this.buttonPrev = config.buttonPrev;
-        this.buttonNext = config.buttonNext;
-        this.buttonView = config.buttonView;
+        const ifValid = (el) => this.isElement(el) ? el : null;
+        this.itemSelector = ifValid(config.itemSelector);
+        this.itemRepeater = ifValid(config.itemRepeater);
+        this.itemRepeaterSummary = ifValid(config.itemRepeaterSummary);
+        this.textResponse = ifValid(config.textResponse);
+        this.buttonSave = ifValid(config.buttonSave);
+        this.buttonRevert = ifValid(config.buttonRevert);
+        this.buttonNew = ifValid(config.buttonNew);
+        this.buttonRemove = ifValid(config.buttonRemove);
+        this.buttonPrev = ifValid(config.buttonPrev);
+        this.buttonNext = ifValid(config.buttonNext);
+        this.buttonView = ifValid(config.buttonView);
 
         this.collapseTextResponse = this.textResponse?.collapsed;
 
@@ -240,6 +244,10 @@ export class CmsEditor {
         };
     }
 
+    isElement(el) {
+        return el != null && !Array.isArray(el);
+    }
+
     /**
      * Initializes the editor, sets default schema values, and binds UI events.
      * @returns {void}
@@ -247,14 +255,14 @@ export class CmsEditor {
     init() {
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
         if (this.ds) {
-            console.log("Already initialized");
+            this.error("Already initialized");
             return;
         }
 
         this.ds = $w(`#${this.dataSetName}`);
         if (!this.ds || typeof this.ds.onReady != "function") {
             this.ds = null;
-            console.error("Cannnot initialize CMS dataset ", this.dataSetName);
+            this.error("Cannnot initialize CMS dataset ", this.dataSetName);
             return;
         }
 
@@ -278,13 +286,13 @@ export class CmsEditor {
                     //if (options?.length > 1) await this.navigateTo(options[1].value);
                 }
             } catch (e) {
-                console.error(e);
+                this.error(e);
                 throw e;
             }
         });
 
         this.ds.onError(async (error) => {
-            console.log("onError", error);
+            this.error("onError", error);
             await this.showMessage("generalError", this.getItem(), true, { error });
         });
 
@@ -311,7 +319,7 @@ export class CmsEditor {
      * @param {CmsFieldConfig} cfg
      */
     _initCMSConfig(id, cfg) {
-        console.log("_initCMSConfig", id, cfg);
+        this.log("_initCMSConfig", id, cfg);
         cfg.id ??= id;
         if (Array.isArray(cfg.fields) && cfg.fields.length >= 1)
             cfg.field = cfg.fields[0]; // if we have fields defined, field points to the first one
@@ -377,12 +385,13 @@ export class CmsEditor {
      * @param {Object} cfg
      */
     _initFilterConfig(key, cfg) {
+        this.log("_initFilterConfig", key, cfg);
         cfg.id ??= key;
         cfg.fields ??= this.ensureArray(cfg.field);
         cfg.type ??= FilterType.EQ;
         cfg.combine ??= FilterCombine.AND;
         cfg.value ??= (val) => val;
-        cfg.skip ??= (val) => val == null || val == "" || val == "*";
+        cfg.skip ??= (val) => val == null || val === "" || val === "*" || (Array.isArray(val) && val.length == 0);
         cfg.countsAsFiltered ??= true;
         cfg.delay ??= 500;
         switch (cfg.type) {
@@ -405,28 +414,30 @@ export class CmsEditor {
      * @param {function():Promise<void>} callback
      */
     _bind(trg, scope, cfg, parentCfg, masterArrayID, events, delay, callback) {
-        if (trg) for (const s of events) if (typeof trg[s] == "function") {
-            console.debug("Binding", s, "to", cfg.id);
-            trg[s]((event) => {
-                if (s != "onKeyPress" || event.key == "Enter") {
-                    console.log("Triggering", s, "on", cfg.id, "with delay", delay);
-                    if (this._debounceTimers[cfg.id]) clearTimeout(this._debounceTimers[cfg.id].timer);
-                    const timer = setTimeout(callback, delay);
-                    this._debounceTimers[cfg.id] = { timer, scope, cfg, parentCfg, masterArrayID };
-                }
-            });
-        } else {
-            //console.warn("Cannot bind", s, "to", id, ":", typeof trg[s]);
-        }
+        if (trg) for (const s of events)
+            if (typeof trg[s] == "function") {
+                this.debug("Binding", s, "to", cfg.id);
+                trg[s]((event) => {
+                    if (s != "onKeyPress" || event.key == "Enter") {
+                        this.log("Triggering", s, "on", cfg.id, "with delay", delay);
+                        if (this._debounceTimers[cfg.id]) clearTimeout(this._debounceTimers[cfg.id].timer);
+                        const timer = setTimeout(callback, delay);
+                        this._debounceTimers[cfg.id] = { timer, scope, cfg, parentCfg, masterArrayID };
+                    }
+                });
+            } else this.warn("Cannot bind", s, "to", cfg.id, ":", typeof trg[s]);
     }
 
     async _initCMSElement(cfg, scope, parentCfg, masterArrayID) {
+        this.log("_initCMSElement", { cfg, scope, parentCfg, masterArrayID });
         const el = scope(cfg.id);
-        if (Array.isArray(el)) {
-            if (this.editMode)
-                console.warn("No such input element:", cfg.id);
-            else
-                console.info("No such input element:", cfg.id);
+        if (!this.isElement(el)) {
+            if (LOG) {
+                if (this.editMode)
+                    this.warn("No such input element:", cfg.id);
+                else
+                    this.log("No such input element:", cfg.id);
+            }
             return;
         }
         if (el._cmsInitialized) return;
@@ -434,32 +445,32 @@ export class CmsEditor {
 
         if (cfg.resetButton) {
             const resetEl = scope(cfg.resetButton);
-            if (!Array.isArray(resetEl)) resetEl.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
-            else console.warn(cfg.resetButton, "not found in DOM");
+            if (this.isElement(resetEl)) resetEl.onClick(async () => await this.resetField(cfg, scope, parentCfg, masterArrayID));
+            else this.warn(cfg.resetButton, "not found in DOM");
         }
 
         if (cfg.type == FieldType.REPEATER) {
             el.onItemReady(($item, rowData) => {
                 try {
-                    console.log("onItemReady", { id: cfg.id, rowData });
+                    this.log("onItemReady", { id: cfg.id, rowData });
                     for (const cfgSub of Object.values(cfg.inputs)) {
                         this._initCMSElement(cfgSub, $item, cfg, rowData._id);
                         this._updateUiFromData(cfgSub, $item, rowData, null, rowData._id);
                     }
                     if (cfg.removeButton) {
                         const elRemove = $item(cfg.removeButton);
-                        if (!Array.isArray(elRemove)) elRemove.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
-                        else console.warn(cfg.removeButton, "not found in DOM");
+                        if (this.isElement(elRemove)) elRemove.onClick(async () => await this.removeRepeaterItem($item, cfg, rowData._id, masterArrayID));
+                        else this.warn(cfg.removeButton, "not found in DOM");
                     }
                 } catch (e) {
-                    console.error(e);
+                    this.error(e);
                     throw e;
                 }
             });
             if (cfg.addButton) {
                 const addEl = scope(cfg.addButton);
-                if (!Array.isArray(addEl)) addEl.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
-                else console.warn(cfg.addButton, "not found in DOM");
+                if (this.isElement(addEl)) addEl.onClick(async () => await this.addRepeaterItem(scope, cfg, masterArrayID));
+                else this.warn(cfg.addButton, "not found in DOM");
             }
             return;
         }
@@ -474,7 +485,7 @@ export class CmsEditor {
             if (element.children) for (const child of element.children) _find(child);
         }
         _find(el);
-        console.log("elements for", cfg.id, ":", cfg.elements.map(e => e.type + ": " + e.id), JSON.stringify(el, null, 2), el.length);
+        this.debug("elements for", cfg.id, ":", cfg.elements.map(e => e.type + ": " + e.id), JSON.stringify(el, null, 2), el.length);
 
         cfg.titleElement = cfg.elements.find(c => (c.type == "$w.Text") && (c.id.toLowerCase().includes("name")));
 
@@ -485,7 +496,7 @@ export class CmsEditor {
                 cfg.gallery = cfg.elements.find(c => c.type == "$w.Gallery");
                 if (cfg.gallery) cfg.gallery.onItemClicked((event) => {
                     cfg.selIdx = event.itemIndex;
-                    console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
+                    this.log("Selected media index on", cfg.id, ":", cfg.selIdx);
                     this._updateUiFromData(cfg, scope, this.getItem(), null, masterArrayID); // just to update selection marker
                 });
 
@@ -494,7 +505,7 @@ export class CmsEditor {
                     if (btn) btn.onClick(async () => {
                         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, parentCfg);
                         const val = this.ensureArray(values[0]);
-                        console.log("Executing", action, "on", cfg.id, "with", val.length, "items for index", cfg.selIdx);
+                        this.log("Executing", action, "on", cfg.id, "with", val.length, "items for index", cfg.selIdx);
                         if (cfg.selIdx < 0 || cfg.selIdx >= val.length) return;
                         if (action == "moveleft" && cfg.selIdx > 0) {
                             [val[cfg.selIdx - 1], val[cfg.selIdx]] = [val[cfg.selIdx], val[cfg.selIdx - 1]];
@@ -506,7 +517,7 @@ export class CmsEditor {
                             val.splice(cfg.selIdx, 1);
                             cfg.selIdx = -1;
                         }
-                        console.log("Selected media index on", cfg.id, ":", cfg.selIdx);
+                        this.log("Selected media index on", cfg.id, ":", cfg.selIdx);
                         await this._persistAndRefresh(cfg, scope, item, masterArray, [val], masterArrayID, parentCfg, true);
                     });
                 }
@@ -528,7 +539,7 @@ export class CmsEditor {
                     if ("options" in el)
                         el.options = options;
                     else
-                        console.error("Cannot assign options list to", cfg.id);
+                        this.error("Cannot assign options list to", cfg.id);
 
                     //must also be applied to filters for those fields
                     for (const fCfg of Object.values(this.filterSchema)) if (fCfg.fields.includes(cfg.field)) {
@@ -536,17 +547,17 @@ export class CmsEditor {
                         if (elFilter && "options" in elFilter)
                             elFilter.options = [{ label: "(Alle)", value: "*" }, ...options];
                         else
-                            console.error("Cannot assign options list to", fCfg.id);
+                            this.error("Cannot assign options list to", fCfg.id);
                     }
                 }
                 break;
 
             case FieldType.NUMBER:
                 if (cfg.minAllowed != null) {
-                    if ("min" in el) el.min = cfg.minAllowed; else console.error("Cannot assign min to ", cfg.id);
+                    if ("min" in el) el.min = cfg.minAllowed; else this.error("Cannot assign min to ", cfg.id);
                 }
                 if (cfg.maxAllowed != null) {
-                    if ("max" in el) el.max = cfg.maxAllowed; else console.error("Cannot assign max to ", cfg.id);
+                    if ("max" in el) el.max = cfg.maxAllowed; else this.error("Cannot assign max to ", cfg.id);
                 }
                 break;
 
@@ -554,8 +565,8 @@ export class CmsEditor {
                 if (cfg.datePicker) {
                     this.postMessageToDatePicker(cfg, scope, { minDate: cfg.minAllowed, maxDate: cfg.maxAllowed });
                     const elPicker = scope(cfg.datePicker);
-                    if (!Array.isArray(elPicker)) elPicker.onMessage(async (event) => {
-                        console.log("received message from picker for ", cfg.id, ":", event.data);
+                    if (this.isElement(elPicker)) elPicker.onMessage(async (event) => {
+                        this.log("received message from picker for ", cfg.id, ":", event.data);
                         const { selectedDates, displayedMonth, displayedYear } = event.data || {};
                         if (selectedDates?.length == 2) {
                             await this._updateUiFromData(cfg, scope, this.getItem(), selectedDates, masterArrayID);
@@ -570,7 +581,7 @@ export class CmsEditor {
                         }
                     });
                     else
-                        console.error("Cannot find datePicker element", cfg.datePicker);
+                        this.error("Cannot find datePicker element", cfg.datePicker);
                 }
                 break;
 
@@ -590,9 +601,10 @@ export class CmsEditor {
      * @param {*} masterArrayID
      */
     _initFilterElement(cfg, scope, boundIDs, parentCfg, masterArrayID) {
+        this.log("_initCMSElement", { cfg, scope, boundIDs, parentCfg, masterArrayID });
         const el = scope(cfg.id);
-        if (Array.isArray(el))
-            console.warn("No such filter element:", cfg.id);
+        if (!this.isElement(el))
+            this.warn("No such filter element:", cfg.id);
         else if (!boundIDs.has(cfg.id)) {
             boundIDs.add(cfg.id);
             this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onBlur", "onKeyPress"], 0, () => this.updateSelectorList());
@@ -610,7 +622,7 @@ export class CmsEditor {
      */
     async refreshUI() {
         const item = this.getItem();
-        console.log("refreshUI", item);
+        this.log("refreshUI", item);
 
         if (item && this.ds) try {
             await Promise.all((Object.values(this.cmsSchema).filter(cfg => cfg.type == FieldType.MULTI_REFERENCE)).map(async (cfg) => {
@@ -619,7 +631,7 @@ export class CmsEditor {
                     item[cfg.field] = refResult.items.map(refItem => refItem._id);
                     if (this.editMode) await this.ds.setFieldValue(cfg.field, item[cfg.field]);
                 } catch (e) {
-                    console.error("Failed to fetch references for", cfg.field, ":", e);
+                    this.error("Failed to fetch references for", cfg.field, ":", e);
                     throw e;
                 }
             }));
@@ -629,15 +641,15 @@ export class CmsEditor {
                 if (this.editMode) await this.ds.setFieldValue(cfg.field, item[cfg.field]);
             }
         } catch (e) {
-            console.error(e);
+            this.error(e);
         }
 
         try {
             await Promise.all(Object.keys(this.cmsSchema).map(id => this._updateUiFromData(this.cmsSchema[id], $w, item, null, null)));
         } catch (e) {
-            console.error(e);
+            this.error(e);
         }
-        console.log("refreshUI now", item);
+        this.log("refreshUI now", item);
         this.originalItem = item ? structuredClone(item) : null;
         for (const cfg of Object.values(this.cmsSchema)) if ("selIdx" in cfg) cfg.selIdx = -1;
         await this.onRefreshUI(this.originalItem);
@@ -655,12 +667,12 @@ export class CmsEditor {
      */
     async _parseUiValue(cfg, scope, item) {
         if (!cfg) {
-            console.error("Cannot assign from input: CMS schema not found in configuration")
+            this.error("Cannot assign from input: CMS schema not found in configuration")
             return { values: null, needRefresh: false };
         }
 
         const el = scope(cfg.id);
-        if (Array.isArray(el)) return { values: null, needRefresh: false };
+        if (!this.isElement(el)) return { values: null, needRefresh: false };
 
         const parse = async () => {
             switch (cfg.type) {
@@ -723,7 +735,7 @@ export class CmsEditor {
                     try {
                         return { val: await cfg.onParseCustomUserInput?.(el.value) };
                     } catch (e) {
-                        console.warn("Error in onParseCustomUserInput for", cfg.id, ":", e);
+                        this.warn("Error in onParseCustomUserInput for", cfg.id, ":", e);
                         return { val: item?.[cfg.field] };
                     }
                 //            case FieldType.REPEATER:
@@ -743,7 +755,7 @@ export class CmsEditor {
         const { val, needRefresh = false } = await parse();
         const values = cfg.fields.length == 0 ? [] : cfg.fields.length > 1 ? val : [val];
         if (values.length != cfg.fields.length) {
-            console.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
+            this.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
         }
         return { values, needRefresh };
     }
@@ -758,12 +770,12 @@ export class CmsEditor {
      */
     _hasUiValue(cfg, scope, item) {
         if (!cfg) {
-            console.error("Cannot assign from input: CMS schema not found in configuration")
+            this.error("Cannot assign from input: CMS schema not found in configuration")
             return false;
         }
 
         const el = scope(cfg.id);
-        if (Array.isArray(el)) return false;
+        if (!this.isElement(el)) return false;
 
         switch (cfg.type) {
             case FieldType.BOOLEAN:
@@ -798,7 +810,7 @@ export class CmsEditor {
         let masterArray = parentCfg == null || masterArrayID == null ? null : [...this.ensureArray(item[parentCfg.field])];
         const idx = masterArray?.findIndex(v => v._id == masterArrayID);
         if (idx == -1) {
-            console.error("Cannot find masterArrayID", { cfg, masterArray, masterArrayID, parentCfg });
+            this.errorIfLog("Cannot find masterArrayID", { cfg, masterArray, masterArrayID, parentCfg });
             item = null;
         }
         if (idx >= 0) item = masterArray[idx];
@@ -817,13 +829,13 @@ export class CmsEditor {
      * @param {boolean} needRefresh
      */
     async _persistAndRefresh(cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh) {
-        console.info("_persistAndRefresh", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
+        this.debug("_persistAndRefresh", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
         if (!this.ds || !this.editMode) return;
 
         if (masterArray != null && masterArrayID != null) {
             const idx = masterArray.findIndex(v => v._id == masterArrayID);
             if (idx == -1)
-                console.error("Cannot find masterArrayID", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
+                this.errorIfLog("Cannot find masterArrayID", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
             else {
                 masterArray[idx] = { ...masterArray[idx] };
                 for (let i = 0; i < cfg.fields.length; i++)
@@ -870,10 +882,10 @@ export class CmsEditor {
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const { values: uiValues, needRefresh } = await this._parseUiValue(cfg, scope, item);
         if (cfg.onEqualData(cfg, item, uiValues, dataValues)) {
-            console.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
+            this.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
             if (!wasTouched) this._validate(cfg, scope, item); // now missing values on required fields shall trigger error
         } else {
-            console.log(`Writing UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
+            this.log(`Writing UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
             await this._persistAndRefresh(cfg, scope, item, masterArray, uiValues, masterArrayID, parentCfg, needRefresh || masterArray);
         }
     }
@@ -886,16 +898,18 @@ export class CmsEditor {
      * @param {string|null} masterArrayID
      */
     async resetField(cfg, scope, parentCfg, masterArrayID) {
-        console.log("resetField for", cfg.id);
+        this.log("resetField", { cfg, scope, parentCfg, masterArrayID });
         cfg._touched = false;
         if (!this.ds || !this.editMode) return;
 
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const uiValues = [cfg.default];
-        if (cfg.onEqualData(cfg, item, uiValues, dataValues))
-            console.debug(`Already in reset state ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
-        else
-            console.log(`Resetting UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
+        if (LOG || VERBOSE) {
+            if (cfg.onEqualData(cfg, item, uiValues, dataValues)) {
+                this.debug(`Already in reset state ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
+            } else
+                this.log(`Resetting UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
+        }
         await this._persistAndRefresh(cfg, scope, item, masterArray, uiValues, masterArrayID, parentCfg, true);
     }
 
@@ -906,11 +920,11 @@ export class CmsEditor {
      * @param {string|null} masterArrayID
      */
     async addRepeaterItem(scope, cfg, masterArrayID) {
-        console.log("addRepeaterItem for", cfg.id);
+        this.log("addRepeaterItem for", cfg.id);
         if (!this.ds || !this.editMode) return;
 
         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
-        console.info({ scope, cfg, masterArrayID, item, masterArray, values });
+        this.debug({ scope, cfg, masterArrayID, item, masterArray, values });
         const newItem = { _id: `row-${values[0].length}-${Date.now()}` };
         for (const subCfg of Object.values(cfg.inputs)) newItem[subCfg.field] ??= subCfg.default;
         const newValues = [[...values[0], newItem]];
@@ -925,11 +939,11 @@ export class CmsEditor {
      * @param {string|null} masterArrayID
      */
     async removeRepeaterItem(scope, cfg, id, masterArrayID) {
-        console.log("removeRepeaterItem from", cfg.id, "with id", id);
+        this.log("removeRepeaterItem from", cfg.id, "with id", id);
         if (!this.ds || !this.editMode) return;
 
         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
-        console.info({ scope, cfg, id, masterArrayID, item, masterArray, values });
+        this.debug({ scope, cfg, id, masterArrayID, item, masterArray, values });
         const newValues = [values[0].filter(v => v._id != id)];
         await this._persistAndRefresh(cfg, scope, item, masterArray, newValues, masterArrayID, null, true);
     }
@@ -944,12 +958,12 @@ export class CmsEditor {
      */
     async _updateUiFromData(cfg, scope, item, valuesToUse, masterArrayID) {
         if (!cfg) {
-            console.error("Cannot assign to input: CMS schema not found in configuration")
+            this.error("Cannot assign to input: CMS schema not found in configuration")
             return;
         }
 
         const el = scope(cfg.id);
-        if (Array.isArray(el)) return;
+        if (!this.isElement(el)) return;
 
         const prevValue = el.value;
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
@@ -965,7 +979,6 @@ export class CmsEditor {
                 break;
             case FieldType.ADDRESS:
                 val0 = val0 && typeof val0 == "object" ? val0 : { formatted: "" };
-                console.log("address", val0);
                 break;
             case FieldType.TIME_OF_DATE:
                 if (val0 != null) {
@@ -1014,7 +1027,7 @@ export class CmsEditor {
                 try {
                     val0 = await cfg.onFormatCustomValue?.(values);
                 } catch (e) {
-                    console.warn("Error in onFormatCustomValue for", cfg.id, ":", e);
+                    this.warn("Error in onFormatCustomValue for", cfg.id, ":", e);
                     val0 = null;
                 }
                 break;
@@ -1033,13 +1046,13 @@ export class CmsEditor {
             if ("value" in el)
                 el.value = val0;
             else
-                console.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property", { cfg, scope, item, el })
+                this.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property", { cfg, scope, item, el })
         }
         //values[0] = val0; TOODO needed as a side effect? hopefully not
-        console.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, el.value, "was:", prevValue);
+        this.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, el.value, "was:", prevValue);
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
-        if (btn && !Array.isArray(btn)) {
+        if (btn && this.isElement(btn)) {
             if (val0) btn.link = `${cfg.linkPrefix ?? ""}${val0}`;
             this._setEnabled(btn, val0);
             btn.target = "_blank";
@@ -1128,8 +1141,11 @@ export class CmsEditor {
             [FieldType.CUSTOM]: () => cfg.onFormatCustomValue?.(values),
             [FieldType.TAGS]: () => this.ensureArray(val0).map(v => cfg.options?.[v] ?? v),
             [FieldType.RICH_TEXT]: () => new SafeHTML(val0, val0),
-            [FieldType.STRING_MAIL]: () => new SafeHTML(`<a href="mailto:${val0}">${val0}</a>`, val0),
-            [FieldType.STRING_PHONE]: () => new SafeHTML(`<a href="tel:${val0.replace(/\D/g, "")}">${val0}</a>`, val0),
+            [FieldType.STRING_MAIL]: () => val0 ? new SafeHTML(`<a href="mailto:${val0}">${val0}</a>`, val0) : "",
+            [FieldType.STRING_PHONE]: () => {
+                const phone = val0.replace(/\D/g, "");
+                return phone ? new SafeHTML(`<a href="tel:${phone}">${val0}</a>`, val0) : "";
+            },
         };
         let res = val0 == null ? null : (formatters[cfg.type] || (() => String(val0)))();
         if (cfg.onPrintedValue) res = cfg.onPrintedValue(res);
@@ -1241,7 +1257,7 @@ export class CmsEditor {
         try {
             await this.flushDebounce();
             const item = this.getItem();
-            console.debug("saveItem", item);
+            this.log("saveItem", item);
             for (const cfg of Object.values(this.cmsSchema)) cfg._touched = true; //TODO recurse? also on other places?
 
             let allErrors = [];
@@ -1254,17 +1270,17 @@ export class CmsEditor {
             await this.updateButtonStates();
 
             this.collapseResponse();
-            console.log("saveItem diff:", this.getDiff($w, item, false, null));
+            this.log("saveItem diff:", this.getDiff($w, item, false, null));
             const beforeSafeResult = await this.onBeforeSave(item);
             if (beforeSafeResult == null) return false;
             savedItem = await this.ds.save();
             if (savedItem) for (const cfg of Object.values(this.cmsSchema))
                 if (cfg.type == FieldType.MULTI_REFERENCE) {
                     const val = this.ensureArray($w(cfg.id)?.value);
-                    console.log("saveItem replaceReferences", cfg.field, savedItem._id, val);
+                    this.log("saveItem replaceReferences", cfg.field, savedItem._id, val);
                     await wixData.replaceReferences(this.cmsName, cfg.field, savedItem._id, val);
                 }
-            console.log("item saved");
+            this.log("item saved");
             this.onAfterSave(beforeSafeResult);
             await this.showMessage("itemSaved", item);
             await this.refreshUI();
@@ -1280,11 +1296,11 @@ export class CmsEditor {
      */
     async revertItem() {
         if (!this.ds || !this.editMode) return;
-        console.log("revertItem");
+        this.log("revertItem");
         await this.flushDebounce(false);
         this.collapseResponse();
         await this.ds.revert(); //TODO this kills the diff output of the showMessage() below
-        console.log("item reverted");
+        this.log("item reverted");
         this.onAfterReverted();
         await this.showMessage("itemReverted", this.getItem());
         for (const cfg of Object.values(this.cmsSchema)) cfg._touched = false; //TODO recurse? also on other places?
@@ -1296,16 +1312,16 @@ export class CmsEditor {
      */
     async newItem() {
         if (!this.ds || !this.editMode) return;
-        console.log("newItem", this.getDiff($w, this.getItem(), false, null));
+        this.log("newItem", this.getDiff($w, this.getItem(), false, null));
         if (!this.hasChanges($w) || await this.saveItem()) {
-            console.log("item saved before creating new item");
+            this.log("item saved before creating new item");
             const newItem = await this.ds.new();
-            console.log("item created");
+            this.log("item created");
             await this.showMessage("itemCreated", newItem);
             await this.refreshUI();
             for (const cfg of Object.values(this.cmsSchema)) this.resetField(cfg, $w, null, null);
         } else
-            console.warn("New item aborted: Save failed.");
+            this.error("New item aborted: Save failed.");
     }
 
     /**
@@ -1313,7 +1329,7 @@ export class CmsEditor {
      */
     async removeItem() {
         if (!this.ds || !this.editMode) return;
-        console.log("removeItem");
+        this.log("removeItem");
         await this.flushDebounce();
         this.collapseResponse();
         const itemToDelete = this.getItem();
@@ -1326,7 +1342,7 @@ export class CmsEditor {
         };
 
         await this.ds.remove();
-        console.log("item removed");
+        this.log("item removed");
         this.onAfterDelete(itemToDelete);
         await this.showMessage("itemRemoved", itemToDelete);
         if (!nextId || nextId == "--new--") this.newItem(); else this.navigateTo(nextId);
@@ -1338,7 +1354,7 @@ export class CmsEditor {
     showItem() {
         const item = this.getItem();
         const url = `/${this.viewModeURL}/${item?._id}`;
-        console.log("Showing item:", url);
+        this.log("Showing item:", url);
         if (item && item._id) wixLocation.to(url, { target: '_blank' });
     }
 
@@ -1347,7 +1363,7 @@ export class CmsEditor {
      * @param {number} offset
      */
     navigateRelative(offset) {
-        console.log("navigateRelative", offset);
+        this.log("navigateRelative", offset);
         const currentId = this.getItem()?._id;
         const options = this.itemSelector?.options;
         if (options) {
@@ -1362,29 +1378,29 @@ export class CmsEditor {
      * @param {string|null} id
      */
     async navigateTo(id) {
-        console.log("navigateTo", id);
+        this.log("navigateTo", id);
         if (id && id != "--new--" && this.ds) {
             const result = await this.ds.getItems(0, this.ds.getTotalCount());
             const index = result.items.findIndex(item => item._id == id);
             if (index != -1) {
-                console.log("navigateTo item index", index);
+                this.log("navigateTo item index", index);
                 await this.ds.setCurrentItemIndex(index);
                 await this.refreshUI();
-                console.log("navigated to item");
+                this.log("navigated to item");
             } else {
-                console.error("navigateTo cannot find among", result.items.length, "items");
+                this.errorIfLog("navigateTo cannot find among", result.items.length, "items");
             }
         } else
-            console.warn("navigateTo will ignore entry", id);
+            this.warn("navigateTo will ignore entry", id);
     }
 
     /**
      * Query dataset based on filter inputs and update selector options.
      */
     async updateSelectorList() {
-        console.log("updateSelectorList");
+        this.log("updateSelectorList");
         if (!this.itemSelector && !this.itemRepeater) {
-            console.log("no itemSelector or itemRepeater");
+            this.log("no itemSelector or itemRepeater");
             return;
         }
 
@@ -1427,7 +1443,7 @@ export class CmsEditor {
                     case FilterCombine.PARALLEL_AND:
                         // Parallel Mapping (Many-to-Many)
                         if (!Array.isArray(val) || cfg.fields.length != val.length) {
-                            console.error("Unexpected result from value() function: Expected array of equal length as cfg.fields", { pVal: val, cfg });
+                            this.error("Unexpected result from value() function: Expected array of equal length as cfg.fields", { pVal: val, cfg });
                         } else
                             q = cfg.fields.reduce((q0, f, i) => applyOp(q0, f, val[i]), q);
                         break;
@@ -1442,7 +1458,7 @@ export class CmsEditor {
 
         q = this.filterSortAscending ? q.ascending(this.filterSortField) : q.descending(this.filterSortField);
         q = q.limit(this.filterLimit);
-        console.debug("updateSelectorList query:", q);
+        this.log("updateSelectorList query:", q);
 
         this._updatingSelector = true;
         try {
@@ -1450,10 +1466,10 @@ export class CmsEditor {
             for (const cfg of customChecks) {
                 const cntBefore = items.length;
                 items = cfg.onFilterResults(items);
-                console.log("onFilterResults filtered", cntBefore, "to", items.length);
+                this.log("onFilterResults filtered", cntBefore, "to", items.length);
             }
             if (this.filterSortResults) items.sort(this.filterSortResults);
-            console.debug("updateSelectorList result:", items);
+            this.debug("updateSelectorList result:", items);
 
             try {
                 if (this.itemSelector) {
@@ -1472,7 +1488,7 @@ export class CmsEditor {
                     const key = count == 0 ? "none" : count == 1 ? "one" : filtered ? "some" : "all";
                     this.itemRepeaterSummary.html = this._str_key(key, {}, {}, this.translatedMessages.repeaterSummaries, { count }, {});
                 }
-            } catch (err) { console.error("updateSelectorList failed", err); }
+            } catch (err) { this.error("updateSelectorList failed", err); }
         } finally {
             this._updatingSelector = false;
         }
@@ -1489,16 +1505,16 @@ export class CmsEditor {
      */
     async _validate(cfg, scope, item) {
         if (!cfg) {
-            console.error("Cannot validate input: CMS schema not found in configuration")
+            this.error("Cannot validate input: CMS schema not found in configuration")
             return [this._str_key("error_no_config", cfg, item, null, {}, { color: "#E74C3C" })];
         }
         let el = scope(cfg.id);
-        if (Array.isArray(el)) el = null;
+        if (!this.isElement(el)) el = null;
 
         const visible = typeof cfg.visible == "function" ? await cfg.visible(item) : cfg.visible;
         const required = typeof cfg.required == "function" ? await cfg.required(item) : cfg.required;
         const readOnly = typeof cfg.readOnly == "function" ? await cfg.readOnly(item) : cfg.readOnly;
-        console.info("validate", { cfg, scope, item, visible, required, readOnly });
+        this.debug("validate", { cfg, scope, item, visible, required, readOnly });
 
         // process "visible" attribute
         if (visible === true) el?.expand();
@@ -1537,13 +1553,13 @@ export class CmsEditor {
                 errors.push(this._str_key(attr, cfg, item, this.translatedMessages.validityChecks, {
                     message: customErrorMessage || this._str_key("no_validationMessage", cfg, item, null, {})
                 }));
-            console.info("_validate", { values, customErrorMessage, validity, errors });
+            this.debug("_validate", { values, customErrorMessage, validity, errors });
             if (errors.length == 0) {
-                console.info("UI Validation succeeded for UI", cfg.id, ":", { values, validity, value: el.value });
+                this.log("UI Validation succeeded for UI", cfg.id, ":", { values, validity, value: el.value });
                 if (el.setCustomValidity) el.setCustomValidity("");
                 if (el.onCustomValidation) el.onCustomValidation((_1, _2) => { });
             } else {
-                console.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, value: el.value, customErrorMessage, errors });
+                this.warn("UI Validation failed for UI", cfg.id, ":", { values, validity, value: el.value, customErrorMessage, errors });
                 if (el.setCustomValidity) el.setCustomValidity(errors.join(", "));
                 if (el.onCustomValidation) el.onCustomValidation((_, reject) => { reject(errors.join(", ")) });
             }
@@ -1582,7 +1598,7 @@ export class CmsEditor {
         const isBusy = this.isSaving;
         const allValid = true; // Object.values(this.cmsSchema).every(cfg => !cfg.lastValidationFailed); TODO
 
-        console.log("updateButtonStates", { currentIndex, totalCount, hasChanges, isNew, isBusy, allValid });
+        this.log("updateButtonStates", { currentIndex, totalCount, hasChanges, isNew, isBusy, allValid });
         this._setEnabled(this.buttonSave, this.editMode && !isBusy && hasChanges && allValid);
         this._setEnabled(this.buttonRevert, this.editMode && !isBusy && hasChanges);
         this._setEnabled(this.buttonNew, this.editMode && !isBusy && !isNew);
@@ -1614,7 +1630,7 @@ export class CmsEditor {
         const canSendMail = message?.emailId && item.email;
         const emailOptions = canSendMail ? await (message?.onGenerateEmailOptions ?? this.onGenerateEmailOptions)?.(item, message.emailId) : {}
 
-        console.log("showMessage", { msgId, isError, message, sMsg, sDetails, canSendMail, emailOptions });
+        this.log("showMessage", { msgId, isError, message, sMsg, sDetails, canSendMail, emailOptions });
 
         if (canSendMail && message?.automaticMail)
             sendMail(message.emailId, item, emailOptions || {});
@@ -1720,7 +1736,7 @@ export class CmsEditor {
      */
     _str_key(key, cfg = {}, item = {}, source = null, replacements = {}, formatHTML = null) {
         let msg = (source ?? this.translatedMessages)[key];
-        if (msg == null) console.error("Missing key in translation matrix:", key, { source });
+        if (msg == null) this.errorIfLog("Missing key in translation matrix:", key, { source });
         return this._str_msg(msg ?? `<${key}???>`, cfg, item, replacements, formatHTML);
     }
 
@@ -1803,7 +1819,7 @@ export class CmsEditor {
             }
         }
         const parse = (v) => {
-            //console.log("parse", typeof v, v);
+            this.debug("parse", typeof v, v);
             if (v instanceof SafeHTML) return v;
             if (Array.isArray(v)) return v.map(s => parse(s));
             if (isCell(v) || isHdr(v)) return v;
@@ -1830,12 +1846,12 @@ export class CmsEditor {
                     const key = match[2];
                     const valueOrFunc = replacements[key];
                     if (valueOrFunc === undefined) {
-                        console.error("Unknown placeholder:", key);
+                        this.errorIfLog("Unknown placeholder:", key);
                     } else {
                         const val = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                        //console.log("parse", { inlineBlock, key });
+                        this.debug("parse", { inlineBlock, key });
                         const parsed = parse(val);
-                        //console.log("parsed", { inlineBlock, key, parsed });
+                        this.debug("parsed", { inlineBlock, key, parsed });
                         if (inlineBlock) {
                             curLine.cells.push(curCell);
                             if (!Array.isArray(res)) res = res === "" ? [] : [res];
@@ -1853,7 +1869,7 @@ export class CmsEditor {
             if (s.length > lastIndex) curCell.parts.push(s.slice(lastIndex));
             curLine.cells.push(curCell);
             res.rows.push(curLine);
-            //console.log("parse result", res);
+            this.debug("parse result", res);
 
             return res;
         }
@@ -1868,6 +1884,8 @@ export class CmsEditor {
 
             if (value instanceof Table) {
                 if (formatHTML == null) return value.rows.map(row => render(row, null)).join("\n");
+                if (value.rows.length == 1 && value.rows[0].cells.length == 1)
+                    return render(value.rows[0].cells[0], formatHTML); // avoid unnecessary table for single cell
                 let res = "</span><table>\n";
                 let alignments = [];
                 let prevColCount = -1;
@@ -1932,17 +1950,17 @@ export class CmsEditor {
 
         const parsed = parse(msg);
         const res = formatHTML == null ? render(parsed, null) : `<span${this._clsStyle(formatHTML)}>${render(parsed, formatHTML)}</span>\n`;
-        console.log("finally rendered", { msg, parsed, res });
+        this.log("finally rendered", { msg, parsed, res });
         return res;
     }
 
     postMessageToDatePicker(cfg, scope, message) {
         const elPicker = scope(cfg.datePicker);
-        if (!Array.isArray(elPicker)) {
-            console.log("postMessage to", cfg.datePicker, ":", message);
+        if (this.isElement(elPicker)) {
+            this.log("postMessage to", cfg.datePicker, ":", message);
             elPicker.postMessage(message);
         } else
-            console.error("Cannot find datePicker element", cfg.datePicker);
+            this.errorIfLog("Cannot find datePicker element", cfg.datePicker);
     }
 
     convertToEmailOptions(prefix, rows, maxRows = 8, maxCols = 4) {
@@ -1966,18 +1984,46 @@ export class CmsEditor {
     }
 
     setupEditButton(buttonName, location, roleID, item = null) {
+        const el = $w(buttonName);
+        if (!this.isElement(el)) {
+            this.warn("Edit-button does not exist:", buttonName);
+            return;
+        }
         const update = async () => {
             const roles = await currentMember.getRoles();
             const showButton = roles.some((role) => role._id == roleID);
-            if (showButton) $w(buttonName).show(); else $w(buttonName).hide();
+            if (showButton) el.show(); else el.hide();
         };
-        authentication.onLogin(() => update());
-        authentication.onLogout(() => update());
-        update();
-        $w(buttonName).onClick(() => {
-            const item_ = item ?? this.getItem();
-            console.log("Clicked on", buttonName, ": Navigating to", location, "with", item_?._id);
-            if (item_) wixLocation.to(`/${location}?id=${item_._id}`, { target: '_blank' });
-        });
+        if (el) {
+            authentication.onLogin(() => update());
+            authentication.onLogout(() => update());
+            update();
+            el.onClick(() => {
+                const item_ = item ?? this.getItem();
+                this.log("Clicked on", buttonName, ": Navigating to", location, "with", item_?._id);
+                if (item_) wixLocation.to(`/${location}?id=${item_._id}`, { target: '_blank' });
+            });
+        }
     }
+
+    errorIfLog(...args) {
+        if (LOG) console.error(...args);
+    }
+
+    error(...args) {
+        console.error(...args);
+    }
+
+    warn(...args) {
+        if (LOG) console.warn(...args);
+    }
+
+    log(...args) {
+        if (LOG) console.log(...args);
+    }
+
+    debug(...args) {
+        if (VERBOSE) console.debug(...args);
+    }
+
 }
