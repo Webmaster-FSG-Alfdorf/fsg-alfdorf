@@ -288,5 +288,5 @@ async function updateCostsTable(item) {
         { label: "Einzelpreis", align: "right" },
         { label: "Gesamt", align: "right" },
     ];
-    $w("#textReservationPrice").html = editor.getString("{costs}", { "costs": [hdr, ...await generateCostsTable(item)] }, {})
+    $w("#textReservationPrice").html = editor.getString("{costs}", item, { "costs": [hdr, ...await generateCostsTable(item)] }, {})
 }

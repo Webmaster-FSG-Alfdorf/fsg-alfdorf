@@ -391,7 +391,7 @@ export class CmsEditor {
         cfg.type ??= FilterType.EQ;
         cfg.combine ??= FilterCombine.AND;
         cfg.value ??= (val) => val;
-        cfg.skip ??= (val) => val == null || val === "" || val === "*" || (Array.isArray(val) && val.length == 0);
+        cfg.skip ??= (val) => val == null || val == false || val === "" || val === "*" || (Array.isArray(val) && val.length == 0);
         cfg.countsAsFiltered ??= true;
         cfg.delay ??= 500;
         switch (cfg.type) {
@@ -1132,8 +1132,8 @@ export class CmsEditor {
             },
             [FieldType.TIME_OF_DATE]: () => val0 ? `${this._padTime(new Date(val0).getHours())}:${this._padTime(new Date(val0).getMinutes())}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(val0),
-            [FieldType.IMAGE]: () => ["", forUser ? new SafeHTML(this._generateImageTag(val0), getFileName(val0)) : getFileName(val0)],
-            [FieldType.IMAGES]: () => ["", ...this.ensureArray(val0)
+            [FieldType.IMAGE]: () => [forUser ? new SafeHTML(this._generateImageTag(val0), getFileName(val0)) : getFileName(val0)],
+            [FieldType.IMAGES]: () => [...this.ensureArray(val0)
                 .map(img => {
                     const url = img?.src || img?.fileUrl || "";
                     return forUser ? new SafeHTML(this._generateImageTag(url), getFileName(url)) : getFileName(url);
@@ -1704,7 +1704,8 @@ export class CmsEditor {
 
         if (v.padding != null) styles.push(`padding:${v.padding}px`);
         if (v.align && ["left", "right", "center"].includes(v.align)) styles.push(`text-align:${v.align}`);
-        if (["top", "middle", "bottom", undefined].includes(v.valign)) styles.push(`vertical-align:${v.valign ?? "top"}`); // TODO not working as Wix removes it
+        const valign = v.valign ?? "top";
+        if (["top", "middle", "bottom"].includes(valign)) styles.push(`vertical-align:${valign}`); // TODO not working as Wix removes it
         if (v.color && /^[#a-zA-Z0-9(),.\s-]+$/.test(v.color)) styles.push(`color:${v.color}`);
         if (v.bold) styles.push(`font-weight:bold`);
         if (v.italic) styles.push(`font-style:italic`);
@@ -1720,8 +1721,8 @@ export class CmsEditor {
      * @param {Object} [formatHTML=null] - Object with default style parameters (color, bold, italic, align) if HTML format shall be used.
      * @returns {string}
      */
-    getString(msg, replacements = {}, formatHTML = null) {
-        return this._str_msg(msg, {}, this.getItem() ?? {}, replacements, formatHTML);
+    getString(msg, item = this.getItem() ?? {}, replacements = {}, formatHTML = null) {
+        return this._str_msg(msg, {}, item, replacements, formatHTML);
     }
 
     /**
@@ -1784,8 +1785,6 @@ export class CmsEditor {
      * @returns {string}
      */
     _str_msg_replace(msg, replacements, formatHTML = null) {
-        const re = /\{(\??)(-?)([^}]+)\}|\n|\t/gi;
-
         const isCell = (value) => value != null && typeof value == "object" && "value" in value;
         const isHdr = (value) => value != null && typeof value == "object" && "label" in value;
 
@@ -1793,11 +1792,11 @@ export class CmsEditor {
             constructor() {
                 this.parts = []; // string | object | SafeHTML | Text
             }
-            addToText(value) {
+            add(value) {
                 if (value instanceof Text) {
-                    for (const v of value.parts) this.addToText(v);
+                    for (const v of value.parts) this.add(v);
                 } else if (Array.isArray(value)) {
-                    for (const v of value) this.addToText(v);
+                    for (const v of value) this.add(v);
                 } else if (typeof value == "string") {
                     if (this.parts.length > 0 && typeof this.parts[this.parts.length - 1] == "string")
                         this.parts[this.parts.length - 1] += value;
@@ -1873,13 +1872,13 @@ export class CmsEditor {
                     }
                     if (depth != 0) {
                         this.errorIfLog("Missing closing '}':", s.slice(i));
-                        curCell.addToText(ch);
+                        curCell.add(ch);
                         ++i;
                         continue;
                     }
                     if (optionalBlock && colonIndex == null) {
                         this.errorIfLog("Missing ':' for {? placeholder:", s.slice(i));
-                        curCell.addToText(ch);
+                        curCell.add(ch);
                         ++i;
                         continue;
                     }
@@ -1917,9 +1916,24 @@ export class CmsEditor {
                         curCell = new Text();
                         curLine = new TableRow();
                     } else if (parsed instanceof Table) {
-                        if (parsed.isInline())
-                            curCell.addToText(parsed.rows[0].cells[0]);
-                        else {
+                        if (parsed.isInline()) {
+                            const cell = parsed.rows[0].cells[0];
+                            if (cell instanceof Text || typeof cell === "string" || cell instanceof SafeHTML)
+                                curCell.add(cell);
+                            else {
+                                if (curCell.parts.length > 0) {
+                                    curLine.cells.push(curCell);
+                                    curCell = new Text();
+                                }
+                                if (curLine.cells.length > 0) {
+                                    res.rows.push(curLine);
+                                    curLine = new TableRow();
+                                }
+                                const row = new TableRow();
+                                row.cells = [parse(cell)];
+                                res.rows.push(row);
+                            }
+                        } else {
                             if (curCell.parts.length > 0) {
                                 curLine.cells.push(curCell);
                                 curCell = new Text();
@@ -1931,10 +1945,10 @@ export class CmsEditor {
                             for (const r of parsed.rows) res.rows.push(r);
                         }
                     } else
-                        curCell.addToText(parsed);
+                        curCell.add(parsed);
                     i = j;
                 } else {
-                    curCell.addToText(ch);
+                    curCell.add(ch);
                     ++i;
                 }
             }
@@ -1984,15 +1998,16 @@ export class CmsEditor {
                 const tag = isHeaderRow ? "th" : "td";
                 let res = "<tr>";
                 for (let ci = 0; ci < value.cells.length; ci++) {
-                    const cell = value.cells[ci];
                     const format = { padding: 8, ...formatHTML };
                     let merge = Math.max(0, (format.maxColumns ?? 0) - value.cells.length);
                     while (ci + merge + 1 < value.cells.length && value.cells[ci + merge + 1] == null) ++merge;
                     const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
                     if (format.alignments?.[ci]) format.align = format.alignments[ci];
+                    const cell = value.cells[ci];
                     if (isHdr(cell) || isCell(cell)) Object.assign(format, cell);
                     if (cell != null) {
-                        res += `<${tag}${this._clsStyle(format)}${colspan}>${render(cell, formatHTML)}</${tag}>`;
+                        const alignTopHack = "&#8203;"; // TODO value.cells.some(v => v.valign == null || v.valign == "top") ? "&#8203;" : "";
+                        res += `<${tag}${this._clsStyle(format)}${colspan}>${alignTopHack}${render(cell, formatHTML)}</${tag}>`;
                         ci += merge;
                     }
                 }
@@ -2011,6 +2026,10 @@ export class CmsEditor {
 
             if (isHdr(value))
                 return render(value.label, formatHTML == null ? null : { ...formatHTML, ...value });
+
+            if (Array.isArray(value)) {
+                return value.map(v => render(v, formatHTML)).join("");
+            }
 
             const s = typeof value == "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
             return formatHTML == null ? s :

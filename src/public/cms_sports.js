@@ -160,7 +160,7 @@ export function initSportsEditor(editMode, cfg) {
                 field: "weatherIndep"
             },
             "#checkboxNoReservation": {
-                type: FilterType.IS_EMPTY,
+                type: FilterType.IS_EMPTY,  //FIXME doesnt seem to work
                 field: "alltime"
             },
             "#checkboxNoPrice": {

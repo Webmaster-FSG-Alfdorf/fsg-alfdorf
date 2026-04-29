@@ -1,16 +1,21 @@
 import { initSportsEditor } from 'public/cms_sports';
 
 $w.onReady(function () {
-    initSportsEditor(false, {
+    let editor;
+    editor = initSportsEditor(false, {
         itemRepeater: $w("#repeaterResults"),
         itemRepeaterSummary: $w("#textCountResults"),
         onRepeaterItemReady: ($item, rowData) => {
-            let html = "<ul>";
-            html += rowData.description ?? "";
-            if (rowData.ownEquipment) html += `<li>🎽 ${rowData.ownEquipment}`;
-            if (rowData.price) html += `<li>💶 ${rowData.price}`;
-            if (rowData.contact) html += `<li>👤 ${rowData.contact}`
-            $item("#textDescription").html = html + "</ul>";
+            $item("#textDescription").html = editor.getString(
+                "{#inputDescriptionShort}\n"
+                + "{?ownEquipment: 🎒\t{ownEquipment}\n}"
+                + "{?price: 🪙\t{price}\n}"
+                + "{?address: 📍\t{address}\n}"
+                + "{?contact: 👤\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
+                + "{?alltime: 📝\t{alltime}\n}"
+                + "{?weatherIndep: 🌦️\t{weatherIndep}\n}"
+                + "{?season: 🍂\t{season}\n}",
+                rowData, {}, {});
         },
 
     });

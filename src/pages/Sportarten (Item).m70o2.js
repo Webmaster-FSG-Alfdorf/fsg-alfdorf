@@ -15,13 +15,12 @@ $w.onReady(function () {
                 + "{?alltime: 📝\t{alltime}\n}"
                 + "{?weatherIndep: 🌦️\t{weatherIndep}\n}"
                 + "{?season: 🍂\t{season}\n}"
-                + "{-summary}\n"
-                + "{summary}\n"
                 + "{?whatsappCode: {whatsAppIcon}\t{whatsappCode}\n}"
                 + "{?events: 📅\t{events}\n}", //TODO events              
-                {
-                    whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"),
-                }, {});
+                editor.getItem() ?? {},
+                { whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"), },
+                {}
+            );
         },
     });
 });
