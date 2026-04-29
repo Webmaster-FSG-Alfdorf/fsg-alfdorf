@@ -1790,33 +1790,39 @@ export class CmsEditor {
         const isHdr = (value) => value != null && typeof value == "object" && "label" in value;
 
         class Text {
-            constructor(parts = []) {
-                this.parts = parts; // string | object | SafeHTML | Text
+            constructor() {
+                this.parts = []; // string | object | SafeHTML | Text
             }
             addToText(value) {
                 if (value instanceof Text) {
-                    this.parts.push(...value.parts);
+                    for (const v of value.parts) this.addToText(v);
                 } else if (Array.isArray(value)) {
                     for (const v of value) this.addToText(v);
+                } else if (typeof value == "string") {
+                    if (this.parts.length > 0 && typeof this.parts[this.parts.length - 1] == "string")
+                        this.parts[this.parts.length - 1] += value;
+                    else
+                        this.parts.push(value);
                 } else if (value != null) {
                     this.parts.push(value);
                 }
             }
         }
         class List {
-            constructor(items = []) {
-                this.items = items; // Text | List | Table | string | object
+            constructor() {
+                this.items = []; // Text | List | Table | string | object
             }
         }
         class TableRow {
-            constructor(cells = []) {
-                this.cells = cells; // Text | object | string | List
+            constructor() {
+                this.cells = []; // Text | object | string | List
             }
         }
         class Table {
-            constructor(rows = []) {
-                this.rows = rows; // TableRow[]
+            constructor() {
+                this.rows = []; // TableRow[]
             }
+            isInline() { return this.rows.length == 1 && this.rows[0].cells.length == 1; }
         }
         const parse = (v) => {
             this.debug("parse", typeof v, v);
@@ -1844,62 +1850,98 @@ export class CmsEditor {
                     ++i;
                 } else if (ch == "{") {
                     let depth = 1;
+                    let optionalBlock = false;
+                    let inlineBlock = false;
+                    let colonIndex = null;
                     let j = i + 1;
+                    let o = 0;
                     while (j < s.length && depth > 0) {
-                        if (s[j] == "{") ++depth; else if (s[j] == "}") --depth;
+                        const chJ = s[j];
+                        if (j == i + 1 + o && chJ == "?" && depth == 1 && !optionalBlock) {
+                            optionalBlock = true;
+                            ++o;
+                        } else if (j == i + 1 + o && chJ == "-" && depth == 1 && !inlineBlock) {
+                            inlineBlock = true;
+                            ++o;
+                        } else if (chJ == ":" && depth == 1 && optionalBlock && colonIndex == null) {
+                            colonIndex = j;
+                        } else if (chJ == "{")
+                            ++depth;
+                        else if (chJ == "}")
+                            --depth;
                         ++j;
                     }
                     if (depth != 0) {
-                        this.errorIfLog("Missing closing }:", s.slice(i));
-                        curCell.parts.push(ch);
+                        this.errorIfLog("Missing closing '}':", s.slice(i));
+                        curCell.addToText(ch);
                         ++i;
                         continue;
                     }
-                    const raw = s.slice(i + 1, j - 1);
-                    let optional = false;
-                    let inlineBlock = false;
-                    let key = raw;
-                    if (key.startsWith("?")) {
-                        optional = true;
-                        key = key.slice(1);
+                    if (optionalBlock && colonIndex == null) {
+                        this.errorIfLog("Missing ':' for {? placeholder:", s.slice(i));
+                        curCell.addToText(ch);
+                        ++i;
+                        continue;
                     }
-                    if (key.startsWith("-")) {
-                        inlineBlock = true;
-                        key = key.slice(1);
-                    }
-                    this.debug("got placeholder", { optional, inlineBlock, key });
+                    const key = optionalBlock ? s.slice(i + 1 + o, colonIndex) : s.slice(i + 1 + o, j - 1);
+                    const conditionalContent = optionalBlock ? s.slice(colonIndex + 1, j - 1) : null;
+                    this.debug("got placeholder", { optionalBlock, inlineBlock, key, colonIndex, conditionalContent });
                     const valueOrFunc = replacements[key];
                     if (valueOrFunc == null) this.warn("Unknown placeholder, using as is:", key);
                     const val = valueOrFunc == null ? key : typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                    const parsed = parse.call(this, val);
-                    this.debug("parsed", { optional, inlineBlock, key, parsed });
-                    const isEmpty = parsed == null || parsed === "" || (parsed instanceof Table && parsed.rows.length == 0);
-                    if (optional && isEmpty) {
-                        // skip entirely
-                        this.debug("skipped as content is empty");
-                    } else if (inlineBlock) {
+                    if (optionalBlock) {
+                        //TODO parse val before evaluating?
+                        if (val == null || val === "" || (Array.isArray(val) && val.length == 0)) {
+                            this.debug("skipped parsing as content is empty:", val);
+                            i = j;
+                            continue;
+                        }
+                    }
+                    const parsed = optionalBlock ? parse(conditionalContent) : parse(val);
+                    this.debug("parsed", { val, optionalBlock, inlineBlock, key, parsed });
+                    if (inlineBlock) {
                         curLine.cells.push(curCell);
-                        if (!Array.isArray(res)) res = res === "" ? [] : [res];
-                        if (curLine.length > 0) res.push(curLine);
-                        if (parsed instanceof Table)
-                            parsed.rows.forEach(r => res.push(r));
-                        else if (Array.isArray(parsed))
-                            parsed.forEach(r => res.push(r));
-                        else
-                            res.push(parsed);
+                        if (curLine.cells.length > 0) res.rows.push(curLine);
+                        const flat = parsed instanceof Table ? parsed.rows : Array.isArray(parsed) ? parsed : [parsed];
+                        for (const r of flat) {
+                            if (r instanceof TableRow) {
+                                res.rows.push(r);
+                            } else {
+                                const row = new TableRow();
+                                row.cells = Array.isArray(r)
+                                    ? r.map(c => c instanceof Text ? c : parse(c))
+                                    : [r instanceof Text ? r : parse(r)];
+                                res.rows.push(row);
+                            }
+                        }
                         curCell = new Text();
                         curLine = new TableRow();
+                    } else if (parsed instanceof Table) {
+                        if (parsed.isInline())
+                            curCell.addToText(parsed.rows[0].cells[0]);
+                        else {
+                            if (curCell.parts.length > 0) {
+                                curLine.cells.push(curCell);
+                                curCell = new Text();
+                            }
+                            if (curLine.cells.length > 0) {
+                                res.rows.push(curLine);
+                                curLine = new TableRow();
+                            }
+                            for (const r of parsed.rows) res.rows.push(r);
+                        }
                     } else
                         curCell.addToText(parsed);
                     i = j;
                 } else {
-                    curCell.parts.push(ch);
+                    curCell.addToText(ch);
                     ++i;
                 }
             }
-
-            curLine.cells.push(curCell);
-            res.rows.push(curLine);
+            if (curLine.cells.length > 0 || curCell.parts.length > 0) {
+                curLine.cells.push(curCell);
+                res.rows.push(curLine);
+            }
             this.debug("parse result", res);
 
             return res;
@@ -1915,21 +1957,22 @@ export class CmsEditor {
 
             if (value instanceof Table) {
                 if (formatHTML == null) return value.rows.map(row => render(row, null)).join("\n");
-                if (value.rows.length == 1 && value.rows[0].cells.length == 1)
-                    return render(value.rows[0].cells[0], formatHTML); // avoid unnecessary table for single cell
+                if (value.isInline()) return render(value.rows[0].cells[0], formatHTML); // avoid unnecessary table for single cell
                 let res = "</span><table>\n";
                 let alignments = [];
-                let prevColCount = -1;
+                //let prevColCount = -1;
+                let maxColumns = 0;
+                for (const row of value.rows) maxColumns = Math.max(maxColumns, row.cells.length);
                 for (const row of value.rows) {
-                    let colCount = row.cells.length;
-                    if (prevColCount != -1 && prevColCount != colCount) {
-                        // start a new table
-                        res += `</table><table>\n`;
-                        alignments = [];
-                    }
-                    prevColCount = colCount;
+                    //let colCount = row.cells.length;
+                    //if (prevColCount != -1 && prevColCount != colCount) {
+                    // start a new table TODO
+                    //res += `</table><table>\n`;
+                    //alignments = [];
+                    //}
+                    //prevColCount = colCount;
                     if (row.cells.some(isHdr)) alignments = row.cells.map(cell => isHdr(cell) ? cell.align : null);
-                    res += render(row, { ...formatHTML, alignments });
+                    res += render(row, { ...formatHTML, alignments, maxColumns });
                 }
                 res += `</table><span${this._clsStyle(formatHTML)}>`;
                 return res;
@@ -1942,10 +1985,10 @@ export class CmsEditor {
                 let res = "<tr>";
                 for (let ci = 0; ci < value.cells.length; ci++) {
                     const cell = value.cells[ci];
-                    let merge = 0;
+                    const format = { padding: 8, ...formatHTML };
+                    let merge = Math.max(0, (format.maxColumns ?? 0) - value.cells.length);
                     while (ci + merge + 1 < value.cells.length && value.cells[ci + merge + 1] == null) ++merge;
                     const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
-                    const format = { padding: 8, ...formatHTML };
                     if (format.alignments?.[ci]) format.align = format.alignments[ci];
                     if (isHdr(cell) || isCell(cell)) Object.assign(format, cell);
                     if (cell != null) {
@@ -1980,9 +2023,53 @@ export class CmsEditor {
         };
 
         const parsed = parse(msg);
+        this.log("finally parsed\n", debugStructure(parsed));
         const res = formatHTML == null ? render(parsed, null) : `<span${this._clsStyle(formatHTML)}>${render(parsed, formatHTML)}</span>\n`;
-        this.log("finally rendered", { msg, parsed, res });
+        this.log("finally rendered", res);
         return res;
+
+        function debugStructure(value, indent = 0) {
+            const pad = "  ".repeat(indent);
+
+            if (value instanceof Table) {
+                return `${pad}Table\n` +
+                    value.rows.map(r => debugStructure(r, indent + 1)).join("");
+            }
+
+            if (value instanceof TableRow) {
+                return `${pad}Row\n` +
+                    value.cells.map(c => debugStructure(c, indent + 1)).join("");
+            }
+
+            if (value instanceof Text) {
+                return `${pad}Text\n` +
+                    value.parts.map(p => debugStructure(p, indent + 1)).join("");
+            }
+
+            if (value instanceof List) {
+                return `${pad}List\n` +
+                    value.items.map(i => debugStructure(i, indent + 1)).join("");
+            }
+
+            if (value instanceof SafeHTML) {
+                return `${pad}SafeHTML(html=${value.html?.slice(0, 40) ?? ""}...)\n`;
+            }
+
+            if (isCell(value)) {
+                return `${pad}Cell(value=${typeof value.value}: ${JSON.stringify(value.value)})\n`;
+            }
+
+            if (isHdr(value)) {
+                return `${pad}Header(label=${typeof value.label}: ${JSON.stringify(value.label)})\n`;
+            }
+
+            if (Array.isArray(value)) {
+                return `${pad}Array\n` +
+                    value.map(v => debugStructure(v, indent + 1)).join("");
+            }
+
+            return `${pad}${JSON.stringify(value)}\n`;
+        }
     }
 
     postMessageToDatePicker(cfg, scope, message) {

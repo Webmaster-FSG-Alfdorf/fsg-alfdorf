@@ -8,15 +8,17 @@ $w.onReady(function () {
         onReady: () => {
             $w("#textDescription").html = editor.getString(
                 "{#inputDescriptionFull}\n"
-                + "{?🎒}\t{ownEquipment}\n"
-                + "{?🪙}\t{price}\n"
-                + "{?📍}\t{address}\n"
-                + "{?👤}\t{contact} {?✉️}{contactMail} {?📞}{contactPhone}\n"
-                + "{?📝}\t{alltime}\n"
-                + "{?🌦️}\t{weatherIndep}\n"
-                + "{?🍂}\t{season}\n"
-                + "{?{whatsAppIcon}}\t{whatsappCode}\n"
-                + "{?📅}\t{events}\n", //TODO events
+                + "{?ownEquipment: 🎒\t{ownEquipment}\n}"
+                + "{?price: 🪙\t{price}\n}"
+                + "{?address: 📍\t{address}\n}"
+                + "{?contact: 👤\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
+                + "{?alltime: 📝\t{alltime}\n}"
+                + "{?weatherIndep: 🌦️\t{weatherIndep}\n}"
+                + "{?season: 🍂\t{season}\n}"
+                + "{-summary}\n"
+                + "{summary}\n"
+                + "{?whatsappCode: {whatsAppIcon}\t{whatsappCode}\n}"
+                + "{?events: 📅\t{events}\n}", //TODO events              
                 {
                     whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"),
                 }, {});

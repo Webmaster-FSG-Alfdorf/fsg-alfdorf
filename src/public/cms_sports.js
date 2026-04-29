@@ -98,7 +98,7 @@ export function initSportsEditor(editMode, cfg) {
                 field: "season",
                 label: "Saison",
                 options: { "main": "Sommersaison", "off": "Wintersaison" },
-                onPrintValue: (item, values) => values[0].length == 2 ? "Sommer- und Wintersaison" : null,
+                onPrintValue: (item, values) => values[0]?.length == 2 ? "Sommer- und Wintersaison" : null,
                 type: FieldType.TAGS,
                 required: true,
             },
