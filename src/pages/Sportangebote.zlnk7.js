@@ -7,15 +7,17 @@ $w.onReady(function () {
         itemRepeaterSummary: $w("#textCountResults"),
         onRepeaterItemReady: ($item, rowData) => {
             $item("#textDescription").html = editor.getString(
-                "{#inputDescriptionShort}\n"
+                "{description}\n"
                 + "{?ownEquipment: 🎒\t{ownEquipment}\n}"
                 + "{?price: 🪙\t{price}\n}"
                 + "{?address: 📍\t{address}\n}"
-                + "{?contact: 👤\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
+                + "{?contact: 👤\t{ctc}\n}"
                 + "{?alltime: 📝\t{alltime}\n}"
                 + "{?weatherIndep: 🌦️\t{weatherIndep}\n}"
                 + "{?season: 🍂\t{season}\n}",
-                rowData, {}, {});
+                rowData,
+                { ctc: "{contact}{?contactMail:\n✉️{contactMail}}{?contactPhone:\n📞{contactPhone}" }, //TODO not embedded in cell
+                {});
         },
 
     });

@@ -22,7 +22,7 @@ export function initSportsEditor(editMode, cfg) {
             itemName: "Sportangebot",
             itemNamePlural: "Sportangebote",
             repeaterSummaries: {
-                one: "1 passendes {itemName}", //TODO untested
+                one: "1 passendes {itemName}",
             },
         },
 
@@ -160,7 +160,7 @@ export function initSportsEditor(editMode, cfg) {
                 field: "weatherIndep"
             },
             "#checkboxNoReservation": {
-                type: FilterType.IS_EMPTY,  //FIXME doesnt seem to work
+                type: FilterType.IS_EMPTY,
                 field: "alltime"
             },
             "#checkboxNoPrice": {
@@ -168,7 +168,7 @@ export function initSportsEditor(editMode, cfg) {
                 field: "price"
             },
             "#checkboxNoEquipment": {
-                type: FilterType.IS_EMPTY,  //FIXME simple isEmpty check does not work here
+                type: FilterType.IS_EMPTY,  //FIXME simple isEmpty is not enough here
                 field: "ownEquipment"
             },
             "#dropdownSeason": {

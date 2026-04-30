@@ -1416,7 +1416,7 @@ export class CmsEditor {
                     case FilterType.GE: return q.ge(f, v);
                     case FilterType.LE: return q.le(f, v);
                     case FilterType.HAS_SOME: return q.hasSome(f, this.ensureArray(v));
-                    case FilterType.IS_EMPTY: return q.isEmpty(f);
+                    case FilterType.IS_EMPTY: return q.isEmpty(f).or(wixData.query(this.cmsName).eq(f, ""));
                     case FilterType.CUSTOM: return cfg.onFilter(q, f, v);
                     default: return q;
                 }

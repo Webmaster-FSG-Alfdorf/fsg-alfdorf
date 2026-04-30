@@ -7,7 +7,7 @@ $w.onReady(function () {
         dataSetName: "sportsDataset",  //TODO rename to datasetSports
         onReady: () => {
             $w("#textDescription").html = editor.getString(
-                "{#inputDescriptionFull}\n"
+                "{descriptionRich}\n"
                 + "{?ownEquipment: 🎒\t{ownEquipment}\n}"
                 + "{?price: 🪙\t{price}\n}"
                 + "{?address: 📍\t{address}\n}"
