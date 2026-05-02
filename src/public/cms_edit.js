@@ -6,8 +6,8 @@ import { currentMember, authentication } from "wix-members-frontend";
 import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 import { sendMail } from 'backend/common.jsw';
 
-const LOG = true;
-const VERBOSE = true;
+const LOG_CMSEDIT = true;
+const VERBOSE_CMSEDIT = false;
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -166,6 +166,7 @@ export class CmsEditor {
                 error_no_config: "Konfiguration nicht gefunden",
                 itemName: "Eintrag",
                 itemNamePlural: "Einträge",
+                itemNameAll: "(Alle)",
 
                 diff_caption: "Änderung",
                 diff_from: "Von",
@@ -253,6 +254,7 @@ export class CmsEditor {
      * @returns {void}
      */
     init() {
+        // always log this line:
         console.log("Initializing CMS Editor for", this.cmsName, "with dataset", this.dataSetName);
         if (this.ds) {
             this.error("Already initialized");
@@ -279,12 +281,7 @@ export class CmsEditor {
                 await this.refreshUI();
                 const query = wixLocation.query;
                 await this.onReady?.(query);
-                if (query.id)
-                    await this.navigateTo(query.id);
-                else {
-                    //const options = this.itemSelector?.options;
-                    //if (options?.length > 1) await this.navigateTo(options[1].value);
-                }
+                if (query.id) await this.navigateTo(query.id);
             } catch (e) {
                 this.error(e);
                 throw e;
@@ -425,23 +422,65 @@ export class CmsEditor {
                         this._debounceTimers[cfg.id] = { timer, scope, cfg, parentCfg, masterArrayID };
                     }
                 });
-            } else this.warn("Cannot bind", s, "to", cfg.id, ":", typeof trg[s]);
+            } else this.debug("Cannot bind", s, "to", cfg.id, ":", typeof trg[s]);
     }
 
     async _initCMSElement(cfg, scope, parentCfg, masterArrayID) {
         this.log("_initCMSElement", { cfg, scope, parentCfg, masterArrayID });
-        const el = scope(cfg.id);
-        if (!this.isElement(el)) {
-            if (LOG) {
+        let el = scope(cfg.id);
+
+        const applyOptions = (optionsToApply) => {
+            this.log("Assigning options for", cfg.id, ":", el?.options, "=>", optionsToApply);
+            cfg.options = optionsToApply;
+            if (el && "options" in el)
+                el.options = optionsToApply;
+            else
+                this.error("Cannot assign options list to", cfg.id);
+
+            //must also be applied to filters for those fields
+            const optionsForFilter = [{ label: this._str_key("itemNameAll", cfg), value: "*" }, ...optionsToApply];
+            for (const fCfg of Object.values(this.filterSchema)) if (fCfg.fields.includes(cfg.field)) {
+                const elFilter = $w(fCfg.id);
+                this.log("Assigning options also for", fCfg.id, ":", elFilter?.options, "=>", optionsForFilter);
+                if (elFilter && "options" in elFilter) {
+                    elFilter.options = optionsForFilter;
+                    if ("value" in elFilter) {
+                        this.log("Setting default filter option for", fCfg.id, "to *");
+                        elFilter.value = "*"; // reset filter value to default (show all)
+                    }
+                } else
+                    this.error("Cannot assign options list to", fCfg.id);
+            }
+        }
+
+        if (this.isElement(el)) {
+            if (el._cmsInitialized) return;
+            el._cmsInitialized = true;
+        } else {
+            el = null;
+            if (LOG_CMSEDIT) {
                 if (this.editMode)
                     this.warn("No such input element:", cfg.id);
                 else
                     this.log("No such input element:", cfg.id);
             }
-            return;
         }
-        if (el._cmsInitialized) return;
-        el._cmsInitialized = true;
+
+        if (cfg.options != null) {
+            if (Array.isArray(cfg.options) && cfg.options.length > 0) {
+                applyOptions(cfg.options.map(opt => typeof opt == "object" && opt.label && opt.value ? opt : { label: opt, value: opt }));
+            } else this.error("Invalid options for", cfg.id, ":", cfg.options);
+        }
+
+        cfg.elements = [];
+        const _find = (element) => {
+            cfg.elements.push(element);
+            if (element.children) for (const child of element.children) _find(child);
+        }
+        if (el) _find(el);
+        this.debug("elements for", cfg.id, ":", cfg.elements);
+
+        cfg.titleElement = cfg.elements.find(c => (c.type == "$w.Text") && (c.id.toLowerCase().includes("name")));
 
         if (cfg.resetButton) {
             const resetEl = scope(cfg.resetButton);
@@ -450,7 +489,7 @@ export class CmsEditor {
         }
 
         if (cfg.type == FieldType.REPEATER) {
-            el.onItemReady(($item, rowData) => {
+            el?.onItemReady(($item, rowData) => {
                 try {
                     this.log("onItemReady", { id: cfg.id, rowData });
                     for (const cfgSub of Object.values(cfg.inputs)) {
@@ -478,18 +517,6 @@ export class CmsEditor {
         this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onBlur", "onKeyPress"], 0, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
         this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onInput", "onChange"], cfg.delay, () => this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID));
         //TODO onChange does not work for RichTextBox
-
-        cfg.elements = [];
-        const _find = (element) => {
-            cfg.elements.push(element);
-            if (element.children) for (const child of element.children) _find(child);
-        }
-        _find(el);
-        this.debug("elements for", cfg.id, ":", cfg.elements.map(e => e.type + ": " + e.id), JSON.stringify(el, null, 2), el.length);
-
-        cfg.titleElement = cfg.elements.find(c => (c.type == "$w.Text") && (c.id.toLowerCase().includes("name")));
-
-        if (cfg.options == null && "options" in cfg) cfg.options = el.options.map(opt => [opt.value, opt.label]);
 
         switch (cfg.type) {
             case FieldType.IMAGES:
@@ -535,29 +562,16 @@ export class CmsEditor {
             case FieldType.MULTI_REFERENCE:
                 if (cfg.dataSet) {
                     const data = await wixData.query(cfg.dataSet).find();
-                    const options = data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id }));
-                    if ("options" in el)
-                        el.options = options;
-                    else
-                        this.error("Cannot assign options list to", cfg.id);
-
-                    //must also be applied to filters for those fields
-                    for (const fCfg of Object.values(this.filterSchema)) if (fCfg.fields.includes(cfg.field)) {
-                        const elFilter = $w(fCfg.id);
-                        if (elFilter && "options" in elFilter)
-                            elFilter.options = [{ label: "(Alle)", value: "*" }, ...options];
-                        else
-                            this.error("Cannot assign options list to", fCfg.id);
-                    }
+                    applyOptions(data.items.map(item => ({ label: cfg.onGenerateLabel(item), value: item._id })));
                 }
                 break;
 
             case FieldType.NUMBER:
                 if (cfg.minAllowed != null) {
-                    if ("min" in el) el.min = cfg.minAllowed; else this.error("Cannot assign min to ", cfg.id);
+                    if (el && "min" in el) el.min = cfg.minAllowed; else this.error("Cannot assign min to ", cfg.id);
                 }
                 if (cfg.maxAllowed != null) {
-                    if ("max" in el) el.max = cfg.maxAllowed; else this.error("Cannot assign max to ", cfg.id);
+                    if (el && "max" in el) el.max = cfg.maxAllowed; else this.error("Cannot assign max to ", cfg.id);
                 }
                 break;
 
@@ -601,7 +615,7 @@ export class CmsEditor {
      * @param {*} masterArrayID
      */
     _initFilterElement(cfg, scope, boundIDs, parentCfg, masterArrayID) {
-        this.log("_initCMSElement", { cfg, scope, boundIDs, parentCfg, masterArrayID });
+        this.log("_initFilterElement", { cfg, scope, boundIDs, parentCfg, masterArrayID });
         const el = scope(cfg.id);
         if (!this.isElement(el))
             this.warn("No such filter element:", cfg.id);
@@ -610,6 +624,7 @@ export class CmsEditor {
             this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onBlur", "onKeyPress"], 0, () => this.updateSelectorList());
             this._bind(el, scope, cfg, parentCfg, masterArrayID, ["onInput", "onChange"], cfg.delay, () => this.updateSelectorList());
         }
+        else this.debug("Filter element already bound:", cfg.id);
     }
 
     getItem() {
@@ -904,7 +919,7 @@ export class CmsEditor {
 
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
         const uiValues = [cfg.default];
-        if (LOG || VERBOSE) {
+        if (LOG_CMSEDIT || VERBOSE_CMSEDIT) {
             if (cfg.onEqualData(cfg, item, uiValues, dataValues)) {
                 this.debug(`Already in reset state ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
             } else
@@ -982,20 +997,24 @@ export class CmsEditor {
                 break;
             case FieldType.TIME_OF_DATE:
                 if (val0 != null) {
-                    const dt = new Date(val0);
-                    // local time
+                    const dt = new Date(val0); // local time
                     val0 = this._padTime(dt.getHours()) + ":" + this._padTime(dt.getMinutes());
                 } else
                     val0 = "";
                 break;
             case FieldType.HOURS_OF_DATE:
                 if (val0 != null) {
-                    const dt = new Date(val0);
-                    // local time
-                    val0 = dt.getHours();
-                    if ("options" in el) { //TODO if no fitting, use the next smaller / greater depending on cfg.roundUp (TODO naming?)
-                        const idx = el.options.findIndex(opt => opt.value == val0);
-                        if (idx != -1) val0 = el.options[idx].value;
+                    const dt = new Date(val0); // local time
+                    const opts = cfg.options ?? [];
+                    const hours = dt.getHours();
+                    val0 = opts.find(o => o.value == hours)?.value;
+                    if (val0 == null && opts.length > 0) {
+                        //if no fitting, use the nearest value depending on cfg.roundUp
+                        const values = opts.map(o => o.value);
+                        values.sort((a, b) => cfg.roundUp ? a - b : b - a);
+                        val0 = cfg.roundUp
+                            ? values.find(v => v >= hours) ?? values[values.length - 1]
+                            : values.find(v => v <= hours) ?? values[0];
                     }
                 }
                 break;
@@ -1133,13 +1152,15 @@ export class CmsEditor {
             [FieldType.TIME_OF_DATE]: () => val0 ? `${this._padTime(new Date(val0).getHours())}:${this._padTime(new Date(val0).getMinutes())}` : "",
             [FieldType.MULTI_SELECT]: () => this.ensureArray(val0),
             [FieldType.IMAGE]: () => [forUser ? new SafeHTML(this._generateImageTag(val0), getFileName(val0)) : getFileName(val0)],
-            [FieldType.IMAGES]: () => [...this.ensureArray(val0)
+            [FieldType.IMAGES]: () => this.ensureArray(val0)
                 .map(img => {
                     const url = img?.src || img?.fileUrl || "";
                     return forUser ? new SafeHTML(this._generateImageTag(url), getFileName(url)) : getFileName(url);
-                })],
+                }),
             [FieldType.CUSTOM]: () => cfg.onFormatCustomValue?.(values),
             [FieldType.TAGS]: () => this.ensureArray(val0).map(v => cfg.options?.[v] ?? v),
+            [FieldType.REFERENCE]: () => cfg.options?.find(opt => opt.value == val0)?.label ?? val0,
+            [FieldType.MULTI_REFERENCE]: () => this.ensureArray(val0).map(v => cfg.options?.find(opt => opt.value == v)?.label ?? v),
             [FieldType.RICH_TEXT]: () => new SafeHTML(val0, val0),
             [FieldType.STRING_MAIL]: () => val0 ? new SafeHTML(`<a href="mailto:${val0}">${val0}</a>`, val0) : "",
             [FieldType.STRING_PHONE]: () => {
@@ -1410,6 +1431,7 @@ export class CmsEditor {
 
         for (const cfg of Object.values(this.filterSchema)) {
             const applyOp = (q, f, v) => {
+                this.debug("updateSelectorList applyOp", { q, f, v });
                 switch (cfg.type) {
                     case FilterType.EQ: return q.eq(f, v);
                     case FilterType.CONTAINS: return q.contains(f, v);
@@ -1427,7 +1449,9 @@ export class CmsEditor {
                 return el && "checked" in el ? el.checked : el && "value" in el ? el.value : null;
             };
             const val = typeof cfg.value == "function" ? cfg.value(getElementValue()) : cfg.value;
-            if (!cfg.skip(val)) {
+            const skipped = cfg.skip(val);
+            this.debug("updateSelectorList", { cfg, valType: typeof val, val, skipped });
+            if (!skipped) {
                 if (cfg.countsAsFiltered) filtered = true;
                 if (cfg.type == FilterType.CUSTOM) customChecks.push(cfg);
                 switch (cfg.combine) {
@@ -1522,8 +1546,8 @@ export class CmsEditor {
 
         // process "required" attribute //TODO does not work for RichTextBox or SelectionTags
         if (el && (required === true || required === false)) {
-            if ("label" in el) el.label = el.label.replaceAll(" *", "") + (required ? " *" : "");
-            if (cfg.titleElement) cfg.titleElement.text = cfg.titleElement.text.replaceAll(" *", "") + (required ? " *" : "");
+            if ("label" in el && el.label) el.label = cfg.label + (required ? " *" : "");
+            if (cfg.titleElement) cfg.titleElement.text = cfg.label + (required ? " *" : "");
         }
 
         // process "readOnly" attribute
@@ -1793,23 +1817,24 @@ export class CmsEditor {
                 this.parts = []; // string | object | SafeHTML | Text
             }
             add(value) {
-                if (value instanceof Text) {
-                    for (const v of value.parts) this.add(v);
-                } else if (Array.isArray(value)) {
-                    for (const v of value) this.add(v);
-                } else if (typeof value == "string") {
+                if (typeof value == "string") {
+                // keep the parts list small by merging consecutive strings
                     if (this.parts.length > 0 && typeof this.parts[this.parts.length - 1] == "string")
                         this.parts[this.parts.length - 1] += value;
                     else
                         this.parts.push(value);
+                } else if (value instanceof Text) {
+                    for (const v of value.parts) this.add(v);
+                } else if (Array.isArray(value)) {
+                    for (const v of value) this.add(new List([v]));
                 } else if (value != null) {
                     this.parts.push(value);
                 }
             }
         }
         class List {
-            constructor() {
-                this.items = []; // Text | List | Table | string | object
+            constructor(items) {
+                this.items = items; // Text | List | Table | string | object
             }
         }
         class TableRow {
@@ -1918,7 +1943,7 @@ export class CmsEditor {
                     } else if (parsed instanceof Table) {
                         if (parsed.isInline()) {
                             const cell = parsed.rows[0].cells[0];
-                            if (cell instanceof Text || typeof cell === "string" || cell instanceof SafeHTML)
+                            if (typeof cell == "string" || cell instanceof Text || cell instanceof SafeHTML)
                                 curCell.add(cell);
                             else {
                                 if (curCell.parts.length > 0) {
@@ -2144,23 +2169,34 @@ export class CmsEditor {
     }
 
     errorIfLog(...args) {
-        if (LOG) console.error(...args);
+        if (LOG_CMSEDIT) console.error(...args.map(a => this._safeLog(a)));
     }
 
     error(...args) {
-        console.error(...args);
+        console.error(...args.map(a => this._safeLog(a)));
     }
 
     warn(...args) {
-        if (LOG) console.warn(...args);
+        if (LOG_CMSEDIT) console.warn(...args.map(a => this._safeLog(a)));
     }
 
     log(...args) {
-        if (LOG) console.log(...args);
+        if (LOG_CMSEDIT) console.log(...args.map(a => this._safeLog(a)));
     }
 
     debug(...args) {
-        if (VERBOSE) console.debug(...args);
+        if (VERBOSE_CMSEDIT) console.debug(...args.map(a => this._safeLog(a)));
+    }
+
+    _safeLog(v, depth = 0) {
+        if (depth > 3) return typeof v;
+        if (typeof v == "function") return `Function: ${v.toString().slice(0, 30)}...`;
+        if (Array.isArray(v)) return v.map(v => this._safeLog(v, depth + 1));
+        if (v == null || typeof v != "object") return v;
+        if (v.id && v.type && v.$w) return { id: v.id, type: v.type };
+        const res = {};
+        for (const k of Object.keys(v)) res[k] = this._safeLog(v[k], depth + 1);
+        return res;
     }
 
 }

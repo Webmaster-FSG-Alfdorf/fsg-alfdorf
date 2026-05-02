@@ -64,8 +64,8 @@ export function initSportsEditor(editMode, cfg) {
 
             "#inputAlltime": {
                 field: "alltime",
+                label: "Jederzeit möglich?",
                 type: FieldType.STRING,
-                label: "XXX",
             },
 
             "#inputOnGround": {

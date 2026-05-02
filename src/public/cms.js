@@ -1,4 +1,10 @@
 
+const LOG_DT = false;
+
+function logDT(...args) {
+    if (LOG_DT) console.log(...args);
+}
+
 export const ROLES = {
     GUESTS_MANAGEMENT: {
         label: "Gästeverwaltung",
@@ -75,6 +81,7 @@ export function dateRangeToString(
         start: startOverrides = {},
         end: endOverrides = {}
     } = {}) {
+    logDT("dateRangeToString", { start, end, locales, weekday, day, month, year, hour, minute, second, startOverrides, endOverrides });
     let res = "";
     let df = { timeZone: "Europe/Berlin" };
     const dStart = start ? new Date(start) : null;
@@ -98,6 +105,7 @@ export function dateRangeToString(
             const showTime = ovr(hour, endOverrides.hour) != null || ovr(minute, endOverrides.minute) != null || ovr(second, endOverrides.second) != null;
             const sameDay = dStart.getDate() == dEnd.getDate() && dStart.getMonth() == dEnd.getMonth() && dStart.getFullYear() == dEnd.getFullYear();
             const sameTime = dStart.getHours() == dEnd.getHours() && dStart.getMinutes() == dEnd.getMinutes() && dStart.getSeconds() == dEnd.getSeconds();
+            //if (!sameDay || (showTime && !sameTime)) {
             if ((showDay && !sameDay) || (showTime && !sameTime)) {
                 res += " - ";
                 const dfEnd = { timeZone: "Europe/Berlin" };
@@ -150,7 +158,7 @@ export function listAllRanges(eventDate) {
     const end = new Date(eventDate.end || start);
 
     const itv = eventDate.recurrenceInterval;
-    if (itv <= 0) {
+    if (!itv || itv <= 0) {
         // no repetition, one-time event: this can also span over multiple days
         res.push({ start, end });
         return res;
@@ -215,7 +223,7 @@ export function listAllRanges(eventDate) {
                 return res; // no iteration at all
         }
     }
-    console.log(`Stopped after ${count} iterations, didn't reach ${end} from ${start}, got to ${cur}`);
+    logDT(`Stopped after ${count} iterations, didn't reach ${end} from ${start}, got to ${cur}`);
     return res;
 }
 
@@ -225,6 +233,7 @@ export function listAllRanges(eventDate) {
  */
 export function printRanges(eventDate) {
     const ranges = listAllRanges(eventDate);
+    logDT("printRanges", { eventDate, ranges });
     if (ranges.length == 0) return ""; // no date at all
     const first = ranges[0];
     if (ranges.length == 1) return dateRangeToString(first.start, first.end); // no iteration at all
@@ -239,6 +248,7 @@ export function printRanges(eventDate) {
 
     let sameYear = first.start.getFullYear() == last.end.getFullYear();
     let sameMonth = sameYear && first.start.getMonth() == last.end.getMonth();
+    logDT("printRanges", { first, last, sameYear, sameMonth, rct, itv, mr, weekdays });
     res += dateRangeToString(first.start, first.end, {
         year: sameYear ? FormatTypesNumeric.none : FormatTypesNumeric.numeric,
         month: sameMonth ? FormatTypesMonth.none : FormatTypesMonth.long,

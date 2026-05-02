@@ -1,13 +1,14 @@
-import { CmsEditor, FieldType, FilterType, FilterCombine } from 'public/cms_edit.js';
-import { dateRangeToString, listAllRanges, printRanges, incUTCDate } from 'public/cms.js';
+import { CmsEditor, FieldType, FilterType, FilterCombine, SafeHTML } from 'public/cms_edit.js';
+import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
 import { ROLES } from "public/cms.js";
+import wixLocation from 'wix-location';
 
 export function initEventsEditor(editMode, youth, cfg) {
     const editor = new CmsEditor({
         editMode,
         cmsName: "events",
         dataSetName: "datasetEvents",
-        viewModeURL: "event",
+        viewModeURL: "events",
 
         itemSelector: $w("#itemSelector"),
         textResponse: $w("#textResponse"),
@@ -33,11 +34,13 @@ export function initEventsEditor(editMode, youth, cfg) {
         cmsSchema: {
             "#titleField": {
                 field: "title",
+                label: "Titel",
                 type: FieldType.STRING,
                 required: true
             },
             "#subTitleField": {
                 field: "subTitle",
+                label: "Untertitel",
                 type: FieldType.STRING
             },
             "#datesRepeater": {
@@ -92,11 +95,53 @@ export function initEventsEditor(editMode, youth, cfg) {
                 },
                 addButton: "#btnDateAdd",
                 removeButton: "#btnDateRemove",
-                onPrintValue: (item) => editor.ensureArray(item?.dates).map(ed => printRanges(ed)).join(", "),
+                onPrintValue: (item) => {
+                    const gcalIcon = "https://www.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_16_2x.png";
+                    const outlookIcon = "https://img.icons8.com/color/48/000000/outlook-calendar.png";
+                    const title = encodeURIComponent(item.title);
+                    const details = encodeURIComponent(editor.getString(
+                        `{source}\n{eventsSummary}`, item, {
+                        source: new SafeHTML(`Quelle: <a href="${wixLocation.url}">www.fsg-alfdorf.de</a>`),
+                        eventsSummary: new SafeHTML(getEventsSummary(editor, item, false))
+                    }, {}));
+                    const location = encodeURIComponent(item.address?.formatted || "");
+                    const formatIso = (date) => new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+                    const formatOutlook = (date) => {
+                        const d = new Date(date);
+                        const pad = n => String(n).padStart(2, "0");
+                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                    };
+
+                    let allDates = new Map();
+                    (item?.dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+                    return [...allDates.values()].sort((dr0, dr1) => dr0.start - dr1.start).map(dr => {
+                        const s = printRanges(dr);
+                        const gcalUrl =
+                            `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+                            `&text=${title}` +
+                            `&details=${details}` +
+                            `&location=${location}` +
+                            `&dates=${formatIso(dr.start)}/${formatIso(dr.end)}`;
+                        const outlookUrl =
+                            `https://outlook.live.com/calendar/0/deeplink/compose` +
+                            `?subject=${title}` +
+                            `&body=${details}` +
+                            `&location=${location}` +
+                            `&startdt=${encodeURIComponent(formatOutlook(dr.start))}` +
+                            `&enddt=${encodeURIComponent(formatOutlook(dr.end))}` +
+                            `&tz=Europe%2FBerlin&allday=false`;
+                        return new SafeHTML(
+                            `${s}&nbsp;<a href="${gcalUrl}" target="_blank"><img width="22" src="${gcalIcon}"></a>` +
+                            `&nbsp;<a href="${outlookUrl}" target="_blank"><img width="22" src="${outlookIcon}"></a>`,
+                            s
+                        );
+                    });
+                },
                 onChanged: (item, values) => refreshDateRangeText(values),
             },
             "#sportsField": {
                 field: "sports",
+                label: "Sportarten",
                 type: FieldType.MULTI_REFERENCE,
                 dataSet: "sports",
                 onGenerateLabel: (item) => item.name,
@@ -104,54 +149,67 @@ export function initEventsEditor(editMode, youth, cfg) {
             },
             "#mainImageField": {
                 field: "mainImage",
+                label: "Hauptbild",
                 type: FieldType.IMAGE,
                 required: true
             },
             "#galleryField": {
                 field: "gallery",
+                label: "Galerie",
                 type: FieldType.IMAGES
             },
             "#descriptionField": {
                 field: "description",
+                label: "Beschreibung",
                 type: FieldType.RICH_TEXT,
                 required: true
             },
             "#priceField": {
                 field: "price",
+                label: "Preis",
                 type: FieldType.STRING
             },
             "#onGroundField": {
                 field: "onGround",
+                label: "Auf unserem Gelände?",
                 type: FieldType.BOOLEAN
             },
             "#addressField": {
                 field: "address",
+                label: "Ort",
                 type: FieldType.ADDRESS
             },
             "#typeField": {
                 field: "type",
+                label: "Art der Veranstaltung",
                 type: FieldType.SELECT,
-                required: true
+                required: true,
+                options: ["Offizielles", "Fest", "Ausflug", "Gemeinschaftsevent", "Sportveranstaltung", "Sport-Turnier"],
             },
             "#youthField": {
                 field: "youth",
+                label: "Jugend?",
                 type: FieldType.BOOLEAN,
             },
             "#registrationField": {
                 field: "registration",
+                label: "Anmeldung bis",
                 type: FieldType.DATE,
                 resetButton: "#registrationFieldReset"
             },
             "#responsibleField": {
                 field: "responsible",
+                label: "Verantwortlicher",
                 type: FieldType.STRING
             },
             "#responsibleMailField": {
                 field: "responsibleMail",
+                label: "E-Mail des Verantwortlichen",
                 type: FieldType.STRING_MAIL
             },
             "#responsiblePhoneField": {
                 field: "responsiblePhone",
+                label: "Telefonnummer des Verantwortlichen",
                 type: FieldType.STRING_PHONE
             },
         },
@@ -187,7 +245,7 @@ export function initEventsEditor(editMode, youth, cfg) {
             },
             "#dropdownType": {
                 type: FilterType.HAS_SOME,
-                skip: (val) => !val || val == "Alle",
+                skip: (val) => !val || val == "*",
                 value: (val) => val == "Sport-Event" ? [val, "Sport-Turnier"] : [val],
                 field: "type"
             },
@@ -217,6 +275,23 @@ export function initEventsEditor(editMode, youth, cfg) {
     editor.init();
     editor.setupEditButton("#buttonEdit", ROLES.EVENTS_EDIT.slug, ROLES.EVENTS_EDIT.id, editor.getItem());
     return editor;
+}
+
+export function getEventsSummary(editor, item, includeDates = true) {
+    return editor.getString(
+        "{description}\n"
+        + "🏷️\t{type}\n"
+        + (includeDates ? "📅\t{dates}\n" : "")
+        + "{?price: 🪙\t{price}\n}"
+        + "{?address: 📍\t{address}\n}"
+        + "{?onGround: 📍\tAuf unserem Gelände\n}"
+        + "{?registration: 📝\tAnmeldung bis {registration}\n}"
+        + "{?responsible: 👤\t{responsible}{?responsibleMail: ✉️{responsibleMail}}{?responsiblePhone: 📞{responsiblePhone}}\n}"
+        + "",
+        item,
+        { rsp: "{responsible}{?responsibleMail:\n✉️{responsibleMail}}{?responsiblePhone:\n📞{responsiblePhone}}" },
+        {}
+    );
 }
 
 function refreshDateRangeText(values) {
