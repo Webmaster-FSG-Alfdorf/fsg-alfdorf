@@ -51,7 +51,18 @@ export function initEventsEditor(editMode, youth, cfg) {
                         field: "start",
                         type: FieldType.DATE,
                         required: true,
-                        default: new Date()
+                        default: (() => {
+                            const d = new Date();
+                            return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                        })(),
+                        onChanged: (item, values) => {
+                            const start = new Date(item?.start);
+                            const end = new Date(item?.end);
+                            if (!isNaN(start) && (isNaN(end) || end < start)) {
+                                item.end = start;
+                                editor.updateUIFromData("#datesRepeater");
+                            }
+                        },
                     },
                     "#pickerDatesStartTime": {
                         field: "start",
@@ -85,7 +96,10 @@ export function initEventsEditor(editMode, youth, cfg) {
                         field: "end",
                         type: FieldType.DATE,
                         required: true,
-                        default: new Date()
+                        default: (() => {
+                            const d = new Date();
+                            return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                        })(),
                     },
                     "#pickerDatesEndTime": {
                         field: "end",
@@ -280,16 +294,16 @@ export function initEventsEditor(editMode, youth, cfg) {
 export function getEventsSummary(editor, item, includeDates = true) {
     return editor.getString(
         "{description}\n"
-        + "🏷️\t{type}\n"
-        + (includeDates ? "📅\t{dates}\n" : "")
-        + "{?price: 🪙\t{price}\n}"
-        + "{?address: 📍\t{address}\n}"
-        + "{?onGround: 📍\tAuf unserem Gelände\n}"
-        + "{?registration: 📝\tAnmeldung bis {registration}\n}"
-        + "{?responsible: 👤\t{responsible}{?responsibleMail: ✉️{responsibleMail}}{?responsiblePhone: 📞{responsiblePhone}}\n}"
+        + "{@width=0:🏷️}\t{type}\n"
+        + (includeDates ? "{?dates:{@width=0:📅}\t{dates}\n}" : "")
+        + "{?price:{@width=0:🪙}\t{price}\n}"
+        + "{?address:{@width=0:📍}\t{address}\n}"
+        + "{?onGround:{@width=0:📍}\tAuf unserem Gelände\n}"
+        + "{?registration:{@width=0:📝}\tAnmeldung bis {registration}\n}"
+        + "{?responsible:{@width=0:👤}\t{responsible}{?responsibleMail:\n✉️{responsibleMail}}{?responsiblePhone: \n📞{responsiblePhone}}\n}"
         + "",
         item,
-        { rsp: "{responsible}{?responsibleMail:\n✉️{responsibleMail}}{?responsiblePhone:\n📞{responsiblePhone}}" },
+        { rsp: "{responsible}{?responsibleMail:\n✉️{responsibleMail}}{?responsiblePhone:\n📞{responsiblePhone}}" }, //TODO
         {}
     );
 }

@@ -7,7 +7,7 @@ import { dateRangeToString, stringToDateRange } from 'public/cms.js';
 import { sendMail } from 'backend/common.jsw';
 
 const LOG_CMSEDIT = true;
-const VERBOSE_CMSEDIT = false;
+const VERBOSE_CMSEDIT = true;
 
 /**
  * @typedef {Object} CmsFieldConfig
@@ -87,6 +87,20 @@ export class SafeHTML {
         this.plain = plain ?? html;
     }
 };
+
+export class TableHeader {
+    constructor(label, formatHTML = {}) {
+        this.label = label;
+        this.formatHTML = formatHTML;
+    }
+};
+
+export class TableCell {
+    constructor(value, formatHTML = {}) {
+        this.value = value;
+        this.formatHTML = formatHTML;
+    }
+}
 
 export class CmsEditor {
     /**
@@ -767,7 +781,9 @@ export class CmsEditor {
         // if we have no fields, we expect no values at all,
         // if only one field is defined, we expect a single value,
         // otherwise we expect values for each defined field
-        const { val, needRefresh = false } = await parse();
+        const result = await parse();
+        const val = result?.val;
+        const needRefresh = !!result?.needRefresh;
         const values = cfg.fields.length == 0 ? [] : cfg.fields.length > 1 ? val : [val];
         if (values.length != cfg.fields.length) {
             this.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
@@ -864,8 +880,16 @@ export class CmsEditor {
             item = this.getItem(); // update after using setFieldValue
         }
 
-        await cfg.onChanged?.(item, values[0]);
-        await parentCfg?.onChanged?.(item, masterArray || values[0]);
+        if (cfg.onChanged) try {
+            await cfg.onChanged(item, values[0]);
+        } catch (e) {
+            this.error("Error in onChanged for", cfg.id, ":", e);
+        }
+        if (parentCfg?.onChanged) try {
+            await parentCfg.onChanged(item, masterArray || values[0]);
+        } catch (e) {
+            this.error("Error in onChanged for", parentCfg.id, ":", e);
+        }
 
         if (needRefresh)
             await this._updateUiFromData(cfg, scope, item, values, masterArrayID);
@@ -937,12 +961,13 @@ export class CmsEditor {
     async addRepeaterItem(scope, cfg, masterArrayID) {
         this.log("addRepeaterItem for", cfg.id);
         if (!this.ds || !this.editMode) return;
+        const len = values?.[0]?.length ?? 0;
 
         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, null);
         this.debug({ scope, cfg, masterArrayID, item, masterArray, values });
-        const newItem = { _id: `row-${values[0].length}-${Date.now()}` };
+        const newItem = { _id: `row-${len}-${Date.now()}` };
         for (const subCfg of Object.values(cfg.inputs)) newItem[subCfg.field] ??= subCfg.default;
-        const newValues = [[...values[0], newItem]];
+        const newValues = [[...(values?.[0] ?? []), newItem]];
         await this._persistAndRefresh(cfg, scope, item, masterArray, newValues, masterArrayID, null, true);
     }
 
@@ -963,6 +988,10 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, item, masterArray, newValues, masterArrayID, null, true);
     }
 
+    async updateUIFromData(id, valuesToUse = null) {
+        await this._updateUiFromData(this.cmsSchema[id], $w, null, valuesToUse, null);
+    }
+
     /**
      * Write values from model into UI controls.
      * @param {CmsFieldConfig} cfg
@@ -980,7 +1009,7 @@ export class CmsEditor {
         const el = scope(cfg.id);
         if (!this.isElement(el)) return;
 
-        const prevValue = el.value;
+        let prevValue = undefined;
         const values = valuesToUse ?? cfg.fields.map(f => item?.[f]);
         let val0 = values[0];
         let done = false;
@@ -988,6 +1017,7 @@ export class CmsEditor {
             case FieldType.BOOLEAN:
                 val0 = !!val0;
                 if ("checked" in el) {
+                    prevValue = el.checked;
                     el.checked = val0;
                     done = true;
                 }
@@ -1030,6 +1060,7 @@ export class CmsEditor {
             case FieldType.IMAGE:
                 val0 ||= TRANSPARENT_PIXEL;
                 if (cfg.image && "src" in cfg.image) {
+                    prevValue = cfg.image.src;
                     cfg.image.src = val0;
                     done = true;
                 }
@@ -1037,6 +1068,7 @@ export class CmsEditor {
             case FieldType.IMAGES:
                 val0 = this.ensureArray(val0).map((v, i) => this._createMediaStruct(cfg, i, v));
                 if (cfg.gallery && "items" in cfg.gallery) {
+                    prevValue = cfg.gallery.items;
                     cfg.gallery.items = val0;
                     if (cfg.gallery.items.length == 0) cfg.gallery.collapse(); else cfg.gallery.expand();
                     done = true;
@@ -1052,6 +1084,7 @@ export class CmsEditor {
                 break;
             case FieldType.REPEATER:
                 val0 = this.ensureArray(val0);
+                prevValue = el.data;
                 el.data = []; // force refresh
                 el.data = val0;
                 done = true;
@@ -1062,13 +1095,13 @@ export class CmsEditor {
         }
         if (!done) {
             // if no special set function has been used, try to use the default 
-            if ("value" in el)
+            if ("value" in el) {
+                prevValue = el.value;
                 el.value = val0;
-            else
+            } else
                 this.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property", { cfg, scope, item, el })
         }
-        //values[0] = val0; TOODO needed as a side effect? hopefully not
-        this.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, el.value, "was:", prevValue);
+        this.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, val0, "was:", prevValue);
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
         if (btn && this.isElement(btn)) {
@@ -1128,9 +1161,12 @@ export class CmsEditor {
         const getFileName = (url) => url ? url.split('/').pop()?.split('#')[0] || url : "";
 
         if (!cfg) return "";
-        if (cfg.onPrintValue) {
+        if (cfg.onPrintValue) try {
             const pv = cfg.onPrintValue(item, values, forUser, formatHTML);
             if (pv != null) return pv;
+        } catch (e) {
+            this.warn("Error in onPrintValue for", cfg.id, ":", e);
+            return "";
         }
         const val0 = values[0];
         const formatters = {
@@ -1181,6 +1217,7 @@ export class CmsEditor {
     hasChanges(scope) {
         const item = this.getItem();
         for (const cfg of Object.values(this.cmsSchema)) {
+            this.log("Checking changes for", cfg);
             if (cfg.collectDiff) {
                 const orgVal = cfg.fields.map(f => this.originalItem?.[f] ?? "");
                 const curVal = cfg.fields.map(f => item?.[f] ?? "");
@@ -1200,10 +1237,10 @@ export class CmsEditor {
      */
     getDiff(scope, item, forUser, formatHTML) {
         const caption = [
-            { label: this._str_key("diff_caption", {}, item), align: "right", bold: true },
-            { label: this._str_key("diff_from", {}, item), align: "right", bold: true },
-            { label: "", align: "center" },
-            { label: this._str_key("diff_to", {}, item), bold: true },
+            new TableHeader(this._str_key("diff_caption", {}, item), { align: "right", bold: true }),
+            new TableHeader(this._str_key("diff_from", {}, item), { align: "right", bold: true }),
+            new TableHeader("", { align: "center" }),
+            new TableHeader(this._str_key("diff_to", {}, item), { bold: true }),
         ];
         const diff = [caption];
         for (const cfg of Object.values(this.cmsSchema)) {
@@ -1232,21 +1269,19 @@ export class CmsEditor {
     getSummary(scope, item, forUser, formatHTML = null) {
         const res = [
             [
-                { label: this._str_key("input_caption", {}, item), align: "right", bold: true },
-                { label: this._str_key("input_value", {}, item), bold: true },
+                new TableHeader(this._str_key("input_caption", {}, item), { align: "right", bold: true }),
+                new TableHeader(this._str_key("input_value", {}, item), { bold: true }),
             ]
         ];
         for (const cfg of Object.values(this.cmsSchema))
             if (cfg.collectSummary && (!forUser || cfg.showToUser)) res.push(
                 [
-                    {
+                    new TableCell((typeof cfg.summaryLabel == "function" ? cfg.summaryLabel(forUser, formatHTML) : cfg.summaryLabel) + ":", {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
-                        value: (typeof cfg.summaryLabel == "function" ? cfg.summaryLabel(forUser, formatHTML) : cfg.summaryLabel) + ":"
-                    },
-                    {
+                    }),
+                    new TableCell(this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]), forUser, formatHTML), {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
-                        value: this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]), forUser, formatHTML)
-                    }
+                    }),
                 ]
             );
         return res;
@@ -1724,16 +1759,24 @@ export class CmsEditor {
     }
 
     _clsStyle(v = {}) {
+        const n = (val) => {
+            if (val == null) return null;
+            const num = Number(val);
+            return Number.isNaN(num) ? val : num;
+        };
+        const padding = n(v.padding);
+        const width = n(v.width);
+
+        this.debug("_clsStyle", v);
         const styles = [];
 
-        if (v.padding != null) styles.push(`padding:${v.padding}px`);
+        if (padding != null) styles.push(`padding:${padding}px`);
         if (v.align && ["left", "right", "center"].includes(v.align)) styles.push(`text-align:${v.align}`);
-        const valign = v.valign ?? "top";
-        if (["top", "middle", "bottom"].includes(valign)) styles.push(`vertical-align:${valign}`); // TODO not working as Wix removes it
         if (v.color && /^[#a-zA-Z0-9(),.\s-]+$/.test(v.color)) styles.push(`color:${v.color}`);
         if (v.bold) styles.push(`font-weight:bold`);
         if (v.italic) styles.push(`font-style:italic`);
-
+        if (v.nowrap) styles.push(`white-space:nowrap`);
+        if (width && /^[0-9.]+(px|%|em|rem|vw|vh)?$/.test(String(width))) styles.push(`width:${width}`);
         const styleAttr = styles.length ? ` style="${styles.join(";")}"` : "";
         return ` class="font_7"${styleAttr}`;
     }
@@ -1809,16 +1852,13 @@ export class CmsEditor {
      * @returns {string}
      */
     _str_msg_replace(msg, replacements, formatHTML = null) {
-        const isCell = (value) => value != null && typeof value == "object" && "value" in value;
-        const isHdr = (value) => value != null && typeof value == "object" && "label" in value;
-
         class Text {
             constructor() {
                 this.parts = []; // string | object | SafeHTML | Text
             }
             add(value) {
                 if (typeof value == "string") {
-                // keep the parts list small by merging consecutive strings
+                    // keep the parts list small by merging consecutive strings
                     if (this.parts.length > 0 && typeof this.parts[this.parts.length - 1] == "string")
                         this.parts[this.parts.length - 1] += value;
                     else
@@ -1833,26 +1873,27 @@ export class CmsEditor {
             }
         }
         class List {
-            constructor(items) {
+            constructor(items = []) {
                 this.items = items; // Text | List | Table | string | object
             }
         }
         class TableRow {
-            constructor() {
-                this.cells = []; // Text | object | string | List
+            constructor(cells = []) {
+                this.cells = cells; // Text | object | string | List
             }
         }
         class Table {
-            constructor() {
-                this.rows = []; // TableRow[]
+            constructor(rows = []) {
+                this.rows = rows; // TableRow[]
             }
             isInline() { return this.rows.length == 1 && this.rows[0].cells.length == 1; }
         }
         const parse = (v) => {
             this.debug("parse", typeof v, v);
             if (v instanceof SafeHTML) return v;
+            if (v instanceof TableHeader) return v;
+            if (v instanceof TableCell) return v;
             if (Array.isArray(v)) return v.map(s => parse(s));
-            if (isCell(v) || isHdr(v)) return v;
 
             let curCell = new Text();
             let curLine = new TableRow();
@@ -1876,23 +1917,58 @@ export class CmsEditor {
                     let depth = 1;
                     let optionalBlock = false;
                     let inlineBlock = false;
-                    let colonIndex = null;
+                    let styleConfig = {};
+                    let contentBuf = "";
+                    let styleBuf = null;
+                    let optBuf = null;
                     let j = i + 1;
                     let o = 0;
-                    while (j < s.length && depth > 0) {
+                    while (j < s.length) {
                         const chJ = s[j];
-                        if (j == i + 1 + o && chJ == "?" && depth == 1 && !optionalBlock) {
+                        const isPrefix = j == i + 1 + o && depth == 1;
+                        if (isPrefix && chJ == "?" && !optionalBlock) {
                             optionalBlock = true;
                             ++o;
-                        } else if (j == i + 1 + o && chJ == "-" && depth == 1 && !inlineBlock) {
+                        } else if (isPrefix && chJ == "-" && !inlineBlock) {
                             inlineBlock = true;
                             ++o;
-                        } else if (chJ == ":" && depth == 1 && optionalBlock && colonIndex == null) {
-                            colonIndex = j;
-                        } else if (chJ == "{")
-                            ++depth;
-                        else if (chJ == "}")
-                            --depth;
+                        } else if (isPrefix && chJ == "@") {
+                            let k = j + 1;
+                            let inStyleKey = true;
+                            let styleKey = "";
+                            let styleVal = "";
+                            while (k < s.length) {
+                                const chK = s[k];
+                                if (chK == "}") {
+                                    this.errorIfLog("Missing ':' after '@' operator:", s.slice(j));
+                                    break;
+                                } else if (chK == ":") {
+                                    if (styleKey.length > 0) styleConfig[styleKey] = inStyleKey ? true : styleVal;
+                                    j = k;
+                                    styleBuf = "";
+                                    break;
+                                } else if (chK == "=" && inStyleKey) {
+                                    inStyleKey = false;
+                                } else if (chK == ",") {
+                                    styleConfig[styleKey] = inStyleKey ? true : styleVal;
+                                    inStyleKey = true;
+                                    styleKey = "";
+                                    styleVal = "";
+                                } else if (inStyleKey) styleKey += chK; else styleVal += chK;
+                                ++k;
+                            }
+                        } else if (chJ == ":" && depth == 1 && optionalBlock && optBuf == null) {
+                            optBuf = "";
+                        } else {
+                            if (chJ == "{") ++depth; else if (chJ == "}") --depth;
+                            if (depth <= 0) {
+                                ++j
+                                break;
+                            }
+                            if (optBuf != null) optBuf += chJ;
+                            else if (styleBuf != null) styleBuf += chJ;
+                            else contentBuf += chJ;
+                        }
                         ++j;
                     }
                     if (depth != 0) {
@@ -1901,28 +1977,46 @@ export class CmsEditor {
                         ++i;
                         continue;
                     }
-                    if (optionalBlock && colonIndex == null) {
+                    if (optionalBlock && optBuf == null) {
                         this.errorIfLog("Missing ':' for {? placeholder:", s.slice(i));
                         curCell.add(ch);
                         ++i;
                         continue;
                     }
-                    const key = optionalBlock ? s.slice(i + 1 + o, colonIndex) : s.slice(i + 1 + o, j - 1);
-                    const conditionalContent = optionalBlock ? s.slice(colonIndex + 1, j - 1) : null;
-                    this.debug("got placeholder", { optionalBlock, inlineBlock, key, colonIndex, conditionalContent });
-                    const valueOrFunc = replacements[key];
-                    if (valueOrFunc == null) this.warn("Unknown placeholder, using as is:", key);
-                    const val = valueOrFunc == null ? key : typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                    if (optionalBlock) {
-                        //TODO parse val before evaluating?
+                    this.debug("got placeholder", { i, j, o, inlineBlock, styleConfig, contentBuf, styleBuf, optBuf });
+                    let val = contentBuf;
+                    if (contentBuf.length > 0) {
+                        const valueOrFunc = replacements[contentBuf];
+                        if (valueOrFunc == null) this.warn("Unknown placeholder, using as is:", contentBuf);
+                        else val = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
+                        this.debug("resolved placeholder", { contentBuf, val });
+                    }
+                    let parsed = null;
+                    if (optBuf != null) {
                         if (val == null || val === "" || (Array.isArray(val) && val.length == 0)) {
-                            this.debug("skipped parsing as content is empty:", val);
+                            this.debug("skipped parsing as content is empty");
                             i = j;
                             continue;
                         }
+                        parsed = parse(optBuf);
+                    } else if (Object.keys(styleConfig).length > 0) {
+                        this.debug("got style config", { styleConfig });
+                        parsed = new TableCell(parse(styleBuf), styleConfig);
+                    } else
+                        parsed = parse(val);
+                    this.debug("parsed", parsed);
+                    if (Array.isArray(parsed)) {
+                        if (parsed.length > 0 && parsed.every(v => Array.isArray(v)) && parsed.some(v => v.length > 1)) {
+                            // array of arrays -> table
+                            const table = new Table();
+                            for (const r of parsed) {
+                                table.rows.push(new TableRow(r));
+                            }
+                            parsed = table;
+                            this.debug("converted parsed to", { parsed });
+                        }
                     }
-                    const parsed = optionalBlock ? parse(conditionalContent) : parse(val);
-                    this.debug("parsed", { val, optionalBlock, inlineBlock, key, parsed });
+
                     if (inlineBlock) {
                         curLine.cells.push(curCell);
                         if (curLine.cells.length > 0) res.rows.push(curLine);
@@ -1987,6 +2081,7 @@ export class CmsEditor {
         }
 
         const render = (value, formatHTML) => {
+            this.debug("render", { value, formatHTML });
             if (value instanceof List) {
                 if (formatHTML == null) return value.items.map(item => ` - ${render(item, null)}`).join("\n");
                 return "</span><ul>\n" +
@@ -1997,12 +2092,13 @@ export class CmsEditor {
             if (value instanceof Table) {
                 if (formatHTML == null) return value.rows.map(row => render(row, null)).join("\n");
                 if (value.isInline()) return render(value.rows[0].cells[0], formatHTML); // avoid unnecessary table for single cell
-                let res = "</span><table>\n";
+                let res = `</span><table>\n`;
                 let alignments = [];
                 //let prevColCount = -1;
                 let maxColumns = 0;
                 for (const row of value.rows) maxColumns = Math.max(maxColumns, row.cells.length);
                 for (const row of value.rows) {
+                    this.debug("render row", { row, formatHTML });
                     //let colCount = row.cells.length;
                     //if (prevColCount != -1 && prevColCount != colCount) {
                     // start a new table TODO
@@ -2010,8 +2106,8 @@ export class CmsEditor {
                     //alignments = [];
                     //}
                     //prevColCount = colCount;
-                    if (row.cells.some(isHdr)) alignments = row.cells.map(cell => isHdr(cell) ? cell.align : null);
-                    res += render(row, { ...formatHTML, alignments, maxColumns });
+                    if (row.cells.some((cell) => cell instanceof TableHeader)) alignments = row.cells.map(cell => cell instanceof TableHeader ? cell.formatHTML?.align : null);
+                    res += render(row, Object.assign({}, formatHTML, { alignments, maxColumns }));
                 }
                 res += `</table><span${this._clsStyle(formatHTML)}>`;
                 return res;
@@ -2019,20 +2115,21 @@ export class CmsEditor {
 
             if (value instanceof TableRow) {
                 if (formatHTML == null) return value.cells.map(cell => render(cell, null)).join("\t");
-                const isHeaderRow = value.cells.some(isHdr);
+                const isHeaderRow = value.cells.some((cell) => cell instanceof TableHeader);
                 const tag = isHeaderRow ? "th" : "td";
                 let res = "<tr>";
                 for (let ci = 0; ci < value.cells.length; ci++) {
-                    const format = { padding: 8, ...formatHTML };
+                    const format = { ...formatHTML, padding: formatHTML?.padding ?? 8 };
                     let merge = Math.max(0, (format.maxColumns ?? 0) - value.cells.length);
                     while (ci + merge + 1 < value.cells.length && value.cells[ci + merge + 1] == null) ++merge;
                     const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
                     if (format.alignments?.[ci]) format.align = format.alignments[ci];
                     const cell = value.cells[ci];
-                    if (isHdr(cell) || isCell(cell)) Object.assign(format, cell);
+                    if ((cell instanceof TableHeader || cell instanceof TableCell) && cell?.formatHTML)
+                        for (const k in cell.formatHTML) format[k] = cell.formatHTML[k];
                     if (cell != null) {
-                        const alignTopHack = "&#8203;"; // TODO value.cells.some(v => v.valign == null || v.valign == "top") ? "&#8203;" : "";
-                        res += `<${tag}${this._clsStyle(format)}${colspan}>${alignTopHack}${render(cell, formatHTML)}</${tag}>`;
+                        const alignTopHack = "&#8203;"; // TODO only if needed
+                        res += `<${tag}${this._clsStyle(format)}${colspan}>${alignTopHack}${render(cell, format)}</${tag}>`;
                         ci += merge;
                     }
                 }
@@ -2046,14 +2143,14 @@ export class CmsEditor {
             if (value instanceof SafeHTML)
                 return formatHTML == null ? render(value.plain, null) : value.html;
 
-            if (isCell(value))
-                return render(value.value, formatHTML == null ? null : { ...formatHTML, ...value });
+            if (value instanceof TableHeader)
+                return render(value.label, formatHTML == null ? null : { ...formatHTML, ...value.formatHTML });
 
-            if (isHdr(value))
-                return render(value.label, formatHTML == null ? null : { ...formatHTML, ...value });
+            if (value instanceof TableCell)
+                return render(value.value, formatHTML == null ? null : { ...formatHTML, ...value.formatHTML });
 
             if (Array.isArray(value)) {
-                return value.map(v => render(v, formatHTML)).join("");
+                return value.map(v => render(v, formatHTML)).join(formatHTML ? "<br>" : "\n");
             }
 
             const s = typeof value == "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
@@ -2099,12 +2196,12 @@ export class CmsEditor {
                 return `${pad}SafeHTML(html=${value.html?.slice(0, 40) ?? ""}...)\n`;
             }
 
-            if (isCell(value)) {
-                return `${pad}Cell(value=${typeof value.value}: ${JSON.stringify(value.value)})\n`;
+            if (value instanceof TableHeader) {
+                return `${pad}Header(label=${typeof value.label}: ${JSON.stringify(value.label)}, formatHTML=${JSON.stringify(value.formatHTML)})\n`;
             }
 
-            if (isHdr(value)) {
-                return `${pad}Header(label=${typeof value.label}: ${JSON.stringify(value.label)})\n`;
+            if (value instanceof TableCell) {
+                return `${pad}Cell(value=${typeof value.value}: ${JSON.stringify(value.value)}, formatHTML=${JSON.stringify(value.formatHTML)})\n`;
             }
 
             if (Array.isArray(value)) {
@@ -2188,15 +2285,28 @@ export class CmsEditor {
         if (VERBOSE_CMSEDIT) console.debug(...args.map(a => this._safeLog(a)));
     }
 
-    _safeLog(v, depth = 0) {
-        if (depth > 3) return typeof v;
-        if (typeof v == "function") return `Function: ${v.toString().slice(0, 30)}...`;
-        if (Array.isArray(v)) return v.map(v => this._safeLog(v, depth + 1));
-        if (v == null || typeof v != "object") return v;
-        if (v.id && v.type && v.$w) return { id: v.id, type: v.type };
-        const res = {};
-        for (const k of Object.keys(v)) res[k] = this._safeLog(v[k], depth + 1);
-        return res;
+    _safeLog(v, depth = 0, seenOnPath = new Set()) {
+        if (depth > 6) return "...";
+        if (v == null) return "[null]";
+        if (typeof v == "function") return `[Function: ${v.toString().slice(0, 30)}...]`;
+        if (typeof v != "object") return v;
+
+        if (seenOnPath.has(v)) return "[Circular]";
+        seenOnPath.add(v);
+        try {
+            if (Array.isArray(v)) return v.map(v => this._safeLog(v, depth + 1, seenOnPath));
+            if ("id" in v && "show" in v && "hide" in v && "parent" in v)
+                return { "WixElement": "", id: v.id, type: v.type, value: v.value };
+            const res = {};
+            for (const k of Object.keys(v)) try {
+                res[k] = this._safeLog(v[k], depth + 1, seenOnPath);
+            } catch (e) {
+                res[k] = `[Unloggable: ${e}]`;
+            }
+            return res;
+        } finally {
+            seenOnPath.delete(v);
+        }
     }
 
 }

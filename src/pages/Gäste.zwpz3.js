@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 import wixLocation from 'wix-location';
 
-import { CmsEditor, FieldType } from 'public/cms_edit.js';
+import { CmsEditor, FieldType, TableHeader } from 'public/cms_edit.js';
 import { dateRangeToString, FormatTypesMonth, FormatTypesNumeric, nightsBetween } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
@@ -267,10 +267,10 @@ async function updateCostsTable(item) {
     console.log("updateCostsTable");
     const hdr = [
         "Leistung",
-        { label: "Anzahl Erw.", align: "right" },
-        { label: "Nächte", align: "right" },
-        { label: "Einzelpreis", align: "right" },
-        { label: "Gesamt", align: "right" },
+        new TableHeader("Anzahl Erw.", { align: "right" }),
+        new TableHeader("Nächte", { align: "right" }),
+        new TableHeader("Einzelpreis", { align: "right" }),
+        new TableHeader("Gesamt", { align: "right" }),
     ];
     $w("#textReservationPrice").html = item ? editor.getString("{costs}", item, { "costs": [hdr, ...await generateCostsTable(item)] }, {}) : "";
 }
