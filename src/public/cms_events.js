@@ -55,12 +55,11 @@ export function initEventsEditor(editMode, youth, cfg) {
                             const d = new Date();
                             return new Date(d.getFullYear(), d.getMonth(), d.getDate());
                         })(),
-                        onChanged: (item, values) => {
+                        onChanged: async (item, values, masterArray, masterArrayID) => {
                             const start = new Date(item?.start);
                             const end = new Date(item?.end);
                             if (!isNaN(start) && (isNaN(end) || end < start)) {
-                                item.end = start;
-                                editor.updateUIFromData("#datesRepeater");
+                                await editor.updateField(item, "end", start, masterArray, masterArrayID);
                             }
                         },
                     },

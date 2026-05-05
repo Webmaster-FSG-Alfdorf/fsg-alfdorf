@@ -702,92 +702,94 @@ export class CmsEditor {
 
         const el = scope(cfg.id);
         if (!this.isElement(el)) return { values: null, needRefresh: false };
+        let needRefresh = false;
 
         const parse = async () => {
             switch (cfg.type) {
                 case FieldType.BOOLEAN:
-                    return { val: el.checked };
+                    return el.checked;
                 case FieldType.NUMBER:
-                    return { val: Number(el.value ?? 0) };
+                    return Number(el.value ?? 0);
                 case FieldType.ADDRESS:
-                    return { val: el.value };
+                    return el.value;
                 case FieldType.TIME_OF_DATE: {
                     let val = new Date(item?.[cfg.field]);
-                    if (isNaN(val.getTime())) return { val: null };
+                    if (isNaN(val.getTime())) return null;
                     const [hours, minutes] = (el.value?.toString() || "00:00").split(":");
                     val.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
-                    return { val };
+                    return val;
                 }
                 case FieldType.HOURS_OF_DATE: {
                     let val = new Date(item?.[cfg.field]);
-                    if (isNaN(val.getTime())) return { val: null };
+                    if (isNaN(val.getTime())) return null;
                     val.setHours(Number(el.value ?? 0), 0, 0, 0);
-                    return { val };
+                    return val;
                 }
                 case FieldType.DATE: {
-                    return { val: this._updateDateKeepTime(el.value, item?.[cfg.field]) };
+                    return this._updateDateKeepTime(el.value, item?.[cfg.field]);
                 }
                 case FieldType.DATE_RANGE: {
-                    return { val: (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]])) };
+                    return (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]]));
                 }
                 case FieldType.MULTI_SELECT:
                 case FieldType.MULTI_REFERENCE:
-                    return { val: this.ensureArray(el.value) };
+                    return this.ensureArray(el.value);
                 case FieldType.STRING:
                 case FieldType.STRING_MAIL:
                 case FieldType.STRING_PHONE:
-                    return { val: cfg.trim ? String(el.value).trim() : String(el.value) };
+                    return cfg.trim ? String(el.value).trim() : String(el.value);
                 case FieldType.IMAGE: {
                     if (cfg.uploadButton?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
                         this._uploading.add(cfg.id);
                         const files = this.ensureArray(await cfg.uploadButton.uploadFiles());
                         const val = files[0].fileUrl;
                         cfg.uploadButton.reset();
-                        return { val, needRefresh: true };
+                        needRefresh = true;
+                        return val;
                     } finally {
                         this._uploading.delete(cfg.id);
                     }
-                    return { val: item?.[cfg.field] };
+                    return item?.[cfg.field];
                 }
                 case FieldType.IMAGES: {
                     if (cfg.uploadButton?.value?.length > 0 && !this._uploading.has(cfg.id)) try {
                         const files = this.ensureArray(await cfg.uploadButton.uploadFiles());
                         const val = [...this.ensureArray(item?.[cfg.field]), ...files.map((file, i) => this._createMediaStruct(cfg, i, file.fileUrl, file.fileName))];
                         cfg.uploadButton.reset();
-                        return { val, needRefresh: true };
+                        needRefresh = true;
+                        return val;
                     } finally {
                         this._uploading.delete(cfg.id);
                     }
-                    return { val: item?.[cfg.field] };
+                    return item?.[cfg.field];
                 }
                 case FieldType.CUSTOM:
                     try {
-                        return { val: await cfg.onParseCustomUserInput?.(el.value) };
+                        return await cfg.onParseCustomUserInput?.(el.value);
                     } catch (e) {
                         this.warn("Error in onParseCustomUserInput for", cfg.id, ":", e);
-                        return { val: item?.[cfg.field] };
+                        return item?.[cfg.field];
                     }
                 //            case FieldType.REPEATER:
-                //                return { val: this.ensureArray(item?.[cfg.field]) };
+                //                return this.ensureArray(item?.[cfg.field]);
                 case FieldType.CAPTCHA:
-                    return { val: el.token };
+                    return el.token;
                 case FieldType.TAGS:
-                    return { val: el.value };
+                    return el.value;
                 default:
-                    return { val: el.value };
+                    return el.value;
             }
         };
 
         // if we have no fields, we expect no values at all,
         // if only one field is defined, we expect a single value,
         // otherwise we expect values for each defined field
-        const result = await parse();
-        const val = result?.val;
-        const needRefresh = !!result?.needRefresh;
+        const val = await parse();
         const values = cfg.fields.length == 0 ? [] : cfg.fields.length > 1 ? val : [val];
         if (values.length != cfg.fields.length) {
             this.error("Unexpected number of values:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
-        }
+        } else
+            this.debug("_parseUiValue:", { values, cfg, scope, item, needRefresh, val, el_value: el.value });
         return { values, needRefresh };
     }
 
@@ -881,7 +883,7 @@ export class CmsEditor {
         }
 
         if (cfg.onChanged) try {
-            await cfg.onChanged(item, values[0]);
+            await cfg.onChanged(item, values[0], masterArray, masterArrayID);
         } catch (e) {
             this.error("Error in onChanged for", cfg.id, ":", e);
         }
@@ -906,6 +908,11 @@ export class CmsEditor {
         await this._updateDataFromUI(this.cmsSchema[id], $w, null, null);
     }
 
+    async updateField(item, field, value, masterArray, masterArrayID) {
+        this.debug("updateField", { item, field, value, masterArray, masterArrayID });
+        //TODO
+    }
+
     /**
      * Read UI values, detect change, and persist to dataset.
      * @param {CmsFieldConfig} cfg
@@ -925,7 +932,7 @@ export class CmsEditor {
             if (!wasTouched) this._validate(cfg, scope, item); // now missing values on required fields shall trigger error
         } else {
             this.log(`Writing UI ${cfg.id} to field ${cfg.fields}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, uiValues);
-            await this._persistAndRefresh(cfg, scope, item, masterArray, uiValues, masterArrayID, parentCfg, needRefresh || masterArray);
+            await this._persistAndRefresh(cfg, scope, item, masterArray, uiValues, masterArrayID, parentCfg, needRefresh || (masterArray != null));
         }
     }
 
@@ -989,7 +996,7 @@ export class CmsEditor {
     }
 
     async updateUIFromData(id, valuesToUse = null) {
-        await this._updateUiFromData(this.cmsSchema[id], $w, null, valuesToUse, null);
+        await this._updateUiFromData(this.cmsSchema[id], $w, this.getItem(), valuesToUse, null);
     }
 
     /**
@@ -1007,6 +1014,7 @@ export class CmsEditor {
         }
 
         const el = scope(cfg.id);
+        this.debug("_updateUIFromData", { cfg, scope, item, valuesToUse, masterArrayID, el });
         if (!this.isElement(el)) return;
 
         let prevValue = undefined;
@@ -1049,8 +1057,10 @@ export class CmsEditor {
                 }
                 break;
             case FieldType.DATE:
-                if (val0) val0 = new Date(val0);
-                if (val0 && isNaN(val0.getTime())) val0 = null;
+                if (val0 != null) {
+                    val0 = new Date(val0);
+                    if (isNaN(val0.getTime())) val0 = null;
+                }
                 break;
             case FieldType.DATE_RANGE:
                 val0 = dateRangeToString(values[0], values[1], cfg.format);
@@ -1101,6 +1111,7 @@ export class CmsEditor {
             } else
                 this.error("Cannot assign to UI", cfg.id, "from field", cfg.field, ": No 'value' property", { cfg, scope, item, el })
         }
+        this.debug("_updateUIFromData", { values, val0, prevValue, done });
         this.log(`Updated UI ${cfg.id} from field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`} with value:`, val0, "was:", prevValue);
 
         const btn = cfg.linkButton ? scope(cfg.linkButton) : null;
@@ -2287,7 +2298,7 @@ export class CmsEditor {
 
     _safeLog(v, depth = 0, seenOnPath = new Set()) {
         if (depth > 6) return "...";
-        if (v == null) return "[null]";
+        if (v == null) return v;
         if (typeof v == "function") return `[Function: ${v.toString().slice(0, 30)}...]`;
         if (typeof v != "object") return v;
 
@@ -2297,8 +2308,10 @@ export class CmsEditor {
             if (Array.isArray(v)) return v.map(v => this._safeLog(v, depth + 1, seenOnPath));
             if ("id" in v && "show" in v && "hide" in v && "parent" in v)
                 return { "WixElement": "", id: v.id, type: v.type, value: v.value };
+            const keys = Object.keys(v);
+            if (keys.length == 0) return v;
             const res = {};
-            for (const k of Object.keys(v)) try {
+            for (const k of keys) try {
                 res[k] = this._safeLog(v[k], depth + 1, seenOnPath);
             } catch (e) {
                 res[k] = `[Unloggable: ${e}]`;
