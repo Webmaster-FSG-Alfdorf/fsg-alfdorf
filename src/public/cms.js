@@ -1,5 +1,5 @@
 
-const LOG_DT = false;
+const LOG_DT = true;
 
 function logDT(...args) {
     if (LOG_DT) console.log(...args);
@@ -236,7 +236,14 @@ export function printRanges(eventDate) {
     logDT("printRanges", { eventDate, ranges });
     if (ranges.length == 0) return ""; // no date at all
     const first = ranges[0];
-    if (ranges.length == 1) return dateRangeToString(first.start, first.end); // no iteration at all
+    const isOnlyDate = !first.start?.getHours() && !first.start?.getMinutes() && !first.end?.getHours() && !first.end?.getMinutes();
+    if (ranges.length == 1)
+        // no iteration at all
+        return dateRangeToString(first.start, first.end, {
+            hour: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit,
+            minute: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit
+        });
+
     const last = ranges[ranges.length - 1];
 
     const rct = eventDate.recurrenceType;
@@ -246,8 +253,8 @@ export function printRanges(eventDate) {
     if (!weekdays || weekdays.length == 0) weekdays = [WEAKDAY_NAMES[first.start.getDay()]]; // if no weekday specified, assume only the week day that the start date has
     let res = "Ab ";
 
-    let sameYear = first.start.getFullYear() == last.end.getFullYear();
-    let sameMonth = sameYear && first.start.getMonth() == last.end.getMonth();
+    let sameYear = first.start?.getFullYear() == last.end?.getFullYear();
+    let sameMonth = sameYear && first.start?.getMonth() == last.end?.getMonth();
     logDT("printRanges", { first, last, sameYear, sameMonth, rct, itv, mr, weekdays });
     res += dateRangeToString(first.start, first.end, {
         year: sameYear ? FormatTypesNumeric.none : FormatTypesNumeric.numeric,
@@ -298,8 +305,10 @@ export function printRanges(eventDate) {
         year: FormatTypesNumeric.numeric,
         month: FormatTypesMonth.long,
         weekday: rct == "weekly" ? null : FormatTypesWeekday.long,
+        hour: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit,
+        minute: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit
     });
-    res += " Uhr";
+    if (!isOnlyDate) res += " Uhr";
     return res;
 }
 

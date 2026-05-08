@@ -1,5 +1,5 @@
 import { CmsEditor, FieldType, FilterType, FilterCombine, SafeHTML } from 'public/cms_edit.js';
-import { dateRangeToString, listAllRanges, printRanges } from 'public/cms.js';
+import { dateRangeToString, listAllRanges, printRanges, FormatTypesNumeric } from 'public/cms.js';
 import { ROLES } from "public/cms.js";
 import wixLocation from 'wix-location';
 
@@ -55,11 +55,11 @@ export function initEventsEditor(editMode, youth, cfg) {
                             const d = new Date();
                             return new Date(d.getFullYear(), d.getMonth(), d.getDate());
                         })(),
-                        onChanged: async (item, values, masterArray, masterArrayID) => {
+                        onChanged: async (item, value, scope, parentCfg, masterArrayID) => {
                             const start = new Date(item?.start);
                             const end = new Date(item?.end);
                             if (!isNaN(start) && (isNaN(end) || end < start)) {
-                                await editor.updateField(item, "end", start, masterArray, masterArrayID);
+                                await editor.updateField("end", start, scope, parentCfg, masterArrayID);
                             }
                         },
                     },
@@ -99,6 +99,13 @@ export function initEventsEditor(editMode, youth, cfg) {
                             const d = new Date();
                             return new Date(d.getFullYear(), d.getMonth(), d.getDate());
                         })(),
+                        onChanged: async (item, value, scope, parentCfg, masterArrayID) => {
+                            const start = new Date(item?.start);
+                            const end = new Date(item?.end);
+                            if (!isNaN(end) && (isNaN(start) || end < start)) {
+                                await editor.updateField("start", end, scope, parentCfg, masterArrayID);
+                            }
+                        },
                     },
                     "#pickerDatesEndTime": {
                         field: "end",
@@ -108,48 +115,7 @@ export function initEventsEditor(editMode, youth, cfg) {
                 },
                 addButton: "#btnDateAdd",
                 removeButton: "#btnDateRemove",
-                onPrintValue: (item) => {
-                    const gcalIcon = "https://www.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_16_2x.png";
-                    const outlookIcon = "https://img.icons8.com/color/48/000000/outlook-calendar.png";
-                    const title = encodeURIComponent(item.title);
-                    const details = encodeURIComponent(editor.getString(
-                        `{source}\n{eventsSummary}`, item, {
-                        source: new SafeHTML(`Quelle: <a href="${wixLocation.url}">www.fsg-alfdorf.de</a>`),
-                        eventsSummary: new SafeHTML(getEventsSummary(editor, item, false))
-                    }, {}));
-                    const location = encodeURIComponent(item.address?.formatted || "");
-                    const formatIso = (date) => new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-                    const formatOutlook = (date) => {
-                        const d = new Date(date);
-                        const pad = n => String(n).padStart(2, "0");
-                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-                    };
-
-                    let allDates = new Map();
-                    (item?.dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
-                    return [...allDates.values()].sort((dr0, dr1) => dr0.start - dr1.start).map(dr => {
-                        const s = printRanges(dr);
-                        const gcalUrl =
-                            `https://calendar.google.com/calendar/render?action=TEMPLATE` +
-                            `&text=${title}` +
-                            `&details=${details}` +
-                            `&location=${location}` +
-                            `&dates=${formatIso(dr.start)}/${formatIso(dr.end)}`;
-                        const outlookUrl =
-                            `https://outlook.live.com/calendar/0/deeplink/compose` +
-                            `?subject=${title}` +
-                            `&body=${details}` +
-                            `&location=${location}` +
-                            `&startdt=${encodeURIComponent(formatOutlook(dr.start))}` +
-                            `&enddt=${encodeURIComponent(formatOutlook(dr.end))}` +
-                            `&tz=Europe%2FBerlin&allday=false`;
-                        return new SafeHTML(
-                            `${s}&nbsp;<a href="${gcalUrl}" target="_blank"><img width="22" src="${gcalIcon}"></a>` +
-                            `&nbsp;<a href="${outlookUrl}" target="_blank"><img width="22" src="${outlookIcon}"></a>`,
-                            s
-                        );
-                    });
-                },
+                onPrintValue: (item) => printDateRanges(editor, item),
                 onChanged: (item, values) => refreshDateRangeText(values),
             },
             "#sportsField": {
@@ -319,7 +285,54 @@ function refreshDateRangeText(values) {
     values.forEach(ed => { html += `<li>${printRanges(ed)}</li>`; });
     html += `</ul><br><br>Detailierte Ausgabe:<ul>`;
     Array.from(allDates.values()).sort((dr0, dr1) => dr0.start - dr1.start).forEach(dr => {
-        html += `<li>${dateRangeToString(dr.start, dr.end)}</li>`;
+        const isOnlyDate = !dr.start?.getHours() && !dr.start?.getMinutes() && !dr.end?.getHours() && !dr.end?.getMinutes();
+        html += `<li>${dateRangeToString(dr.start, dr.end, {
+            hour: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit,
+            minute: isOnlyDate ? FormatTypesNumeric.none : FormatTypesNumeric.twoDigit
+        })}</li>`;
     });
     $w("#textDateRange").html = html + "</ul>";
+}
+
+function printDateRanges(editor, item) {
+    const gcalIcon = "https://www.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_16_2x.png";
+    const outlookIcon = "https://img.icons8.com/color/48/000000/outlook-calendar.png";
+    const title = encodeURIComponent(item.title);
+    const details = encodeURIComponent(editor.getString(
+        `{source}\n{eventsSummary}`, item, {
+        source: new SafeHTML(`Quelle: <a href="${wixLocation.url}">www.fsg-alfdorf.de</a>`),
+        eventsSummary: new SafeHTML(getEventsSummary(editor, item, false))
+    }, {}));
+    const location = encodeURIComponent(item.address?.formatted || "");
+    const formatIso = (date) => new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const formatOutlook = (date) => {
+        const d = new Date(date);
+        const pad = n => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+
+    let allDates = new Map();
+    (item?.dates || []).forEach(ed => listAllRanges(ed).forEach(dr => { allDates.set(dr.start.getTime(), dr) }));
+    return [...allDates.values()].sort((dr0, dr1) => dr0.start - dr1.start).map(dr => {
+        const s = printRanges(dr);
+        const gcalUrl =
+            `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+            `&text=${title}` +
+            `&details=${details}` +
+            `&location=${location}` +
+            `&dates=${formatIso(dr.start)}/${formatIso(dr.end)}`;
+        const outlookUrl =
+            `https://outlook.live.com/calendar/0/deeplink/compose` +
+            `?subject=${title}` +
+            `&body=${details}` +
+            `&location=${location}` +
+            `&startdt=${encodeURIComponent(formatOutlook(dr.start))}` +
+            `&enddt=${encodeURIComponent(formatOutlook(dr.end))}` +
+            `&tz=Europe%2FBerlin&allday=false`;
+        return new SafeHTML(
+            `${s}&nbsp;<a href="${gcalUrl}" target="_blank"><img width="22" src="${gcalIcon}"></a>` +
+            `&nbsp;<a href="${outlookUrl}" target="_blank"><img width="22" src="${outlookIcon}"></a>`,
+            s
+        );
+    });
 }

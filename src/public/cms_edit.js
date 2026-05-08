@@ -541,7 +541,7 @@ export class CmsEditor {
                     this._updateUiFromData(cfg, scope, this.getItem(), null, masterArrayID); // just to update selection marker
                 });
 
-                for (const action of ["moveleft", "moveright", "remove"]) {
+                for (const action of ["moveleft", "moveright", "remove", "asmainimage"]) {
                     const btn = cfg.elements.find(c => (c.type == "$w.Button") && (c.id.toLowerCase().includes(action)));
                     if (btn) btn.onClick(async () => {
                         const { item, masterArray, values } = this._resolveContext(cfg, masterArrayID, parentCfg);
@@ -557,6 +557,12 @@ export class CmsEditor {
                         } else if (action == "remove") {
                             val.splice(cfg.selIdx, 1);
                             cfg.selIdx = -1;
+                        } else if (action == "asmainimage") {
+                            const cfgMainImage = Object.values(this.cmsSchema).find(c => c.type == FieldType.IMAGE);
+                            if (cfgMainImage)
+                                this._updateDataFromUI(cfgMainImage, scope, parentCfg, masterArrayID, [val[cfg.selIdx]?.src]);
+                            else
+                                this.warn("No field of type IMAGE found to set as main image");
                         }
                         this.log("Selected media index on", cfg.id, ":", cfg.selIdx);
                         await this._persistAndRefresh(cfg, scope, item, masterArray, [val], masterArrayID, parentCfg, true);
@@ -726,7 +732,11 @@ export class CmsEditor {
                     return val;
                 }
                 case FieldType.DATE: {
-                    return this._updateDateKeepTime(el.value, item?.[cfg.field]);
+                    this.debug("before parsing date:", { value: el.value, itemValue: item?.[cfg.field] });
+                    const res = this._updateDateKeepTime(el.value, item?.[cfg.field]);
+                    this.debug("after parsing date:", { res });
+                    return res;
+                    //return this._updateDateKeepTime(el.value, item?.[cfg.field]);
                 }
                 case FieldType.DATE_RANGE: {
                     return (stringToDateRange(el.value) || []).map((dt, i) => this._updateDateKeepTime(dt, item?.[cfg.fields[i]]));
@@ -883,12 +893,12 @@ export class CmsEditor {
         }
 
         if (cfg.onChanged) try {
-            await cfg.onChanged(item, values[0], masterArray, masterArrayID);
+            await cfg.onChanged(item, values[0], scope, parentCfg, masterArrayID);
         } catch (e) {
             this.error("Error in onChanged for", cfg.id, ":", e);
         }
         if (parentCfg?.onChanged) try {
-            await parentCfg.onChanged(item, masterArray || values[0]);
+            await parentCfg.onChanged(item, masterArray || values[0], scope, parentCfg, masterArrayID);
         } catch (e) {
             this.error("Error in onChanged for", parentCfg.id, ":", e);
         }
@@ -898,19 +908,25 @@ export class CmsEditor {
         else
             await this._validate(cfg, scope, item);
 
-        for (const sameLevelCfg of parentCfg ? Object.values(parentCfg.inputs) : Object.values(this.cmsSchema))
+        for (const sameLevelCfg of Object.values(parentCfg?.inputs ?? this.cmsSchema))
             if (sameLevelCfg != cfg) await this._validate(sameLevelCfg, scope, item);
 
         await this.updateButtonStates();
     }
 
-    async updateDataFromUI(id) {
-        await this._updateDataFromUI(this.cmsSchema[id], $w, null, null);
+    async updateDataFromUI(id, scope = $w, parentCfg = null, masterArrayID = null) {
+        this.log("updateDataFromUI", { id, scope, parentCfg, masterArrayID });
+        this._updateDataFromUI(this.cmsSchema[id], scope, parentCfg, masterArrayID);
     }
 
-    async updateField(item, field, value, masterArray, masterArrayID) {
-        this.debug("updateField", { item, field, value, masterArray, masterArrayID });
-        //TODO
+    async updateField(field, value, scope = $w, parentCfg = null, masterArrayID = null) {
+        this.log("updateField", { field, value, scope, parentCfg, masterArrayID });
+        const cfg = Object.values(parentCfg?.inputs ?? this.cmsSchema).find(c => c.fields.includes(field));
+        if (!cfg) {
+            this.error("Cannot assign to field: CMS schema for field", field, "not found in configuration")
+            return;
+        }
+        this._updateDataFromUI(cfg, scope, parentCfg, masterArrayID, [value]);
     }
 
     /**
@@ -920,13 +936,21 @@ export class CmsEditor {
      * @param {*} parentCfg
      * @param {string|null} masterArrayID
      */
-    async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID) {
+    async _updateDataFromUI(cfg, scope, parentCfg, masterArrayID, valuesToUse = null) {
+        if (!cfg) {
+            this.error("Cannot assign to field: CMS schema not found in configuration")
+            return;
+        }
+
         const wasTouched = cfg._touched;
         cfg._touched = true;
         if (!this.ds || !this.editMode) return;
 
         const { item, masterArray, values: dataValues } = this._resolveContext(cfg, masterArrayID, parentCfg);
-        const { values: uiValues, needRefresh } = await this._parseUiValue(cfg, scope, item);
+        const { values: uiValues, needRefresh } = valuesToUse != null
+            ? { values: valuesToUse, needRefresh: true }
+            : await this._parseUiValue(cfg, scope, item);
+
         if (cfg.onEqualData(cfg, item, uiValues, dataValues)) {
             this.debug(`No change in UI ${cfg.id} for field ${cfg.field}${masterArrayID == null ? "" : ` at ${masterArrayID}`}`);
             if (!wasTouched) this._validate(cfg, scope, item); // now missing values on required fields shall trigger error
@@ -995,8 +1019,9 @@ export class CmsEditor {
         await this._persistAndRefresh(cfg, scope, item, masterArray, newValues, masterArrayID, null, true);
     }
 
-    async updateUIFromData(id, valuesToUse = null) {
-        await this._updateUiFromData(this.cmsSchema[id], $w, this.getItem(), valuesToUse, null);
+    async updateUIFromData(id, scope = $w, item = this.getItem(), valuesToUse = null, masterArrayID = null) {
+        this.log("updateUIFromData", { id, scope, item, valuesToUse, masterArrayID });
+        await this._updateUiFromData(this.cmsSchema[id], scope, item, valuesToUse, masterArrayID);
     }
 
     /**
@@ -1745,6 +1770,15 @@ export class CmsEditor {
         return [val];
     }
 
+    _updateDateKeepTime_delete(local, oldVal) {
+        if (!local || isNaN(new Date(local).getTime())) return null;
+        const prev = oldVal ? new Date(oldVal) : null;
+        const res = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate(), 0, 0, 0, 0));
+        if (prev)
+            res.setUTCHours(prev.getUTCHours(), prev.getUTCMinutes(), prev.getUTCSeconds(), 0);
+        return res;
+    }
+
     /**
      * Update date keeping time part from old value.
      * @param {Date} local
@@ -1754,9 +1788,9 @@ export class CmsEditor {
     _updateDateKeepTime(local, oldVal) {
         if (!local || isNaN(new Date(local).getTime())) return null;
         const prev = oldVal ? new Date(oldVal) : null;
-        const res = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate(), 0, 0, 0, 0));
-        if (prev)
-            res.setUTCHours(prev.getUTCHours(), prev.getUTCMinutes(), prev.getUTCSeconds(), 0);
+        const res = new Date(local);
+        res.setHours(0, 0, 0, 0);
+        if (prev) res.setHours(prev.getHours(), prev.getMinutes(), prev.getSeconds(), 0);
         return res;
     }
 
