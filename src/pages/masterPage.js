@@ -18,7 +18,7 @@ function update() {
 }
 
 function toggleMenu(roles, roleID, label, url) {
-    const showMenu = roles.some((role) => role._id == roleID);
+    const showMenu = roles && roles.some((role) => role._id == roleID);
     const menu = $w("#expandableMenu");
     const menuShown = menu.menuItems?.some(item => item.id == url);
     if (menu.menuItems && showMenu && !menuShown) {

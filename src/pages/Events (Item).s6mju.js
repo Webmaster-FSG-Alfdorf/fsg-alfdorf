@@ -32,7 +32,7 @@ function updateDatesButton(item) {
                 end: new Date("2025-05-01T12:00:00Z"),
                 title: "Demo Event"
             }
-                // beliebig viele
+                // TODO
             ];
             const icsData = generateICS(events);
             console.log("Sending to #htmlIcsHelper:");

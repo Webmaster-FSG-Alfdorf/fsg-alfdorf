@@ -1637,8 +1637,8 @@ export class CmsEditor {
             if (cfg.onCustomValidation || cfg.minAllowed != null || cfg.maxAllowed != null) {
                 values = await this._parseUiValue(cfg, scope, item).values;
                 customErrorMessage = await cfg.onCustomValidation?.(item, values);
-                validity.rangeUnderflow ||= cfg.minAllowed != null && (values.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
-                validity.rangeOverflow ||= cfg.maxAllowed != null && (values.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
+                validity.rangeUnderflow ||= cfg.minAllowed != null && values && (values.some((v) => v != null && !Number.isNaN(v) && v < cfg.minAllowed));
+                validity.rangeOverflow ||= cfg.maxAllowed != null && values && (values.some((v) => v != null && !Number.isNaN(v) && v > cfg.maxAllowed));
             }
             validity.customError = !!customErrorMessage; // we overwrite onCustomValidation, so ignore the one from el.validity
             validity.valueMissing ||= cfg.required && !this._hasUiValue(cfg, scope, item);
@@ -2295,7 +2295,7 @@ export class CmsEditor {
         }
         const update = async () => {
             const roles = await currentMember.getRoles();
-            const showButton = roles.some((role) => role._id == roleID);
+            const showButton = roles && roles.some((role) => role._id == roleID);
             if (showButton) el.show(); else el.hide();
         };
         if (el) {

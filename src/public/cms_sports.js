@@ -184,3 +184,22 @@ export function initSportsEditor(editMode, cfg) {
     editor.setupEditButton("#buttonEdit", ROLES.SPORTS_EDIT.slug, ROLES.SPORTS_EDIT.id, editor.getItem());
     return editor;
 }
+
+export function getSportsSummary(editor, item) {
+    return editor.getString(
+        "{descriptionRich}\n"
+        + "{?ownEquipment: {@width=0:🎒}\t{ownEquipment}\n}"
+        + "{?price: {@width=0:🪙}\t{price}\n}"
+        + "{?address: {@width=0:📍}\t{address}\n}"
+        + "{?contact: {@width=0:👤}\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
+        + "{?alltime: {@width=0:📝}\t{alltime}\n}"
+        + "{?weatherIndep: {@width=0:🌦️}\t{weatherIndep}\n}"
+        + "{?season: {@width=0:🍂}\t{season}\n}"
+        + "{?whatsappCode: {@width=0:{whatsAppIcon}}\t{whatsappCode}\n}"
+        + "{?events: {@width=0:📅}\t{events}\n}", //TODO events              
+        item,
+        { whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"), },
+        {}
+    );
+}
+
