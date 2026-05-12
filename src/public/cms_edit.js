@@ -875,7 +875,10 @@ export class CmsEditor {
         this.debug("_persistAndRefresh", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
         if (!this.ds || !this.editMode) return;
 
-        if (masterArray != null && masterArrayID != null) {
+        if (item == null) {
+            this.debug("Only refresh as item is null");
+            needRefresh = true;
+        } else if (masterArray != null && masterArrayID != null) {
             const idx = masterArray.findIndex(v => v._id == masterArrayID);
             if (idx == -1)
                 this.errorIfLog("Cannot find masterArrayID", { cfg, scope, item, masterArray, values, masterArrayID, parentCfg, needRefresh });
@@ -1943,7 +1946,7 @@ export class CmsEditor {
             let curCell = new Text();
             let curLine = new TableRow();
             let res = new Table();
-            const s = typeof v == "object" ? JSON.stringify(v, null, 2) : String(v ?? "");
+            const s = v == null ? "" : typeof v == "object" ? JSON.stringify(v, null, 2) : String(v);
 
             let i = 0;
             while (i < s.length) {
@@ -2194,9 +2197,8 @@ export class CmsEditor {
             if (value instanceof TableCell)
                 return render(value.value, formatHTML == null ? null : { ...formatHTML, ...value.formatHTML });
 
-            if (Array.isArray(value)) {
+            if (Array.isArray(value))
                 return value.map(v => render(v, formatHTML)).join(formatHTML ? "<br>" : "\n");
-            }
 
             const s = typeof value == "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
             return formatHTML == null ? s :
@@ -2211,50 +2213,37 @@ export class CmsEditor {
         const parsed = parse(msg);
         this.log("finally parsed\n", debugStructure(parsed));
         const res = formatHTML == null ? render(parsed, null) : `<span${this._clsStyle(formatHTML)}>${render(parsed, formatHTML)}</span>\n`;
-        this.log("finally rendered", res);
+        this.log("finally rendered\n", res);
         return res;
 
         function debugStructure(value, indent = 0) {
             const pad = "  ".repeat(indent);
 
-            if (value instanceof Table) {
-                return `${pad}Table\n` +
-                    value.rows.map(r => debugStructure(r, indent + 1)).join("");
-            }
+            if (value instanceof Table)
+                return `${pad}Table\n` + value.rows.map(r => debugStructure(r, indent + 1)).join("");
 
-            if (value instanceof TableRow) {
-                return `${pad}Row\n` +
-                    value.cells.map(c => debugStructure(c, indent + 1)).join("");
-            }
+            if (value instanceof TableRow)
+                return `${pad}Row\n` + value.cells.map(c => debugStructure(c, indent + 1)).join("");
 
-            if (value instanceof Text) {
-                return `${pad}Text\n` +
-                    value.parts.map(p => debugStructure(p, indent + 1)).join("");
-            }
+            if (value instanceof Text)
+                return `${pad}Text\n` + value.parts.map(p => debugStructure(p, indent + 1)).join("");
 
-            if (value instanceof List) {
-                return `${pad}List\n` +
-                    value.items.map(i => debugStructure(i, indent + 1)).join("");
-            }
+            if (value instanceof List)
+                return `${pad}List\n` + value.items.map(i => debugStructure(i, indent + 1)).join("");
 
-            if (value instanceof SafeHTML) {
+            if (value instanceof SafeHTML)
                 return `${pad}SafeHTML(html=${value.html?.slice(0, 40) ?? ""}...)\n`;
-            }
 
-            if (value instanceof TableHeader) {
-                return `${pad}Header(label=${typeof value.label}: ${JSON.stringify(value.label)}, formatHTML=${JSON.stringify(value.formatHTML)})\n`;
-            }
+            if (value instanceof TableHeader)
+                return `${pad}Header(formatHTML=${JSON.stringify(value.formatHTML)})\n` + debugStructure(value.label, indent + 1);
 
-            if (value instanceof TableCell) {
-                return `${pad}Cell(value=${typeof value.value}: ${JSON.stringify(value.value)}, formatHTML=${JSON.stringify(value.formatHTML)})\n`;
-            }
+            if (value instanceof TableCell)
+                return `${pad}Cell(formatHTML=${JSON.stringify(value.formatHTML)})\n` + debugStructure(value.value, indent + 1);
 
-            if (Array.isArray(value)) {
-                return `${pad}Array\n` +
-                    value.map(v => debugStructure(v, indent + 1)).join("");
-            }
+            if (Array.isArray(value))
+                return `${pad}Array\n` + value.map(v => debugStructure(v, indent + 1)).join("");
 
-            return `${pad}${JSON.stringify(value)}\n`;
+            return `${pad}${value == null ? "(null)" : JSON.stringify(value)}\n`;
         }
     }
 
