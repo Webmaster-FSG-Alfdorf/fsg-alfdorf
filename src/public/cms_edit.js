@@ -88,14 +88,7 @@ export class SafeHTML {
     }
 };
 
-export class TableHeader {
-    constructor(label, formatHTML = {}) {
-        this.label = label;
-        this.formatHTML = formatHTML;
-    }
-};
-
-export class TableCell {
+export class StyledText {
     constructor(value, formatHTML = {}) {
         this.value = value;
         this.formatHTML = formatHTML;
@@ -1276,10 +1269,10 @@ export class CmsEditor {
      */
     getDiff(scope, item, forUser, formatHTML) {
         const caption = [
-            new TableHeader(this._str_key("diff_caption", {}, item), { align: "right", bold: true }),
-            new TableHeader(this._str_key("diff_from", {}, item), { align: "right", bold: true }),
-            new TableHeader("", { align: "center" }),
-            new TableHeader(this._str_key("diff_to", {}, item), { bold: true }),
+            new StyledText(this._str_key("diff_caption", {}, item), { align: "right", bold: true }, true),
+            new StyledText(this._str_key("diff_from", {}, item), { align: "right", bold: true }, true),
+            new StyledText("", { align: "center" }, true),
+            new StyledText(this._str_key("diff_to", {}, item), { bold: true }, true),
         ];
         const diff = [caption];
         for (const cfg of Object.values(this.cmsSchema)) {
@@ -1308,17 +1301,17 @@ export class CmsEditor {
     getSummary(scope, item, forUser, formatHTML = null) {
         const res = [
             [
-                new TableHeader(this._str_key("input_caption", {}, item), { align: "right", bold: true }),
-                new TableHeader(this._str_key("input_value", {}, item), { bold: true }),
+                new StyledText(this._str_key("input_caption", {}, item), { align: "right", bold: true }, true),
+                new StyledText(this._str_key("input_value", {}, item), { bold: true }, true),
             ]
         ];
         for (const cfg of Object.values(this.cmsSchema))
             if (cfg.collectSummary && (!forUser || cfg.showToUser)) res.push(
                 [
-                    new TableCell((typeof cfg.summaryLabel == "function" ? cfg.summaryLabel(forUser, formatHTML) : cfg.summaryLabel) + ":", {
+                    new StyledText((typeof cfg.summaryLabel == "function" ? cfg.summaryLabel(forUser, formatHTML) : cfg.summaryLabel) + ":", {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
                     }),
-                    new TableCell(this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]), forUser, formatHTML), {
+                    new StyledText(this._printValue(cfg, scope, item, cfg.fields.map(f => item?.[f]), forUser, formatHTML), {
                         color: cfg.lastValidationFailed ? "#E74C3C" : formatHTML?.color ?? "",
                     }),
                 ]
@@ -1902,64 +1895,137 @@ export class CmsEditor {
     _str_msg_replace(msg, replacements, formatHTML = null) {
         class Text {
             constructor() {
-                this.parts = []; // string | object | SafeHTML | Text
+                this.parts = []; // string | object | SafeHTML | Text | StyledText
+                this.curPart = null;
             }
             add(value) {
-                if (typeof value == "string") {
-                    // keep the parts list small by merging consecutive strings
-                    if (this.parts.length > 0 && typeof this.parts[this.parts.length - 1] == "string")
-                        this.parts[this.parts.length - 1] += value;
-                    else
-                        this.parts.push(value);
-                } else if (value instanceof Text) {
+                if (value == null) {
+                    // ignore
+                } else if (value instanceof Text)
                     for (const v of value.parts) this.add(v);
-                } else if (Array.isArray(value)) {
-                    for (const v of value) this.add(new List([v]));
-                } else if (value != null) {
+                else if (typeof value == "string" && this.curPart != null && typeof this.curPart == "string") {
+                    // keep the parts list small by merging consecutive strings
+                    this.curPart += value;
+                    this.parts[this.parts.length - 1] = this.curPart;
+                } else {
                     this.parts.push(value);
+                    this.curPart = value;
+                }
+            }
+            get formatHTML() {
+                return this.parts.find(p => p instanceof StyledText)?.formatHTML;
+            }
+        }
+        class Line {
+            constructor(texts = []) {
+                this.texts = texts;
+                this.curText = texts[texts.length - 1];
+            }
+            add(text, ifNotEmpty = false) {
+                if (text == null || (ifNotEmpty && text instanceof Text && text.parts.length == 0)) {
+                    // ignore
+                } else {
+                    this.texts.push(text);
+                    this.curText = text;
                 }
             }
         }
-        class List {
-            constructor(items = []) {
-                this.items = items; // Text | List | Table | string | object
+        class Lines {
+            constructor(lines = []) {
+                this.lines = lines;
+                this.curLine = lines[lines.length - 1];
+            }
+            add(line, ifNotEmpty = false) {
+                if (line == null || (ifNotEmpty && line instanceof Line && line.texts.length == 0)) {
+                    // ignore
+                } else {
+                    this.lines.push(line);
+                    this.curLine = line;
+                }
             }
         }
-        class TableRow {
-            constructor(cells = []) {
-                this.cells = cells; // Text | object | string | List
+        /**
+         * Parses a value into a structured format.
+         * @param {*} v the value to parse - can be a string, object, array, or already a Text, StyledText, Line or Lines instance.
+         * @param {Number} indent only for debugging
+         * @returns {[boolean, *]} true if the value was processed as an inline block, an object of type SafeHTML, StyledText, Text, Line or Lines.
+         */
+        const parse = (v, indent = 0, res = null) => {
+            const pad = "  ".repeat(indent + 1);
+            const addToText = (v) => {
+                if (res instanceof Text) res.add(v);
+                else if (res instanceof Line) res.curText.add(v); //TODO always save as Text in parts?
+                else if (res instanceof Lines) {
+                    if (res.curLine.curText == null) res.curLine.add(new Text());
+                    res.curLine.curText.add(v);
+                }
             }
-        }
-        class Table {
-            constructor(rows = []) {
-                this.rows = rows; // TableRow[]
-            }
-            isInline() { return this.rows.length == 1 && this.rows[0].cells.length == 1; }
-        }
-        const parse = (v) => {
-            this.debug("parse", typeof v, v);
-            if (v instanceof SafeHTML) return v;
-            if (v instanceof TableHeader) return v;
-            if (v instanceof TableCell) return v;
-            if (Array.isArray(v)) return v.map(s => parse(s));
 
-            let curCell = new Text();
-            let curLine = new TableRow();
-            let res = new Table();
-            const s = v == null ? "" : typeof v == "object" ? JSON.stringify(v, null, 2) : String(v);
+            this.debug(pad, "parse", typeof v, v instanceof String ? v.replaceAll("\n", "\\n").replaceAll("\t", "\\t") : v);
+            if (v instanceof SafeHTML) return [false, v];
+            if (v instanceof StyledText) {
+                v.value = parse(v.value, indent + 1)[1];
+                return [false, v];
+            }
 
+            if (Array.isArray(v)) {
+                const parsedArray = v.map(i => parse(i, indent + 1)[1]);
+                const allInOneLine = parsedArray.every(i => !(i instanceof Line));
+                this.debug(pad, "parsed array", allInOneLine ? "one line" : "multiple lines", "\n", debugStructure(parsedArray, indent));
+                if (allInOneLine && res) {
+                    for (const part of parsedArray) addToText(part);
+                    return [true, res];
+                }
+                if (!allInOneLine && res instanceof Lines) {
+                    for (const line of parsedArray) {
+                        for (const text of line.texts) {
+                            if (res.curLine.curText == null) res.curLine.add(new Text());
+                            res.curLine.curText.add(text);
+                            res.curLine.add(new Text()); // simulate \t
+                        }
+                        res.add(new Line()); // simulate \n
+                    }
+                    return [true, res];
+                }
+                return [false, allInOneLine ? new Line(parsedArray) : new Lines(parsedArray.map(i => i instanceof Line ? i : new Line([i])))];
+            }
+
+            if (v != null && typeof v == "object") {
+                const keys = Object.keys(v);
+                if (keys.length == 0) return [false, JSON.stringify(v, null, 2)]; //TODO as Text instead
+                const res = {};
+                for (const k of keys) {
+                    res[k] = parse(v[k], indent + 1)[1];
+                    this.debug(pad, `parsed key ${k}:\n`, debugStructure(res[k], indent + 1));
+                }
+                return [false, res]; //TODO as Table instead
+            }
+
+            res ??= new Text();
+            // res now is:
+            // Text == a single consecutive text (for a table cell for example)
+            // Line == a single line which can contain multiple text parts for multiple cells
+            // Lines == multiple lines
+
+            const str = String(v ?? "");
             let i = 0;
-            while (i < s.length) {
-                const ch = s[i];
+            while (i < str.length) {
+                const ch = str[i];
                 if (ch == "\n") {
-                    curLine.cells.push(curCell);
-                    res.rows.push(curLine);
-                    curCell = new Text();
-                    curLine = new TableRow();
+                    // we have multiple lines
+                    this.debug(pad, "before \\n res is\n", debugStructure(res, indent));
+                    if (res instanceof Text) res = new Lines([new Line([res]), new Line()]);
+                    else if (res instanceof Line) res = new Lines([res, new Line()]);
+                    else if (res instanceof Lines) res.add(new Line());
+                    this.debug(pad, "after \\n res now is\n", debugStructure(res, indent));
                     ++i;
                 } else if (ch == "\t") {
-                    curLine.cells.push(curCell);
-                    curCell = new Text();
+                    // we have multiple cells in at least one line
+                    this.debug(pad, "before \\t res is\n", debugStructure(res, indent));
+                    if (res instanceof Text) res = new Line([res, new Text()]);
+                    else if (res instanceof Line) res.add(new Text());
+                    else if (res instanceof Lines) res.curLine.add(new Text());
+                    this.debug(pad, "after \\t res now is\n", debugStructure(res, indent));
                     ++i;
                 } else if (ch == "{") {
                     let depth = 1;
@@ -1971,8 +2037,8 @@ export class CmsEditor {
                     let optBuf = null;
                     let j = i + 1;
                     let o = 0;
-                    while (j < s.length) {
-                        const chJ = s[j];
+                    while (j < str.length) {
+                        const chJ = str[j];
                         const isPrefix = j == i + 1 + o && depth == 1;
                         if (isPrefix && chJ == "?" && !optionalBlock) {
                             optionalBlock = true;
@@ -1985,26 +2051,26 @@ export class CmsEditor {
                             let inStyleKey = true;
                             let styleKey = "";
                             let styleVal = "";
-                            while (k < s.length) {
-                                const chK = s[k];
+                            while (k < str.length) {
+                                const chK = str[k];
                                 if (chK == "}") {
-                                    this.errorIfLog("Missing ':' after '@' operator:", s.slice(j));
+                                    j = k - 1;
                                     break;
                                 } else if (chK == ":") {
-                                    if (styleKey.length > 0) styleConfig[styleKey] = inStyleKey ? true : styleVal;
                                     j = k;
-                                    styleBuf = "";
                                     break;
-                                } else if (chK == "=" && inStyleKey) {
-                                    inStyleKey = false;
                                 } else if (chK == ",") {
                                     styleConfig[styleKey] = inStyleKey ? true : styleVal;
                                     inStyleKey = true;
                                     styleKey = "";
                                     styleVal = "";
-                                } else if (inStyleKey) styleKey += chK; else styleVal += chK;
+                                } else if (inStyleKey && chK == "=") inStyleKey = false;
+                                else if (inStyleKey) styleKey += chK;
+                                else styleVal += chK;
                                 ++k;
                             }
+                            if (styleKey.length > 0) styleConfig[styleKey] = inStyleKey ? true : styleVal;
+                            styleBuf = "";
                         } else if (chJ == ":" && depth == 1 && optionalBlock && optBuf == null) {
                             optBuf = "";
                         } else {
@@ -2020,187 +2086,155 @@ export class CmsEditor {
                         ++j;
                     }
                     if (depth != 0) {
-                        this.errorIfLog("Missing closing '}':", s.slice(i));
-                        curCell.add(ch);
+                        this.errorIfLog("Missing closing '}':", str.slice(i));
+                        addToText(ch);
                         ++i;
                         continue;
                     }
                     if (optionalBlock && optBuf == null) {
-                        this.errorIfLog("Missing ':' for {? placeholder:", s.slice(i));
-                        curCell.add(ch);
+                        this.errorIfLog("Missing ':' for {? placeholder:", str.slice(i));
+                        addToText(ch);
                         ++i;
                         continue;
                     }
-                    this.debug("got placeholder", { i, j, o, inlineBlock, styleConfig, contentBuf, styleBuf, optBuf });
+                    this.debug(pad, "got placeholder", { i, j, o, inlineBlock, styleConfig, contentBuf, styleBuf, optBuf });
                     let val = contentBuf;
                     if (contentBuf.length > 0) {
                         const valueOrFunc = replacements[contentBuf];
                         if (valueOrFunc == null) this.warn("Unknown placeholder, using as is:", contentBuf);
                         else val = typeof valueOrFunc == "function" ? valueOrFunc() : valueOrFunc;
-                        this.debug("resolved placeholder", { contentBuf, val });
+                        this.debug(pad, "resolved placeholder", { contentBuf, val });
                     }
+
+                    let canInline = false;
                     let parsed = null;
                     if (optBuf != null) {
                         if (val == null || val === "" || (Array.isArray(val) && val.length == 0)) {
-                            this.debug("skipped parsing as content is empty");
+                            this.debug(pad, "skipped parsing as content is empty");
                             i = j;
                             continue;
                         }
-                        parsed = parse(optBuf);
+                        [canInline, parsed] = parse(optBuf, indent + 1, inlineBlock ? res : null);
                     } else if (Object.keys(styleConfig).length > 0) {
-                        this.debug("got style config", { styleConfig });
-                        parsed = new TableCell(parse(styleBuf), styleConfig);
+                        this.debug(pad, "got style config", { styleConfig });
+                        parsed = new StyledText(parse(styleBuf, indent + 1)[1], styleConfig);
                     } else
-                        parsed = parse(val);
-                    this.debug("parsed", parsed);
-                    if (Array.isArray(parsed)) {
-                        if (parsed.length > 0 && parsed.every(v => Array.isArray(v)) && parsed.some(v => v.length > 1)) {
-                            // array of arrays -> table
-                            const table = new Table();
-                            for (const r of parsed) {
-                                table.rows.push(new TableRow(r));
-                            }
-                            parsed = table;
-                            this.debug("converted parsed to", { parsed });
-                        }
+                        [canInline, parsed] = parse(val, indent + 1, inlineBlock ? res : null);
+                    if (inlineBlock && !canInline)
+                        this.errorIfLog("Cannot use block as inline content:", { val, parsed });
+                    if (inlineBlock && canInline) {
+                        this.debug("taking over result of inline block directly into current structure");
+                        res = parsed;
+                    } else {
+                        this.debug(pad, "parsed block\n", debugStructure(parsed, indent));
+                        addToText(parsed);
                     }
-
-                    if (inlineBlock) {
-                        curLine.cells.push(curCell);
-                        if (curLine.cells.length > 0) res.rows.push(curLine);
-                        const flat = parsed instanceof Table ? parsed.rows : Array.isArray(parsed) ? parsed : [parsed];
-                        for (const r of flat) {
-                            if (r instanceof TableRow) {
-                                res.rows.push(r);
-                            } else {
-                                const row = new TableRow();
-                                row.cells = Array.isArray(r)
-                                    ? r.map(c => c instanceof Text ? c : parse(c))
-                                    : [r instanceof Text ? r : parse(r)];
-                                res.rows.push(row);
-                            }
-                        }
-                        curCell = new Text();
-                        curLine = new TableRow();
-                    } else if (parsed instanceof Table) {
-                        if (parsed.isInline()) {
-                            const cell = parsed.rows[0].cells[0];
-                            if (typeof cell == "string" || cell instanceof Text || cell instanceof SafeHTML)
-                                curCell.add(cell);
-                            else {
-                                if (curCell.parts.length > 0) {
-                                    curLine.cells.push(curCell);
-                                    curCell = new Text();
-                                }
-                                if (curLine.cells.length > 0) {
-                                    res.rows.push(curLine);
-                                    curLine = new TableRow();
-                                }
-                                const row = new TableRow();
-                                row.cells = [parse(cell)];
-                                res.rows.push(row);
-                            }
-                        } else {
-                            if (curCell.parts.length > 0) {
-                                curLine.cells.push(curCell);
-                                curCell = new Text();
-                            }
-                            if (curLine.cells.length > 0) {
-                                res.rows.push(curLine);
-                                curLine = new TableRow();
-                            }
-                            for (const r of parsed.rows) res.rows.push(r);
-                        }
-                    } else
-                        curCell.add(parsed);
                     i = j;
                 } else {
-                    curCell.add(ch);
+                    addToText(ch);
                     ++i;
                 }
             }
-            if (curLine.cells.length > 0 || curCell.parts.length > 0) {
-                curLine.cells.push(curCell);
-                res.rows.push(curLine);
-            }
-            this.debug("parse result", res);
-
-            return res;
+            return [true, res];
         }
 
-        const render = (value, formatHTML) => {
-            this.debug("render", { value, formatHTML });
-            if (value instanceof List) {
-                if (formatHTML == null) return value.items.map(item => ` - ${render(item, null)}`).join("\n");
-                return "</span><ul>\n" +
-                    value.items.map(item => `<li${this._clsStyle(formatHTML)}>${render(item, formatHTML)}</li>`).join("") +
-                    `</ul><span${this._clsStyle(formatHTML)}>\n`;
-            }
+        const render = (v, mode, formatHTML, indent = 0) => {
+            const pad = "  ".repeat(indent + 1);
+            this.debug(pad, "render", { v, mode, formatHTML });
 
-            if (value instanceof Table) {
-                if (formatHTML == null) return value.rows.map(row => render(row, null)).join("\n");
-                if (value.isInline()) return render(value.rows[0].cells[0], formatHTML); // avoid unnecessary table for single cell
-                let res = `</span><table>\n`;
-                let alignments = [];
-                //let prevColCount = -1;
-                let maxColumns = 0;
-                for (const row of value.rows) maxColumns = Math.max(maxColumns, row.cells.length);
-                for (const row of value.rows) {
-                    this.debug("render row", { row, formatHTML });
-                    //let colCount = row.cells.length;
-                    //if (prevColCount != -1 && prevColCount != colCount) {
-                    // start a new table TODO
-                    //res += `</table><table>\n`;
-                    //alignments = [];
-                    //}
-                    //prevColCount = colCount;
-                    if (row.cells.some((cell) => cell instanceof TableHeader)) alignments = row.cells.map(cell => cell instanceof TableHeader ? cell.formatHTML?.align : null);
-                    res += render(row, Object.assign({}, formatHTML, { alignments, maxColumns }));
-                }
-                res += `</table><span${this._clsStyle(formatHTML)}>`;
-                return res;
-            }
+            if (v instanceof SafeHTML)
+                return formatHTML == null ? render(v.plain, "", null, indent + 1) : v.html;
 
-            if (value instanceof TableRow) {
-                if (formatHTML == null) return value.cells.map(cell => render(cell, null)).join("\t");
-                const isHeaderRow = value.cells.some((cell) => cell instanceof TableHeader);
-                const tag = isHeaderRow ? "th" : "td";
-                let res = "<tr>";
-                for (let ci = 0; ci < value.cells.length; ci++) {
-                    const format = { ...formatHTML, padding: formatHTML?.padding ?? 8 };
-                    let merge = Math.max(0, (format.maxColumns ?? 0) - value.cells.length);
-                    while (ci + merge + 1 < value.cells.length && value.cells[ci + merge + 1] == null) ++merge;
-                    const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
-                    if (format.alignments?.[ci]) format.align = format.alignments[ci];
-                    const cell = value.cells[ci];
-                    if ((cell instanceof TableHeader || cell instanceof TableCell) && cell?.formatHTML)
-                        for (const k in cell.formatHTML) format[k] = cell.formatHTML[k];
-                    if (cell != null) {
-                        const alignTopHack = "&#8203;"; // TODO only if needed
-                        res += `<${tag}${this._clsStyle(format)}${colspan}>${alignTopHack}${render(cell, format)}</${tag}>`;
-                        ci += merge;
+            if (v instanceof StyledText)
+                return render(v.value, "", formatHTML == null ? null : { ...formatHTML, ...v.formatHTML }, indent + 1);
+
+            if (v instanceof Text)
+                return v.parts.map(p => render(p, "", formatHTML, indent + 1)).join("");
+
+            if (v instanceof Line) {
+                const result = [];
+                for (let ci = 0; ci < v.texts.length; ++ci) {
+                    const text = v.texts[ci];
+                    const s = render(text, mode, formatHTML, indent + 1);
+                    if (formatHTML == null) {
+                        result.push(` - ${s}`);
+                        continue;
                     }
+                    const tags = { "list": "li", "table-header": "th", "table": "td" };
+                    const tag = tags[mode] || "span";
+                    if (mode == "table" || mode == "table-header") {
+                        const format = { ...formatHTML, padding: formatHTML?.padding ?? 8 };
+                        let merge = 0;
+                        while (ci + merge + 1 < v.texts.length && v.texts[ci + merge + 1]?.parts?.[0]?.formatHTML?.merged) ++merge;
+                        const colspan = merge > 0 ? ` colspan="${merge + 1}"` : "";
+                        if (format.alignments?.[ci] != null) format.align = format.alignments[ci];
+                        if (format.widths?.[ci] != null) format.width = format.widths[ci];
+                        const inherit = text.parts?.[0]?.formatHTML;
+                        if (inherit) for (const k in inherit) format[k] = inherit[k];
+                        const alignTopHack = "&#8203;"; // TODO only if needed
+                        result.push(`<${tag}${this._clsStyle(format)}${colspan}>${alignTopHack}${s}</${tag}>`);
+                        this.debug(pad, "render table cell", { text, ci, tag, merge, colspan, inherit, format, alignTopHack });
+                        ci += merge;
+                    } else if (mode == "list")
+                        result.push(`<${tag}${this._clsStyle(formatHTML)}>${s}</${tag}>`);
+                    else
+                        result.push(`<${tag}${this._clsStyle(formatHTML)}>${s}<br></${tag}>`);
                 }
-                res += "</tr>\n";
-                return res;
+                return result.join("\n");
             }
 
-            if (value instanceof Text)
-                return value.parts.map(p => render(p, formatHTML)).join("");
+            if (v instanceof Lines) {
+                const result = [];
+                let modeSub = "";
+                // decide about table vs list rendering for all following lines up to the next empty line
+                for (let li = 0; li < v.lines.length; ++li) {
+                    if (modeSub == "table") result.push(`</table>`);
+                    if (modeSub == "list") result.push(`</ul>`);
 
-            if (value instanceof SafeHTML)
-                return formatHTML == null ? render(value.plain, null) : value.html;
+                    let maxColumns = 0;
+                    let liStop = li;
+                    for (; liStop < v.lines.length; ++liStop) {
+                        const cntColumns = v.lines[liStop].texts.length;
+                        if (cntColumns == 0 || (cntColumns == 1 && v.lines[liStop].texts[0].parts?.length == 0)) break;
+                        maxColumns = Math.max(maxColumns, cntColumns);
+                    }
+                    modeSub = maxColumns > 1 ? "table" : liStop - li > 1 ? "list" : "";
 
-            if (value instanceof TableHeader)
-                return render(value.label, formatHTML == null ? null : { ...formatHTML, ...value.formatHTML });
+                    if (modeSub == "table") result.push(`<table>`);
+                    if (modeSub == "list") result.push(`<ul>`);
 
-            if (value instanceof TableCell)
-                return render(value.value, formatHTML == null ? null : { ...formatHTML, ...value.formatHTML });
+                    const format = formatHTML == null ? null : { ...formatHTML, alignments: [], widths: [] };
+                    this.debug(pad, "render Lines", { li, liStop, modeSub, format });
+                    for (let li2 = li; li2 < liStop; ++li2) {
+                        const line = v.lines[li2];
+                        if (formatHTML == null)
+                            result.push(render(line, modeSub, formatHTML, indent + 1));
+                        else if (modeSub == "table") {
+                            const isHeaderRow = line.texts.some((t) => t.formatHTML?.header);
+                            if (isHeaderRow) {
+                                format.alignments = line.texts.map(t => t.formatHTML?.align);
+                                format.widths = line.texts.map(t => t.formatHTML?.width);
+                                this.debug(pad, "inheriting to all cells:", { alignments: format.alignments, widths: format.widths });
+                            }
+                            result.push("<tr>");
+                            result.push(render(line, isHeaderRow ? "table-header" : "table", format, indent + 1));
+                            result.push("</tr>");
+                        } else if (modeSub == "list") {
+                            // TODO br only if not last?
+                            result.push(render(line, modeSub, format, indent + 1));
+                            // result.push(`<span${this._clsStyle(format)}>${render(line, modeSub, format)}<br></span>`);
+                        } else {
+                            result.push(render(line, modeSub, format, indent + 1));
+                        }
+                    }
+                    li = liStop;
+                }
+                if (modeSub == "table") result.push(`</table>`);
+                if (modeSub == "list") result.push(`</ul>`);
+                return result.join("\n");
+            }
 
-            if (Array.isArray(value))
-                return value.map(v => render(v, formatHTML)).join(formatHTML ? "<br>" : "\n");
-
-            const s = typeof value == "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
+            const s = typeof v == "object" ? JSON.stringify(v, null, 2) : String(v ?? "");
             return formatHTML == null ? s :
                 s
                     .replace(/&/g, "&amp;")
@@ -2210,40 +2244,34 @@ export class CmsEditor {
                     .replace(/'/g, "&#39;");
         };
 
-        const parsed = parse(msg);
+        const parsed = parse(msg)[1];
         this.log("finally parsed\n", debugStructure(parsed));
-        const res = formatHTML == null ? render(parsed, null) : `<span${this._clsStyle(formatHTML)}>${render(parsed, formatHTML)}</span>\n`;
-        this.log("finally rendered\n", res);
+        const res = render(parsed, "", formatHTML);
+        this.log("finally rendered", formatHTML == null ? "as plain" : "as HTML", "\n", res);
         return res;
 
-        function debugStructure(value, indent = 0) {
-            const pad = "  ".repeat(indent);
+        function debugStructure(v, indent = 0) {
+            const pad = "  ".repeat(indent + 1);
 
-            if (value instanceof Table)
-                return `${pad}Table\n` + value.rows.map(r => debugStructure(r, indent + 1)).join("");
+            if (v instanceof SafeHTML)
+                return `${pad}SafeHTML(html=${v.html?.slice(0, 40) ?? ""}...)\n`;
 
-            if (value instanceof TableRow)
-                return `${pad}Row\n` + value.cells.map(c => debugStructure(c, indent + 1)).join("");
+            if (v instanceof StyledText)
+                return `${pad}Text(formatHTML=${JSON.stringify(v.formatHTML)})\n` + debugStructure(v.value, indent + 1);
 
-            if (value instanceof Text)
-                return `${pad}Text\n` + value.parts.map(p => debugStructure(p, indent + 1)).join("");
+            if (v instanceof Text)
+                return `${pad}Text\n` + v.parts.map(p => debugStructure(p, indent + 1)).join("");
 
-            if (value instanceof List)
-                return `${pad}List\n` + value.items.map(i => debugStructure(i, indent + 1)).join("");
+            if (v instanceof Lines)
+                return `${pad}Lines\n` + v.lines.map(r => debugStructure(r, indent + 1)).join("");
 
-            if (value instanceof SafeHTML)
-                return `${pad}SafeHTML(html=${value.html?.slice(0, 40) ?? ""}...)\n`;
+            if (v instanceof Line)
+                return `${pad}Line\n` + v.texts.map(r => debugStructure(r, indent + 1)).join("");
 
-            if (value instanceof TableHeader)
-                return `${pad}Header(formatHTML=${JSON.stringify(value.formatHTML)})\n` + debugStructure(value.label, indent + 1);
+            if (Array.isArray(v))
+                return `${pad}Array\n` + v.map(v => debugStructure(v, indent + 1)).join("");
 
-            if (value instanceof TableCell)
-                return `${pad}Cell(formatHTML=${JSON.stringify(value.formatHTML)})\n` + debugStructure(value.value, indent + 1);
-
-            if (Array.isArray(value))
-                return `${pad}Array\n` + value.map(v => debugStructure(v, indent + 1)).join("");
-
-            return `${pad}${value == null ? "(null)" : JSON.stringify(value)}\n`;
+            return `${pad}${v == null ? "(null)" : JSON.stringify(v)}\n`;
         }
     }
 
@@ -2344,5 +2372,40 @@ export class CmsEditor {
             seenOnPath.delete(v);
         }
     }
+
+}
+
+export function testGetString(editor) {
+    const run = (str, replacements, expectedPlain, expectedHtml) => {
+        const resPlain = editor.getString(str, {}, replacements, null);
+        if (resPlain != expectedPlain) console.error("Expected plain:\n", expectedPlain, "\nbut got:\n", resPlain);
+        const resHtml = editor.getString(str, {}, replacements, { color: "red", bold: true });
+        if (resHtml != expectedHtml) console.error("Expected HTML:\n", expectedHtml, "\nbut got:\n", resHtml);
+    };
+    run("simple", {}, "simple", '<span class="font_7" style="color:red;font-weight:bold">simple</span>');
+
+    run("with {placeholder}", { placeholder: "value" }, "with value", '<span class="font_7" style="color:red;font-weight:bold">with value</span>');
+    run("with {unknown}", {}, "with unknown", '<span class="font_7" style="color:red;font-weight:bold">with unknown</span>');
+
+    run("with invalid {? optional}", {}, "with invalid ", '<span class="font_7" style="color:red;font-weight:bold">with invalid </span>');
+    run("with missing {? optional : content}", {}, "with missing ", '<span class="font_7" style="color:red;font-weight:bold">with missing </span>');
+    run("with empty {? optional : content}", { optional: "" }, "with empty ", '<span class="font_7" style="color:red;font-weight:bold">with empty </span>');
+    run("with {? optional : content}", { optional: "some string" }, "with content", '<span class="font_7" style="color:red;font-weight:bold">with content</span>');
+
+    const expListPlain = "list:\nelement 1\nelement 2";
+    const expListHtml = '<span class="font_7" style="color:red;font-weight:bold"> - element 1<br> - element 2</span>';
+    const replElements = { el1: "element 1", el2: "element 2" };
+    run("list:\nelement 1\nelement 2", {}, expListPlain, expListHtml);
+    run("list:\n{el1}\n{el2}", replElements, expListPlain, expListHtml);
+    run("list:\n{? o : el1}\n{? o : el2}", { ...replElements, o: "x" }, expListPlain, expListHtml);
+    run("list:\n{-list}", { ...replElements, list: "{el1}\n{el2}" }, expListPlain, expListHtml);
+
+    const expTablePlain = "table:\ncell 1\tcell 2\ncell 3\tcell 4";
+    const expTableHtml = '<span class="font_7" style="color:red;font-weight:bold">table:<br>cell 1\tcell 2<br>cell 3\tcell 4</span>';
+    const replTableEls = { c11: "cell 1", c12: "cell 2", c21: "cell 3", c22: "cell 4" };
+    run("table:\ncell 1\tcell 2\ncell 3\tcell 4", {}, expTablePlain, expTableHtml);
+    run("table:\n{c11}\t{c12}\n{c21}\t{c22}", replTableEls, expTablePlain, expTableHtml);
+    run("table:\n{row1}\n{row2}", { ...replTableEls, row1: "{c11}\t{c12}", row2: "{c21}\t{c22}" }, expTablePlain, expTableHtml);
+    run("table:\n{-row1}\n{-row2}", { ...replTableEls, row1: "{c11}\t{c12}", row2: "{c21}\t{c22}" }, expTablePlain, expTableHtml);
 
 }

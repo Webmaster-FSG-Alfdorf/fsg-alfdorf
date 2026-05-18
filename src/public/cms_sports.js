@@ -187,16 +187,17 @@ export function initSportsEditor(editMode, cfg) {
 
 export function getSportsSummary(editor, item) {
     return editor.getString(
-        "{descriptionRich}\n"
-        + "{?ownEquipment: {@width=0:🎒}\t{ownEquipment}\n}"
-        + "{?price: {@width=0:🪙}\t{price}\n}"
-        + "{?address: {@width=0:📍}\t{address}\n}"
-        + "{?contact: {@width=0:👤}\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
-        + "{?alltime: {@width=0:📝}\t{alltime}\n}"
-        + "{?weatherIndep: {@width=0:🌦️}\t{weatherIndep}\n}"
-        + "{?season: {@width=0:🍂}\t{season}\n}"
-        + "{?whatsappCode: {@width=0:{whatsAppIcon}}\t{whatsappCode}\n}"
-        + "{?events: {@width=0:📅}\t{events}\n}", //TODO events              
+        "{descriptionRich}\n\n"
+        + "{@header,align=center,width=0}\t{@header,align=left}\n"
+        + "{-?ownEquipment:🎒\t{ownEquipment}\n}"
+        + "{-?price:🪙\t{price}\n}"
+        + "{-?address:📍\t{address}\n}"
+        + "{-?contact:👤\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
+        + "{-?alltime:📝\t{alltime}\n}"
+        + "{-?weatherIndep:🌦️\t{weatherIndep}\n}"
+        + "{-?season:🍂\t{season}\n}"
+        + "{-?whatsappCode:{whatsAppIcon}\t{whatsappCode}\n}"
+        + "{-?events:📅\t{events}\n}", //TODO events              
         item,
         { whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"), },
         {}

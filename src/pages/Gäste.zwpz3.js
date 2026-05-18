@@ -3,7 +3,7 @@ import { initGuestsEditor } from 'public/cms_guests';
 import { dateRangeToString } from 'public/cms.js';
 
 $w.onReady(function () {
-    initGuestsEditor(false, {});
+    initGuestsEditor(true, {});
     $w("#datasetReservations").onReady(async () => {
         console.log("#datasetReservations onReady");
 

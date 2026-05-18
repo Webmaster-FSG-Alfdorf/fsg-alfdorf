@@ -1,5 +1,5 @@
 import wixData from 'wix-data';
-import { CmsEditor, FieldType, FilterType, FilterCombine, SafeHTML, TableHeader } from 'public/cms_edit';
+import { CmsEditor, FieldType, FilterType, FilterCombine, SafeHTML } from 'public/cms_edit';
 import { ROLES, dateRangeToString, FormatTypesMonth, FormatTypesNumeric, nightsBetween, incUTCDate } from 'public/cms.js';
 import { getOccupations, isDateOccupied, generateLodgingName, getAllLodgingNames, generateCostsTable } from 'backend/common.jsw';
 
@@ -289,25 +289,8 @@ export function initGuestsEditor(editMode, cfg) {
     editor.lodgingNames = {};
     editor.init();
     editor.setupEditButton("#buttonEdit", ROLES.GUESTS_MANAGEMENT.slug, ROLES.GUESTS_MANAGEMENT.id, editor.getItem());
-    return editor;
-}
 
-export function getGuestsSummary(editor, item) {
-    return editor.getString(
-        "{descriptionRich}\n"
-        + "{?ownEquipment: {@width=0:🎒}\t{ownEquipment}\n}"
-        + "{?price: {@width=0:🪙}\t{price}\n}"
-        + "{?address: {@width=0:📍}\t{address}\n}"
-        + "{?contact: {@width=0:👤}\t{contact}{?contactMail: ✉️{contactMail}}{?contactPhone: 📞{contactPhone}}\n}"
-        + "{?alltime: {@width=0:📝}\t{alltime}\n}"
-        + "{?weatherIndep: {@width=0:🌦️}\t{weatherIndep}\n}"
-        + "{?season: {@width=0:🍂}\t{season}\n}"
-        + "{?whatsappCode: {@width=0:{whatsAppIcon}}\t{whatsappCode}\n}"
-        + "{?events: {@width=0:📅}\t{events}\n}", //TODO events              
-        item,
-        { whatsAppIcon: new SafeHTML('<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" alt="WhatsApp">', "WhatsApp"), },
-        {}
-    );
+    return editor;
 }
 
 async function validateLodging(editor, item) {
@@ -351,12 +334,10 @@ async function validateLodging(editor, item) {
 
 async function updateCostsTable(editor, item) {
     console.log("updateCostsTable");
-    const hdr = [
-        "Leistung",
-        new TableHeader("Anzahl Erw.", { align: "right" }),
-        new TableHeader("Nächte", { align: "right" }),
-        new TableHeader("Einzelpreis", { align: "right" }),
-        new TableHeader("Gesamt", { align: "right" }),
-    ];
-    $w("#textReservationPrice").html = item ? editor.getString("{costs}", item, { "costs": [hdr, ...await generateCostsTable(item)] }, {}) : "";
+    $w("#textReservationPrice").html = editor.getString(
+        "Leistung\t{@align=right:Anzahl Erw.}\t{@align=right:Nächte}\t{@align=right:Einzelpreis}\t{@align=right:Gesamt}\n{-costs}",
+        item ?? {},
+        { "costs": await generateCostsTable(item) },
+        {}
+    );
 }
